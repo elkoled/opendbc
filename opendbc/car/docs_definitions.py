@@ -139,6 +139,7 @@ class CarHarness(EnumBase):
   ford_q4 = BaseCarHarness("Ford Q4 connector", parts=[Accessory.harness_box, Accessory.comma_power_v2, Cable.rj45_cable_7ft, Cable.long_obdc_cable,
                                                        Cable.usbc_coupler])
   rivian = BaseCarHarness("Rivian connector")
+  psa_a = BaseCarHarness("PSA A connector", parts=[Accessory.harness_box, Cable.long_obdc_cable, Cable.usbc_coupler])
 
 
 class Device(EnumBase):
