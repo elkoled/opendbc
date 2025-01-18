@@ -37,4 +37,4 @@ def create_lka_msg(packer, CP, frame: int, lat_active: bool, apply_angle: float)
   values['CHECKSUM'] = calculate_checksum(msg)
 
   # TODO: swap CAN 0/2 on harness
-  return packer.make_can_msg('LANE_KEEP_ASSIST', CanBus(CP).camera, values)
+  return packer.make_can_msg('LANE_KEEP_ASSIST', CanBus(CP).main, values)
