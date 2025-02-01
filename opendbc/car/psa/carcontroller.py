@@ -8,7 +8,7 @@ from opendbc.car.psa.values import CarControllerParams
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     self.CP = CP
-    self.packer = CANPacker(dbc_names[Bus.pt])
+    self.packer = CANPacker(dbc_names[Bus.main])
     self.frame = 0
     self.apply_angle_last = 0
 
