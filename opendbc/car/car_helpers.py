@@ -1,7 +1,7 @@
 import os
 import time
 
-from opendbc.car import carlog, gen_empty_fingerprint
+from opendbc.car import gen_empty_fingerprint
 from opendbc.car.can_definitions import CanRecvCallable, CanSendCallable
 from opendbc.car.structs import CarParams, CarParamsT, CarParamsSP
 from opendbc.car.fingerprints import eliminate_incompatible_cars, all_legacy_fingerprint_cars
