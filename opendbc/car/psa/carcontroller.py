@@ -6,13 +6,13 @@ from opendbc.car.psa import psacan
 from opendbc.car.psa.values import CarControllerParams
 
 class CarController(CarControllerBase):
-  def __init__(self, dbc_names, CP):
+  def __init__(self, dbc_names, CP, CP_SP):
     self.CP = CP
     self.packer = CANPacker(dbc_names[Bus.pt])
     self.frame = 0
     self.apply_angle_last = 0
 
-  def update(self, CC, CS, now_nanos):
+  def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
 
