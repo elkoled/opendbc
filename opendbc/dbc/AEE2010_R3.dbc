@@ -134,6 +134,25 @@ BO_ 757 STEERING: 7 XXX
  SG_ RATE : 47|12@0- (1,0) [0|4095] "" XXX
  SG_ NEW_SIGNAL_1 : 48|1@0+ (1,0) [0|1] "" XXX
 
+BO_ 758 HS2_DYN_MDD_STATUS_2F6: 8 ARTIV
+ SG_ TARGET_DETECTED : 0|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ REQ_CONDITION_RESUME : 2|2@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ BLIND_SENSOR : 4|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ REQ_VISUAL_COLLISION_ALERT : 5|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ REQ_SOUND_COLLISION_ALERT : 6|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ REQ_HAPTIC_COLLISION_ALERT : 7|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ VEHICLE_INTER_DISTANCE : 15|10@0+ (0.25,0) [0|255.5] "m" BSI,CMM,UC_FREIN,CMF
+ SG_ COLLISION_ALERT_STATE : 19|4@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ BRAKING_IN_PROGRESS : 20|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ AEB_ENABLED : 21|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ DRV_AWAY_REQ : 33|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ DISPLAYED_INTER_VEHICLE_TIME : 39|6@0+ (0.1,0) [0|6.1] "s" BSI,CMM,UC_FREIN,CMF
+ SG_ REQ_UCF_DECEL_CONTROL : 42|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ BRAKE_STATE : 47|3@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ DYN_ACC2_FRAME_CHECKSUM : 51|4@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+ SG_ PROCESS_COUNTER_4B_ACC2 : 55|4@0+ (1,0) [0|15] "" BSI,CMM,UC_FREIN,CMF
+ SG_ TARGET_POSITION : 63|3@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
+
 BO_ 760 NEW_MSG_2F8: 7 XXX
  SG_ ESP_STATUS_RELATED : 12|1@0+ (1,0) [0|1] "" XXX
  SG_ ESP_STATUS_RELATED_INV : 13|1@0+ (1,0) [0|1] "" XXX
@@ -943,6 +962,19 @@ VAL_ 694 GEAR_TYPE 0 "Downshift" 1 "Upshift";
 VAL_ 694 PREFILL_REQUEST 0 "No prefill request" 1 "Prefill request";
 VAL_ 728 ESP_STATUS_RELATED 0 "DISABLED" 1 "ENABLED";
 VAL_ 728 ESP_STATUS_RELATED_INV 0 "ENABLED" 1 "DISABLED";
+VAL_ 758 TARGET_DETECTED 0 "initialization or no target detected" 1 "target detected";
+VAL_ 758 REQ_CONDITION_RESUME 0 "No request" 1 "Non-critical request" 2 "Critical request" 3 "Invalid";
+VAL_ 758 BLIND_SENSOR 0 "False" 1 "True";
+VAL_ 758 REQ_VISUAL_COLLISION_ALERT 0 "No visual alert request" 1 "Visual alert request";
+VAL_ 758 REQ_SOUND_COLLISION_ALERT 0 "No sound alert request" 1 "Sound alert request";
+VAL_ 758 REQ_HAPTIC_COLLISION_ALERT 0 "No haptic alert request" 1 "Haptic alert request";
+VAL_ 758 COLLISION_ALERT_STATE 0 "Unavailable" 1 "Value not used" 2 "Value not used" 3 "Initialization" 4 "Value not used" 5 "Value not used" 6 "Inhibited" 7 "Value not used" 8 "Value not used" 9 "Value not used" 10 "Waiting" 11 "Value not used" 12 "Active" 13 "Value not used" 14 "Value not used" 15 "Fault";
+VAL_ 758 BRAKING_IN_PROGRESS 0 "No braking in progress" 1 "Braking in progress";
+VAL_ 758 AEB_ENABLED 0 "FALSE" 1 "TRUE";
+VAL_ 758 DRV_AWAY_REQ 0 "No drive away required" 1 "Drive away required";
+VAL_ 758 REQ_UCF_DECEL_CONTROL 0 "No UCF control request" 1 "UCF control request";
+VAL_ 758 BRAKE_STATE 0 "Unavailable" 1 "Initialization" 2 "Value not used" 3 "Inhibited" 4 "Value not used" 5 "Waiting" 6 "Active" 7 "Fault";
+VAL_ 758 TARGET_POSITION 0 "POS1" 1 "POS2" 2 "POS3" 3 "POS4" 4 "POS5" 5 "POS6" 6 "POS7" 7 "Invalid";
 VAL_ 760 ESP_STATUS_RELATED 0 "DISABLED" 1 "ENABLED";
 VAL_ 760 ESP_STATUS_RELATED_INV 0 "ENABLED" 1 "DISABLED";
 VAL_ 840 P134_Com_stEng 7 "RESERVED" 6 "DegradedGO" 5 "GO" 4 "Stopped" 3 "Running" 2 "Starting" 1 "Cut" 0 "Locked";
