@@ -13,7 +13,7 @@ class CarState(CarStateBase):
     super().__init__(CP, CP_SP)
 
   def update(self, can_parsers) -> structs.CarState:
-    cp = can_parsers[Bus.pt]
+    cp = can_parsers[Bus.cam]
     cp_adas = can_parsers[Bus.adas]
     cp_main = can_parsers[Bus.main]
     ret = structs.CarState()
@@ -44,9 +44,10 @@ class CarState(CarStateBase):
     ret.steeringAngleDeg = cp.vl['STEERING_ALT']['ANGLE'] # EPS
     ret.steeringRateDeg = cp.vl['STEERING_ALT']['RATE'] * cp.vl['STEERING_ALT']['RATE_SIGN']  # EPS: Rotation speed * rotation sign/direction
     ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
+    ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)  # TODO: adjust threshold
-    ret.steerFaultTemporary = False  # TODO
-    ret.steerFaultPermanent = False  # TODO
+    ret.steerFaultTemporary = bool(cp.vl['IS_DAT_DIRA']['TRQ_LIMIT_STATE']) # TODO: test
+    ret.steerFaultPermanent = bool(cp.vl['IS_DAT_DIRA']['STEERING_REBOOT_REQUEST']) # TODO: test
     ret.espDisabled = bool(cp_adas.vl['ESP']['ESP_STATUS_INV'])
 
     # cruise
@@ -83,13 +84,14 @@ class CarState(CarStateBase):
 
   @staticmethod
   def get_can_parsers(CP, CP_SP):
-    pt_messages = [
+    cam_messages = [
       ('Dyn4_FRE', 50),
       ('STEERING_ALT', 100),
       ('STEERING', 100),
       ('Dyn2_FRE', 100),
       ('Dyn2_CMM', 50),
       ('Dyn_EasyMove', 50),
+      ('IS_DAT_DIRA', 10),
     ]
     adas_messages = [
       ('ESP', 50),
@@ -107,5 +109,5 @@ class CarState(CarStateBase):
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.main], main_messages, 2),
       Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.adas], adas_messages, 1),
-      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, 0),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.cam], cam_messages, 0),
     }

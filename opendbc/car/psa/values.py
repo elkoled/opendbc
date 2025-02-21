@@ -13,6 +13,7 @@ class CarControllerParams:
   ANGLE_RATE_LIMIT_UP = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[4., .5, .1]) # TODO: refine limits
   ANGLE_RATE_LIMIT_DOWN = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[4., 2.5, .3]) # TODO: refine limits
   STEER_DRIVER_ALLOWANCE = 10  # Driver intervention threshold, 1 Nm
+  EPS_MAX_TORQUE = 3 # TODO: tune   max torque of EPS in Nm
 
   def __init__(self, CP):
     pass
@@ -29,7 +30,7 @@ class PSACarDocs(CarDocs):
 @dataclass
 class PSAPlatformConfig(PlatformConfig):
   dbc_dict: DbcDict = field(default_factory=lambda: {
-    Bus.pt: 'AEE2010_R3',
+    Bus.cam: 'AEE2010_R3',
     Bus.adas: 'AEE2010_R3',
     Bus.main: 'AEE2010_R3',
   })

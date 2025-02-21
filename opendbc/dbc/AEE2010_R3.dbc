@@ -375,9 +375,17 @@ BO_ 1161 Dat_V2_BV: 8 BVA___Automatikgetriebe
  SG_ P285_Com_bPNDia : 20|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P218_Com_stDrvIdx : 48|8@1+ (1,0) [0|255] "" Vector__XXX
 
-BO_ 1173 DAT_DIRA: 3 Vector__XXX
- SG_ P448_Com_bStrgWhlEngStopReqRaw : 21|1@1+ (1,0) [0|1] "" Vector__XXX
- SG_ P447_Com_bStrgWhlEngRstrtReqRaw : 23|1@1+ (1,0) [0|1] "" Vector__XXX
+BO_ 1173 IS_DAT_DIRA: 4 PSCM
+ SG_ EPS_TORQUE : 7|8@0- (0.25,0) [-32|31.5] "Nm" Tester
+ SG_ ETAT_DA_2004 : 9|2@0+ (1,0) [0|3] "" Tester
+ SG_ ETAT_DA_DYN : 13|2@0+ (1,0) [0|3] "" Tester
+ SG_ ETAT_DA_2010 : 15|2@0+ (1,0) [0|3] "" Tester
+ SG_ TRQ_LIMIT_STATE : 16|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ STEERWHL_HOLD_BY_DRV : 17|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ EPS_STATE_LKA : 20|3@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ AUTOR_ARRET_MOT_DA : 21|1@0+ (1,0) [0|1] "" Tester
+ SG_ STEERING_REBOOT_REQUEST : 23|1@0+ (1,0) [0|1] "" Tester
+ SG_ Reserved : 31|8@0+ (1,0) [0|255] "" Tester
 
 BO_ 1224 Etat_Crash: 3 BSI___Kombiinstrument
  SG_ Reserved_1 : 7|8@0+ (1,0) [0|0] "-" Vector__XXX
@@ -941,3 +949,12 @@ VAL_ 840 P134_Com_stEng 7 "RESERVED" 6 "DegradedGO" 5 "GO" 4 "Stopped" 3 "Runnin
 VAL_ 909 VITESSE_VEHICULE_ROUES 65535 "Invalid";
 VAL_ 1010 LANE_DEPARTURE 0 "NOT_DEPARTED" 1 "DEPARTED_RIGHT" 2 "DEPARTED_LEFT";
 VAL_ 1010 STATUS 0 "UNAVAILABLE" 1 "UNSELECTED" 2 "SELECTED" 3 "AUTHORIZED" 4 "ACTIVE" 5 "DEFECT" 6 "COLLISION" 7 "RESERVED";
+VAL_ 1173 EPS_TORQUE 127 "Invalid";
+VAL_ 1173 ETAT_DA_2004 3 "Reserved" 2 "Orange LED" 1 "Red LED" 0 "No Demand";
+VAL_ 1173 ETAT_DA_DYN 3 "Invalid" 2 "Adjustable Mode" 1 "Dynamic Mode" 0 "Normal Mode";
+VAL_ 1173 ETAT_DA_2010 3 "Reserved" 2 "Orange LED" 1 "Red LED" 0 "No Demand";
+VAL_ 1173 TRQ_LIMIT_STATE 1 "Saturation Effective" 0 "No Saturation";
+VAL_ 1173 STEERWHL_HOLD_BY_DRV 1 "Steer Activity From Drv Trq" 0 "No Steer Activity From Drv Trq";
+VAL_ 1173 EPS_STATE_LKA 4 "Defect" 3 "Active" 2 "Available" 1 "Authorised" 0 "Unauthorised";
+VAL_ 1173 AUTOR_ARRET_MOT_DA 1 "Permission to Stop" 0 "No Permission to Stop";
+VAL_ 1173 STEERING_REBOOT_REQUEST 1 "Request Reboot" 0 "No Reboot Required";
