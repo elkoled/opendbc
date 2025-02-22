@@ -68,8 +68,8 @@ class CarState(CarStateBase):
       ret.gearShifter = GearShifter.drive
 
     # TODO: safety
-    ret.stockFcw = cp_adas.vl['HS2_DYN_MDD_STATUS_2F6']['REQ_CONDITION_RESUME'] == 2 # TODO: test  0: no error, 1: non-critical request, 2: critical request
-    ret.stockAeb = False
+    ret.stockFcw = cp_adas.vl['HS2_DYN_MDD_STATUS_2F6']['REQ_CONDITION_RESUME'] == 2 # 0: no error, 1: non-critical request, 2: critical request
+    ret.stockAeb = bool(cp_adas.vl['HS2_DYN_MDD_STATUS_2F6']['BRAKING_IN_PROGRESS']) # TODO: test
 
     # button presses
     blinker = cp_main.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC'] # HS1
