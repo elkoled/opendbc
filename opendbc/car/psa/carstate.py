@@ -46,9 +46,9 @@ class CarState(CarStateBase):
     ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
     ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)  # TODO: adjust threshold
-    ret.steerFaultTemporary = False # bool(cp.vl['IS_DAT_DIRA']['TRQ_LIMIT_STATE']) # TRQ_LIMIT_STATE triggers before EPS actually gives up
+    ret.steerFaultTemporary = False # TODO: test  bool(cp.vl['IS_DAT_DIRA']['TRQ_LIMIT_STATE']) # TRQ_LIMIT_STATE triggers before EPS actually gives up
     ret.steerFaultPermanent = bool(cp.vl['IS_DAT_DIRA']['STEERING_REBOOT_REQUEST']) # TODO: test
-    ret.espDisabled = bool(cp_adas.vl['ESP']['ESP_STATUS_INV'])
+    ret.espDisabled = bool(cp_adas.vl['ESP']['ESP_STATUS_INV']) # TODO: test
 
     # cruise
     # note: this is just for ACC car not CC right now
@@ -57,7 +57,7 @@ class CarState(CarStateBase):
     ret.cruiseState.available = cp_adas.vl['HS2_DYN1_MDD_ETAT_2B6']['ACC_STATUS'] > 2 # HS2
     ret.cruiseState.nonAdaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['TYPE_REGUL_LONGI'] != 3 # HS2, 0: None, 1: CC, 2: Limiter, 3: ACC
     ret.cruiseState.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
-    ret.accFaulted = False
+    ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3 # TODO: test # HS2 0: Inhibited, 1: Waiting, 2: Active, 3: Fault
 
     # gear
     if self.CP.transmissionType == TransmissionType.manual:
@@ -68,7 +68,7 @@ class CarState(CarStateBase):
       ret.gearShifter = GearShifter.drive
 
     # TODO: safety
-    ret.stockFcw = False
+    ret.stockFcw = cp_adas.vl['HS2_DYN_MDD_STATUS_2F6']['REQ_CONDITION_RESUME'] == 2 # TODO: test  0: no error, 1: non-critical request, 2: critical request
     ret.stockAeb = False
 
     # button presses
@@ -99,6 +99,7 @@ class CarState(CarStateBase):
       ('HS2_DYN_UCF_MDD_32D', 50),
       ('HS2_DAT_MDD_CMD_452', 20),
       ('HS2_DYN1_MDD_ETAT_2B6', 50),
+      ('HS2_DYN_MDD_STATUS_2F6', 50),
     ]
     main_messages = [
       ('Dat_BSI', 20),
