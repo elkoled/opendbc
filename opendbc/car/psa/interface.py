@@ -12,14 +12,12 @@ class CarInterface(CarInterfaceBase):
   def _get_params(ret: structs.CarParams, candidate: CAR, fingerprint, car_fw, experimental_long, docs):
     ret.brand = 'psa'
     ret.dashcamOnly = False
-
     ret.radarUnavailable = True
-
     ret.steerLimitTimer = 1.0
+    ret.steerActuatorDelay = 0.2
 
     # TODO: LKAS CC
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-    ret.steerActuatorDelay = 0.3  # end-to-end angle controller
     ret.lateralTuning.init('pid')
     ret.lateralTuning.pid.kf = 0.00005
     ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0., 20.], [0., 20.]]

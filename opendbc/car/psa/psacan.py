@@ -44,10 +44,10 @@ def create_lka_msg_cc(packer, CP, frame: int, lat_active: bool, apply_steer: flo
     'DRIVE': 1,
     'COUNTER': (frame // 5) % 0x10,
     'CHECKSUM': 0,
-    'STATUS': 1,
+    'STATUS': (frame % 3) + 2 if lat_active else 2, # Cycle status 2->3->4->2.. this keeps control active 2: READY, 3: AUTHORIZED, 4: ACTIVE
     'TORQUE': apply_steer,
     'LXA_ACTIVATION': 1,
-    # TODO: check if lane_departure is needed
+    #'LANE_DEPARTURE': 1 if lat_active else 0,
     'TORQUE_FACTOR': lat_active * 100,
     'SET_ANGLE': angle,
   }
