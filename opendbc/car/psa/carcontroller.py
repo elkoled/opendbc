@@ -19,15 +19,6 @@ class CarController(CarControllerBase):
     ### lateral control ###
     if CC.latActive:
       desired_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, CarControllerParams)
-      # torque limit check
-      # TODO: test
-      print(f"EPS torque: {CS.out.steeringTorqueEps}, ")
-      print(f"EPS limit: {CarControllerParams.EPS_MAX_TORQUE}, ")
-      print(f"Desired angle: {desired_angle}\n")
-      if abs(CS.out.steeringTorqueEps) >= CarControllerParams.EPS_MAX_TORQUE:
-        if np.sign(desired_angle - CS.out.steeringAngleDeg) == np.sign(CS.out.steeringTorqueEps):
-          desired_angle = CS.out.steeringAngleDeg
-
       apply_angle = float(np.clip(desired_angle, -CarControllerParams.STEER_MAX, CarControllerParams.STEER_MAX))
     else:
       apply_angle = CS.out.steeringAngleDeg
