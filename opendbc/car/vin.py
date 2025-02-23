@@ -23,6 +23,9 @@ def get_vin(can_recv, can_send, buses, timeout=0.1, retry=2):
         (StdQueries.KWP_VIN_REQUEST, StdQueries.KWP_VIN_RESPONSE, (0,), [0x797], None, 0x3),  # Nissan Leaf VCM
         (StdQueries.UDS_VIN_REQUEST, StdQueries.UDS_VIN_RESPONSE, (0,), [0x74f], None, 0x6a),  # Volkswagen fwdCamera
         (StdQueries.UDS_VIN_REQUEST, StdQueries.UDS_VIN_RESPONSE, (0,), [0x733], None, 0x40),  # Rivian EPAS
+        (StdQueries.UDS_VIN_REQUEST, StdQueries.UDS_VIN_RESPONSE, (0,), [0x6A6], None, -0x20),  # PSA 1
+        (StdQueries.UDS_VIN_REQUEST, StdQueries.UDS_VIN_RESPONSE, (0,), [0x6B4], None, -0x20),  # PSA 2
+        (StdQueries.UDS_VIN_REQUEST, StdQueries.UDS_VIN_RESPONSE, (0,), [0x6B5], None, -0x20),  # PSA 3
       ):
         if bus not in valid_buses:
           continue
