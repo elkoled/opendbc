@@ -37,3 +37,28 @@ def create_lka_msg(packer, CP, frame: int, lat_active: bool, apply_angle: float)
   values['CHECKSUM'] = calculate_checksum(msg)
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', CanBus(CP).camera, values)
+
+
+def create_lka_msg_cc(packer, CP, frame: int, lat_active: bool, apply_steer: float, angle: float):
+  values = {
+    'DRIVE': 1,
+    'COUNTER': (frame // 5) % 0x10,
+    'CHECKSUM': 0,
+    'STATUS': 1,
+    'TORQUE': apply_steer,
+    'LXA_ACTIVATION': 1,
+    # TODO: check if lane_departure is needed
+    'TORQUE_FACTOR': lat_active * 100,
+    'SET_ANGLE': angle,
+  }
+
+  msg = packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)[1]
+  if isinstance(msg, int):
+    msg = msg.to_bytes(1, 'big')
+  values['CHECKSUM'] = calculate_checksum(msg)
+
+  # TODO: remove debug print
+  format_print = " | ".join(f"{key}: {value}" for key, value in values.items())
+  print(format_print)
+
+  return packer.make_can_msg('LANE_KEEP_ASSIST', CanBus(CP).camera, values)

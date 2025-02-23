@@ -14,9 +14,16 @@ class CarInterface(CarInterfaceBase):
     ret.dashcamOnly = False
 
     ret.radarUnavailable = True
-    ret.steerControlType = structs.CarParams.SteerControlType.angle
-    ret.steerActuatorDelay = 0.2
+
     ret.steerLimitTimer = 1.0
+
+    # TODO: LKAS CC
+    CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    ret.steerActuatorDelay = 0.3  # end-to-end angle controller
+    ret.lateralTuning.init('pid')
+    ret.lateralTuning.pid.kf = 0.00005
+    ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0., 20.], [0., 20.]]
+    ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.0025, 0.1], [0.00025, 0.01]]
 
     ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.psa)]
 
