@@ -1,9 +1,14 @@
 from opendbc.car import get_safety_config, structs
 from opendbc.car.interfaces import CarInterfaceBase
+from opendbc.car.volkswagen.carcontroller import CarController
+from opendbc.car.volkswagen.carstate import CarState
 from opendbc.car.volkswagen.values import CAR, NetworkLocation, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags
 
 
 class CarInterface(CarInterfaceBase):
+  CarState = CarState
+  CarController = CarController
+
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate: CAR, fingerprint, car_fw, experimental_long, docs) -> structs.CarParams:
     ret.brand = "volkswagen"
@@ -72,7 +77,7 @@ class CarInterface(CarInterfaceBase):
     if experimental_long:
       # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
       ret.openpilotLongitudinalControl = True
-      ret.safetyConfigs[0].safetyParam |= VolkswagenSafetyFlags.FLAG_VOLKSWAGEN_LONG_CONTROL.value
+      ret.safetyConfigs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
       if ret.transmissionType == TransmissionType.manual:
         ret.minEnableSpeed = 4.5
 

@@ -86,19 +86,39 @@ def get_torque_params():
 
 # generic car and radar interfaces
 
+
+class RadarInterfaceBase(ABC):
+  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP):
+    self.CP = CP
+    self.CP_SP = CP_SP
+    self.rcp = None
+    self.pts: dict[int, structs.RadarData.RadarPoint] = {}
+    self.frame = 0
+
+  def update(self, can_packets: list[tuple[int, list[CanData]]]) -> structs.RadarDataT | None:
+    self.frame += 1
+    if (self.frame % 5) == 0:  # 20 Hz is very standard
+      return structs.RadarData()
+    return None
+
+
 class CarInterfaceBase(ABC):
-  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP, CarController, CarState):
+  CarState: 'CarStateBase'
+  CarController: 'CarControllerBase'
+  RadarInterface: 'RadarInterfaceBase' = RadarInterfaceBase
+
+  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP):
     self.CP = CP
     self.CP_SP = CP_SP
 
     self.frame = 0
     self.v_ego_cluster_seen = False
 
-    self.CS: CarStateBase = CarState(CP, CP_SP)
+    self.CS: CarStateBase = self.CarState(CP, CP_SP)
     self.can_parsers: dict[StrEnum, CANParser] = self.CS.get_can_parsers(CP, CP_SP)
 
     dbc_names = {bus: cp.dbc_name for bus, cp in self.can_parsers.items()}
-    self.CC: CarControllerBase = CarController(dbc_names, CP, CP_SP)
+    self.CC: CarControllerBase = self.CarController(dbc_names, CP, CP_SP)
 
   def apply(self, c: structs.CarControl, c_sp: structs.CarControlSP, now_nanos: int | None = None) -> tuple[structs.CarControl.Actuators, list[CanData]]:
     if now_nanos is None:
@@ -271,21 +291,6 @@ class CarInterfaceBase(ABC):
     return ret
 
 
-class RadarInterfaceBase(ABC):
-  def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP):
-    self.CP = CP
-    self.CP_SP = CP_SP
-    self.rcp = None
-    self.pts: dict[int, structs.RadarData.RadarPoint] = {}
-    self.frame = 0
-
-  def update(self, can_packets: list[tuple[int, list[CanData]]]) -> structs.RadarDataT | None:
-    self.frame += 1
-    if (self.frame % 5) == 0:  # 20 Hz is very standard
-      return structs.RadarData()
-    return None
-
-
 class CarStateBase(ABC):
   def __init__(self, CP: structs.CarParams, CP_SP: structs.CarParamsSP):
     self.CP = CP
@@ -342,8 +347,8 @@ class CarStateBase(ABC):
 
   def update_steering_pressed(self, steering_pressed, steering_pressed_min_count):
     """Applies filtering on steering pressed for noisy driver torque signals."""
-    self.steering_pressed_cnt += 1 if steering_pressed else -1
-    self.steering_pressed_cnt = float(np.clip(self.steering_pressed_cnt, 0, steering_pressed_min_count * 2))
+    self.steering_pressed_cnt = self.steering_pressed_cnt + 1 if steering_pressed else 0
+    self.steering_pressed_cnt = min(self.steering_pressed_cnt, steering_pressed_min_count + 1)
     return self.steering_pressed_cnt > steering_pressed_min_count
 
   def update_blinker_from_stalk(self, blinker_time: int, left_blinker_stalk: bool, right_blinker_stalk: bool):

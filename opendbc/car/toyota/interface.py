@@ -1,14 +1,22 @@
 from opendbc.car import Bus, structs, get_safety_config, uds
+from opendbc.car.toyota.carstate import CarState
+from opendbc.car.toyota.carcontroller import CarController
+from opendbc.car.toyota.radar_interface import RadarInterface
 from opendbc.car.toyota.values import Ecu, CAR, DBC, ToyotaFlags, CarControllerParams, TSS2_CAR, RADAR_ACC_CAR, NO_DSU_CAR, \
                                                   MIN_ACC_SPEED, EPS_SCALE, UNSUPPORTED_DSU_CAR, NO_STOP_TIMER_CAR, ANGLE_CONTROL_CAR, \
                                                   ToyotaSafetyFlags
 from opendbc.car.disable_ecu import disable_ecu
 from opendbc.car.interfaces import CarInterfaceBase
+from opendbc.sunnypilot.car.toyota.values import ToyotaSafetyFlagsSP
 
 SteerControlType = structs.CarParams.SteerControlType
 
 
 class CarInterface(CarInterfaceBase):
+  CarState = CarState
+  CarController = CarController
+  RadarInterface = RadarInterface
+
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed):
     return CarControllerParams(CP).ACCEL_MIN, CarControllerParams(CP).ACCEL_MAX
@@ -21,15 +29,15 @@ class CarInterface(CarInterfaceBase):
 
     # BRAKE_MODULE is on a different address for these cars
     if DBC[candidate][Bus.pt] == "toyota_new_mc_pt_generated":
-      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.FLAG_TOYOTA_ALT_BRAKE.value
+      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.ALT_BRAKE.value
 
     if ret.flags & ToyotaFlags.SECOC.value:
       ret.secOcRequired = True
-      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.FLAG_TOYOTA_SECOC.value
+      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.SECOC.value
 
     if candidate in ANGLE_CONTROL_CAR:
       ret.steerControlType = SteerControlType.angle
-      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.FLAG_TOYOTA_LTA.value
+      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.LTA.value
 
       # LTA control can be more delayed and winds up more often
       ret.steerActuatorDelay = 0.18
@@ -126,7 +134,7 @@ class CarInterface(CarInterfaceBase):
     ret.autoResumeSng = ret.openpilotLongitudinalControl and candidate in NO_STOP_TIMER_CAR
 
     if not ret.openpilotLongitudinalControl:
-      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.FLAG_TOYOTA_STOCK_LONGITUDINAL.value
+      ret.safetyConfigs[0].safetyParam |= ToyotaSafetyFlags.STOCK_LONGITUDINAL.value
 
     # min speed to enable ACC. if car can do stop and go, then set enabling speed
     # to a negative value, so it won't matter.
@@ -142,6 +150,14 @@ class CarInterface(CarInterfaceBase):
       # Hybrids have much quicker longitudinal actuator response
       if ret.flags & ToyotaFlags.HYBRID.value:
         ret.longitudinalActuatorDelay = 0.05
+
+    return ret
+
+  @staticmethod
+  def _get_params_sp(stock_cp: structs.CarParams, ret: structs.CarParamsSP, candidate, fingerprint: dict[int, dict[int, int]],
+                     car_fw: list[structs.CarParams.CarFw], experimental_long: bool, docs: bool) -> structs.CarParamsSP:
+    if candidate in UNSUPPORTED_DSU_CAR:
+      ret.safetyParam |= ToyotaSafetyFlagsSP.UNSUPPORTED_DSU
 
     return ret
 
