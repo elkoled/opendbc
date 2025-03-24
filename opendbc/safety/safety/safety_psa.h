@@ -111,6 +111,9 @@ static bool psa_fwd_hook(int bus_num, int addr) {
 static safety_config psa_init(uint16_t param) {
   UNUSED(param);
   print("psa_init\n");
+  // TODO: DEBUG, remove
+  mads_button_press = MADS_BUTTON_PRESSED;
+
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
 }
 
