@@ -31,7 +31,7 @@ class CarState(CarStateBase):
     ret.standstill = abs(ret.vEgoRaw) < 0.1 # TODO: to get long working bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL']) # steering possible down to standstill
 
     # gas
-    ret.gas = cp.vl['Dyn_CMM']['P002_Com_rAPP'] / 100.0 # 100 Hz gas
+    ret.gas = cp.vl['DRIVER']['GAS_PEDAL'] / 99.5 # 10 Hz gas pedal. ALT: cp.vl_cam['Dyn_CMM']['P002_Com_rAPP']/100.0 # 100 Hz gas pedal
     ret.gasPressed = ret.gas > 0
 
     # brake
@@ -97,7 +97,6 @@ class CarState(CarStateBase):
       ('STEERING', 100),
       ('Dyn2_FRE', 100),
       ('Dyn2_CMM', 50),
-      ('Dyn_CMM', 100),
       ('Dyn_EasyMove', 50),
       ('IS_DAT_DIRA', 10),
     ]
