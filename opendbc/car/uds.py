@@ -436,8 +436,8 @@ class IsoTpMessage:
       if not setup_only:
         carlog.debug(f"ISO-TP: TX - first frame - {hex(self._can_client.tx_addr)}")
       msg = (struct.pack("!H", 0x1000 | self.tx_len) + self.tx_dat[:self.max_len - 2]).ljust(self.max_len - 2, b"\x00")
-    if not setup_only:
-      self._can_client.send([msg])
+    # if not setup_only: # TODO: DEBUG: removed this
+    #   self._can_client.send([msg])
 
   def recv(self, timeout=None) -> tuple[bytes | None, bool]:
     if timeout is None:
@@ -491,9 +491,11 @@ class IsoTpMessage:
       return ISOTP_FRAME_TYPE.SINGLE
 
     elif rx_data[0] >> 4 == ISOTP_FRAME_TYPE.FIRST:
-      # TODO: support CAN FD first frames
-      # Once a first frame is received, further frames must be consecutive
-      assert self.rx_dat == b"" or self.rx_done, "isotp - rx: first frame with active frame"
+      # First frame received, start collecting multi-frame response
+      if self.rx_dat != b"" and not self.rx_done:
+        carlog.error("ISO-TP: Received first frame while previous RX in progress, resetting state.")
+        self.rx_dat = b""
+        self.rx_done = False
       self.rx_len = ((rx_data[0] & 0x0F) << 8) + rx_data[1]
       assert self.rx_len >= self.max_len, f"isotp - rx: invalid first frame length: {self.rx_len}"
       assert len(rx_data) == self.max_len, f"isotp - rx: invalid CAN frame length: {len(rx_data)}"
