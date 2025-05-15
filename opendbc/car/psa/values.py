@@ -63,25 +63,20 @@ PSA_RX_OFFSET = -0x20
 
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[
-    # ──────────────────── ECU-serial number ────────────────────────
+    # keep ECU in diagnostic session, then immediately read serial
     Request(
-      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,   # 0x10 01
-       PSA_SERIAL_REQUEST],                     # 0x22 F1 8C
-      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,  # 0x50 01 …
-       PSA_SERIAL_RESPONSE],                    # 0x62 F1 8C …
-      rx_offset=PSA_RX_OFFSET,        # request 0x6B6  → reply 0x696
-      bus=1,                  # CAN-Comfort / ADAS harness line
-      logging=True,           # useful while bringing-up
-      obd_multiplexing=False, # don’t waste time toggling relays
+      [PSA_DIAGNOSTIC_REQUEST, PSA_SERIAL_REQUEST],
+      [PSA_DIAGNOSTIC_RESPONSE, PSA_SERIAL_RESPONSE],
+      rx_offset=PSA_RX_OFFSET,   # 0x6B6 → 0x696
+      bus=1,
+      logging=True,
+      obd_multiplexing=False,
     ),
-
-    # ──────────────────── Software / calibration ID ───────────────
+    # open diagnostic session again, then read SW-version
     Request(
-      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,   # 0x10 01
-       PSA_VERSION_REQUEST],                    # 0x22 F0 FE
-      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,  # 0x50 01 …
-       PSA_VERSION_RESPONSE],                   # 0x62 F0 FE …
-      rx_offset=PSA_RX_OFFSET,
+      [PSA_DIAGNOSTIC_REQUEST, PSA_VERSION_REQUEST],
+      [PSA_DIAGNOSTIC_RESPONSE, PSA_VERSION_RESPONSE],
+      rx_offset=PSA_RX_OFFSET,   # 0x6B6 → 0x696
       bus=1,
       logging=True,
       obd_multiplexing=False,
