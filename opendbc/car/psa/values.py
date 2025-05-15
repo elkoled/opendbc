@@ -61,16 +61,19 @@ PSA_VERSION_RESPONSE = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0
 
 PSA_RX_OFFSET = -0x20
 
-# --- variant: query on BUS 1 only, usable if all ECUs share –0x20 offset ---
-FW_QUERY_CONFIG_BUS1_ALL_ECUS = FwQueryConfig(
-  requests=[Request(
-    [PSA_DIAGNOSTIC_REQUEST, PSA_SERIAL_REQUEST, PSA_VERSION_REQUEST],
-    [PSA_DIAGNOSTIC_RESPONSE, PSA_SERIAL_RESPONSE, PSA_VERSION_RESPONSE],
-    rx_offset=PSA_RX_OFFSET,
-    bus=1,
-    logging=True,
-    obd_multiplexing=False,
-  )],
+# --- variant: query every bus (0, 1, 2) with –0x20 offset ---
+FW_QUERY_CONFIG_ALL_BUSES = FwQueryConfig(
+  requests=[
+    Request(
+      [PSA_DIAGNOSTIC_REQUEST, PSA_SERIAL_REQUEST, PSA_VERSION_REQUEST],
+      [PSA_DIAGNOSTIC_RESPONSE, PSA_SERIAL_RESPONSE, PSA_VERSION_RESPONSE],
+      rx_offset=PSA_RX_OFFSET,
+      bus=bus,
+      logging=True,
+      obd_multiplexing=False,
+    )
+    for bus in (0, 1, 2)
+  ],
 )
 
 
