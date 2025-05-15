@@ -61,52 +61,80 @@ PSA_VERSION_RESPONSE = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0
 
 PSA_RX_OFFSET = -0x20
 
-FW_QUERY_CONFIG = FwQueryConfig(
-  requests=[
-    # ── Serial number (0xF1 8C) ────────────────────────────────────────────
-    Request(
-      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
-       PSA_SERIAL_REQUEST],
-      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
-       PSA_SERIAL_RESPONSE],
-      whitelist_ecus=[Ecu.fwdRadar],
-      rx_offset=PSA_RX_OFFSET,      # −0x20  → 0x696
-      bus=1,
-      logging=True,
-      obd_multiplexing=False,
-    ),
+# FW_QUERY_CONFIG = FwQueryConfig(
+#   requests=[
+#     # ──────────────────── ECU-serial number ────────────────────────
+#     Request(
+#       [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,   # 0x10 01
+#        PSA_SERIAL_REQUEST],                     # 0x22 F1 8C
+#       [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,  # 0x50 01 …
+#        PSA_SERIAL_RESPONSE],                    # 0x62 F1 8C …
+#       rx_offset=PSA_RX_OFFSET,        # request 0x6B6  → reply 0x696
+#       bus=1,                  # CAN-Comfort / ADAS harness line
+#       logging=True,           # useful while bringing-up
+#       obd_multiplexing=False, # don’t waste time toggling relays
+#     ),
 
-    # ── Software / calibration version (0xF0 FE, multi-frame) ─────────────
-    Request(
-      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
-       PSA_VERSION_REQUEST],
-      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
-       PSA_VERSION_RESPONSE],
-      whitelist_ecus=[Ecu.fwdRadar],
-      rx_offset=PSA_RX_OFFSET,
-      bus=1,
-      logging=True,
-      obd_multiplexing=False,
-    ),
-  ],
-)
+#     # ──────────────────── Software / calibration ID ───────────────
+#     Request(
+#       [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,   # 0x10 01
+#        PSA_VERSION_REQUEST],                    # 0x22 F0 FE
+#       [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,  # 0x50 01 …
+#        PSA_VERSION_RESPONSE],                   # 0x62 F0 FE …
+#       rx_offset=PSA_RX_OFFSET,
+#       bus=1,
+#       logging=True,
+#       obd_multiplexing=False,
+#     ),
+#   ],
+# )
 
 # TODO: multi-bus requests
-# FW_QUERY_CONFIG = FwQueryConfig(
-#   requests=[req.override(bus=b) for b in (0, 1, 2) for req in [
-#     Request(
-#       [PSA_DIAGNOSTIC_REQUEST, PSA_SERIAL_REQUEST],
-#       [PSA_DIAGNOSTIC_RESPONSE, PSA_SERIAL_RESPONSE],
-#       rx_offset=PSA_RX_OFFSET,
-#       obd_multiplexing=False,
-#     ),
-#     Request(
-#       [PSA_DIAGNOSTIC_REQUEST, PSA_VERSION_REQUEST],
-#       [PSA_DIAGNOSTIC_RESPONSE, PSA_VERSION_RESPONSE],
-#       rx_offset=PSA_RX_OFFSET,
-#       obd_multiplexing=False,
-#     ),
-#   ]],
-# )
+FW_QUERY_CONFIG = FwQueryConfig(
+  requests=[
+    # iterate over bus 0/1/2 and both reply offsets (+8 and −0x20)
+    request
+    for bus in (0, 1, 2)
+    for rx_off in (0x08, -0x20)
+    for request in [
+
+      # ── ECU serial number (DID 0xF1 8C) ────────────────────────────────
+      Request(
+        [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
+         PSA_SERIAL_REQUEST],
+        [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
+         PSA_SERIAL_RESPONSE],
+        rx_offset=rx_off,
+        bus=bus,
+        logging=(bus == 1 and rx_off == -0x20),   # match your manual test
+        obd_multiplexing=False,
+      ),
+
+      # ── ECU software / calibration version (DID 0xF0 FE) ───────────────
+      Request(
+        [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
+         PSA_VERSION_REQUEST],
+        [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
+         PSA_VERSION_RESPONSE],
+        rx_offset=rx_off,
+        bus=bus,
+        logging=(bus == 1 and rx_off == -0x20),
+        obd_multiplexing=False,
+      ),
+
+      # ── Manufacturer SW-number (standard DID 0xF1 88) ──────────────────
+      Request(
+        [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
+         StdQueries.MANUFACTURER_SOFTWARE_VERSION_REQUEST],
+        [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
+         StdQueries.MANUFACTURER_SOFTWARE_VERSION_RESPONSE],
+        rx_offset=rx_off,
+        bus=bus,
+        logging=False,
+        obd_multiplexing=False,
+      ),
+    ]
+  ],
+)
 
 DBC = CAR.create_dbc_map()
