@@ -63,24 +63,26 @@ PSA_RX_OFFSET = -0x20
 
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[
-    # ── Serial number ───────────────────────────────────────────────
+    # ── Serial number (0xF1 8C) ────────────────────────────────────────────
     Request(
-      [PSA_DIAGNOSTIC_REQUEST,  # 0x10 01   – put ECU in extended session
-       PSA_SERIAL_REQUEST],     # 0x22 F1 8C – ask for serial
-      [PSA_DIAGNOSTIC_RESPONSE, # 0x50 01 …
-       PSA_SERIAL_RESPONSE],    # 0x62 F1 8C …
-      rx_offset=PSA_RX_OFFSET,  # -0x20 ⇒ request 0x6B6 → response 0x696
+      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
+       PSA_SERIAL_REQUEST],
+      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
+       PSA_SERIAL_RESPONSE],
+      whitelist_ecus=[Ecu.fwdRadar],
+      rx_offset=PSA_RX_OFFSET,      # −0x20  → 0x696
       bus=1,
       logging=True,
       obd_multiplexing=False,
     ),
 
-    # ── Software / calibration version ──────────────────────────────
+    # ── Software / calibration version (0xF0 FE, multi-frame) ─────────────
     Request(
-      [PSA_DIAGNOSTIC_REQUEST,  # 0x10 01
-       PSA_VERSION_REQUEST],    # 0x22 F0 FE – long multi-frame reply
-      [PSA_DIAGNOSTIC_RESPONSE, # 0x50 01 …
-       PSA_VERSION_RESPONSE],   # 0x62 F0 FE …
+      [StdQueries.DEFAULT_DIAGNOSTIC_REQUEST,
+       PSA_VERSION_REQUEST],
+      [StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
+       PSA_VERSION_RESPONSE],
+      whitelist_ecus=[Ecu.fwdRadar],
       rx_offset=PSA_RX_OFFSET,
       bus=1,
       logging=True,
