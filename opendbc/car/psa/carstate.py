@@ -8,14 +8,15 @@ GearShifter = structs.CarState.GearShifter
 TransmissionType = structs.CarParams.TransmissionType
 
 class CarState(CarStateBase):
-  def __init__(self, CP):
-    super().__init__(CP)
+  def __init__(self, CP, CP_SP):
+    super().__init__(CP, CP_SP)
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.cam]
     cp_adas = can_parsers[Bus.adas]
     cp_main = can_parsers[Bus.main]
     ret = structs.CarState()
+    ret_sp = structs.CarStateSP()
 
     # car speed
     ret.wheelSpeeds = self.get_wheel_speeds(
@@ -75,10 +76,10 @@ class CarState(CarStateBase):
     # lock info
     ret.doorOpen = any([cp_main.vl['Dat_BSI']['DRIVER_DOOR'], cp_main.vl['Dat_BSI']['PASSENGER_DOOR']])
     ret.seatbeltUnlatched = cp_main.vl['RESTRAINTS']['DRIVER_SEATBELT'] != 2
-    return ret
+    return ret, ret_sp
 
   @staticmethod
-  def get_can_parsers(CP):
+  def get_can_parsers(CP, CP_SP):
     cam_messages = [
       ('Dyn4_FRE', 50),
       ('STEERING_ALT', 100),
