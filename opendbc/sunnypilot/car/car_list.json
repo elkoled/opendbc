@@ -2437,6 +2437,22 @@
     ],
     "package": "ProPILOT Assist"
   },
+  "Peugeot 208 2019-25": {
+    "platform": "PSA_PEUGEOT_208",
+    "make": "Peugeot",
+    "brand": "psa",
+    "model": "208",
+    "year": [
+      "2019",
+      "2020",
+      "2021",
+      "2022",
+      "2023",
+      "2024",
+      "2025"
+    ],
+    "package": "Adaptive Cruise Control (ACC) & Lane Assist"
+  },
   "Ram 1500 2019-24": {
     "platform": "RAM_1500_5TH_GEN",
     "make": "Ram",
