@@ -28,7 +28,7 @@ class CarState(CarStateBase):
     ret.vEgoRaw = cp_adas.vl['HS2_DYN_ABR_38D']['VITESSE_VEHICULE_ROUES'] * CV.KPH_TO_MS
     ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
+    ret.standstill = ret.vEgo < 0.1
 
     # gas
     ret.gas = cp.vl['Dyn_CMM']['P002_Com_rAPP'] / 100.0
@@ -52,10 +52,10 @@ class CarState(CarStateBase):
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
-    ret.cruiseState.available = cp_adas.vl['HS2_DYN1_MDD_ETAT_2B6']['ACC_STATUS'] > 2
-    ret.cruiseState.nonAdaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] != 3 # 0: None, 1: CC, 2: Limiter, 3: ACC
-    ret.cruiseState.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
-    ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3 # 0: Inhibited, 1: Waiting, 2: Active, 3: Fault
+    ret.cruiseState.available = True # not available for CC-only
+    ret.cruiseState.nonAdaptive = False # not available for CC-only
+    ret.cruiseState.standstill = False # not available for CC-only
+    ret.accFaulted = False # not available for CC-only
 
     # gear
     if self.CP.transmissionType == TransmissionType.manual:
@@ -65,8 +65,8 @@ class CarState(CarStateBase):
     else:
       ret.gearShifter = GearShifter.drive
 
-    ret.stockFcw = cp_adas.vl['HS2_DYN_MDD_ETAT_2F6']['REQUEST_TAKEOVER'] == 2 # 0: no error, 1: non-critical request, 2: critical request
-    ret.stockAeb = bool(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6']['AUTO_BRAKING_IN_PROGRESS'])
+    ret.stockFcw = False # not available for CC-only
+    ret.stockAeb = False # not available for CC-only
 
     # blinkers
     blinker = cp_main.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
@@ -95,8 +95,6 @@ class CarState(CarStateBase):
       ('HS2_DYN_ABR_38D', 25),
       ('HS2_DYN_UCF_MDD_32D', 50),
       ('HS2_DAT_MDD_CMD_452', 20),
-      ('HS2_DYN1_MDD_ETAT_2B6', 50),
-      ('HS2_DYN_MDD_ETAT_2F6', 50),
     ]
     main_messages = [
       ('Dat_BSI', 20),
