@@ -110,7 +110,6 @@ static void psa_rx_hook(const CANPacket_t *to_push) {
 
 static bool psa_tx_hook(const CANPacket_t *to_send) {
   bool tx = true;
-  // UNUSED(to_send);
   int addr = GET_ADDR(to_send);
 
   static const AngleSteeringLimits PSA_STEERING_LIMITS = {
