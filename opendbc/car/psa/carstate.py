@@ -46,7 +46,7 @@ class CarState(CarStateBase):
     ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     ret.steerFaultTemporary = False
-    ret.steerFaultPermanent = bool(cp.vl['IS_DAT_DIRA']['STEERING_REBOOT_REQUEST'])
+    ret.steerFaultPermanent = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 4
     ret.espDisabled = bool(cp_adas.vl['ESP']['ESP_STATUS_INV'])
 
     # cruise
