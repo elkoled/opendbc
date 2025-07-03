@@ -6,8 +6,8 @@ from opendbc.car.psa.values import CarControllerParams
 import numpy as np
 
 # Torque blending parameters
-TORQUE_TO_ANGLE_MULTIPLIER_OUTER = 4  # Higher = easier to influence when manually steering more than OP
-TORQUE_TO_ANGLE_MULTIPLIER_INNER = 8  # Higher = easier to influence when manually steering less than OP
+TORQUE_TO_ANGLE_MULTIPLIER_OUTER = 0.04  # Higher = easier to influence when manually steering more than OP
+TORQUE_TO_ANGLE_MULTIPLIER_INNER = 0.08  # Higher = easier to influence when manually steering less than OP
 TORQUE_TO_ANGLE_DEADZONE = 5  # 0.5 Nm
 TORQUE_TO_ANGLE_CLIP = 50  # 5 Nm
 CONTINUED_OVERRIDE_ANGLE = 10  # The angle difference between OP and user to continue overriding steering
@@ -41,17 +41,18 @@ class CarController(CarControllerBase):
 
     # lateral control
     if CC.latActive:
-      apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
-                                                   CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+      apply_angle = actuators.steeringAngleDeg
 
-      # Detect user override of the steering wheel
-      self.steering_override = (CS.out.steeringPressed and
-                               abs(CS.out.steeringAngleDeg - apply_angle) > CONTINUED_OVERRIDE_ANGLE and
-                               not CS.out.standstill)
-
-      # torque blending
       if not self.steering_override:
         apply_angle = self.torque_blended_angle(apply_angle, CS.out.steeringTorque)
+
+      apply_angle = apply_std_steer_angle_limits(apply_angle, self.apply_angle_last, CS.out.vEgoRaw,
+                                                CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+
+      self.steering_override = (CS.out.steeringPressed and
+                              abs(CS.out.steeringAngleDeg - apply_angle) > CONTINUED_OVERRIDE_ANGLE and
+                              not CS.out.standstill)
+
     else:
       apply_angle = 0
       self.steering_override = False
