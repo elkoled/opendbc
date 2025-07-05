@@ -1,39 +1,65 @@
-from opendbc.car import apply_std_steer_angle_limits, Bus
+import math
+import numpy as np
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, AngleSteeringLimits, DT_CTRL, rate_limit
 from opendbc.can.packer import CANPacker
-from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.interfaces import CarControllerBase, ISO_LATERAL_ACCEL
 from opendbc.car.psa.psacan import create_lka_steering
 from opendbc.car.psa.values import CarControllerParams
-import numpy as np
+from opendbc.car.vehicle_model import VehicleModel
 
-# Torque blending parameters
-TORQUE_TO_ANGLE_MULTIPLIER_OUTER = 0.04  # Higher = easier to influence when manually steering more than OP
-TORQUE_TO_ANGLE_MULTIPLIER_INNER = 0.08  # Higher = easier to influence when manually steering less than OP
-TORQUE_TO_ANGLE_DEADZONE = 5  # 0.5 Nm
-TORQUE_TO_ANGLE_CLIP = 50  # 5 Nm
-CONTINUED_OVERRIDE_ANGLE = 10  # The angle difference between OP and user to continue overriding steering
+# Add extra tolerance for average banked road since safety doesn't have the roll
+AVERAGE_ROAD_ROLL = 0.06  # ~3.4 degrees, 6% superelevation. higher actual roll lowers lateral acceleration
+MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)  # ~3.6 m/s^2
+MAX_LATERAL_JERK = 3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)  # ~3.6 m/s^3
+
+
+def get_max_angle_delta(v_ego_raw: float, VM: VehicleModel):
+  max_curvature_rate_sec = MAX_LATERAL_JERK / (v_ego_raw ** 2)  # (1/m)/s
+  max_angle_rate_sec = math.degrees(VM.get_steer_from_curvature(max_curvature_rate_sec, v_ego_raw, 0))  # deg/s
+  return max_angle_rate_sec * (DT_CTRL * 1)
+
+
+def get_max_angle(v_ego_raw: float, VM: VehicleModel):
+  max_curvature = MAX_LATERAL_ACCEL / (v_ego_raw ** 2)  # 1/m
+  return math.degrees(VM.get_steer_from_curvature(max_curvature, v_ego_raw, 0))  # deg
+
+
+def apply_psa_steer_angle_limits(apply_angle: float, apply_angle_last: float, v_ego_raw: float, steering_angle: float,
+                                 lat_active: bool, limits: AngleSteeringLimits, VM: VehicleModel) -> float:
+  v_ego_raw = max(v_ego_raw, 1)
+
+  # *** max lateral jerk limit ***
+  max_angle_delta = get_max_angle_delta(v_ego_raw, VM)
+
+  # use PSA angle limits
+  new_apply_angle = rate_limit(apply_angle, apply_angle_last, -max_angle_delta, max_angle_delta)
+
+  # *** max lateral accel limit ***
+  max_angle = get_max_angle(v_ego_raw, VM)
+  new_apply_angle = np.clip(new_apply_angle, -max_angle, max_angle)
+
+  # angle is current angle when inactive
+  if not lat_active:
+    new_apply_angle = steering_angle
+
+  # prevent fault
+  return float(np.clip(new_apply_angle, -limits.STEER_ANGLE_MAX, limits.STEER_ANGLE_MAX))
+
+
+def get_safety_CP():
+  # Use PSA platform for lateral limiting to match safety
+  from opendbc.car.psa.interface import CarInterface
+  return CarInterface.get_non_essential_params("PSA_PEUGEOT_208")
+
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     super().__init__(dbc_names, CP, CP_SP)
     self.packer = CANPacker(dbc_names[Bus.cam])
     self.apply_angle_last = 0
-    self.steering_override = False
 
-  def torque_blended_angle(self, apply_angle, driver_torque):
-    deadzone = TORQUE_TO_ANGLE_DEADZONE
-    if abs(driver_torque) < deadzone:
-      return apply_angle
-
-    limit = TORQUE_TO_ANGLE_CLIP
-    if apply_angle * driver_torque >= 0:
-      # user override in the same direction
-      strength = TORQUE_TO_ANGLE_MULTIPLIER_OUTER
-    else:
-      # user override in the opposite direction
-      strength = TORQUE_TO_ANGLE_MULTIPLIER_INNER
-
-    torque = driver_torque - deadzone if driver_torque > 0 else driver_torque + deadzone
-    return apply_angle + np.clip(torque, -limit, limit) * strength
+    # Vehicle model used for lateral limiting
+    self.VM = VehicleModel(get_safety_CP())
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -41,25 +67,15 @@ class CarController(CarControllerBase):
 
     # lateral control
     if CC.latActive:
-      apply_angle = actuators.steeringAngleDeg
-
-      if not self.steering_override:
-        apply_angle = self.torque_blended_angle(apply_angle, CS.out.steeringTorque)
-
-      apply_angle = apply_std_steer_angle_limits(apply_angle, self.apply_angle_last, CS.out.vEgoRaw,
-                                                CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
-
-      self.steering_override = (CS.out.steeringPressed and
-                              abs(CS.out.steeringAngleDeg - apply_angle) > CONTINUED_OVERRIDE_ANGLE and
-                              not CS.out.standstill)
-
+      apply_angle = apply_psa_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
+                                                 CS.out.steeringAngleDeg, CC.latActive,
+                                                 CarControllerParams.ANGLE_LIMITS, self.VM)
     else:
       apply_angle = 0
-      self.steering_override = False
 
     can_sends.append(create_lka_steering(self.packer, self.frame // 5, CC.latActive, apply_angle))
 
-    self.apply_angle_last = float(apply_angle)
+    self.apply_angle_last = apply_angle
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = self.apply_angle_last
