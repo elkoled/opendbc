@@ -8,7 +8,7 @@ import numpy as np
 import math
 
 # limit angle rate to both prevent a fault and for low speed comfort
-MAX_ANGLE_RATE = 5  # deg/20ms frame
+MAX_ANGLE_RATE = 2  # deg/20ms frame
 
 # Add extra tolerance for average banked road since safety doesn't have the roll
 AVERAGE_ROAD_ROLL = 0.06
