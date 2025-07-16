@@ -44,7 +44,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *to_push) {
 
       vehicle_moving = (fl + fr + rl + rr) > 0U;
 
-      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4.0 ) * 0.0075 / 3.6);
+      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4.0) * 0.0075 / 3.6);
     }
 
     // Update driver input torque samples

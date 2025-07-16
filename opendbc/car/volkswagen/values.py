@@ -234,7 +234,7 @@ class Footnote(Enum):
     "in software, but doesn't yet have a harness available from the comma store.",
     Column.HARDWARE)
   VW_MEB = CarFootnote(
-    "Volkswagen MEB plattform is using CAN-FD, which is supported by comma 3x or red panda.",
+    "Volkswagen MEB platform is using CAN-FD, which is supported by comma 3x or red panda.",
     Column.HARDWARE)
 
 
