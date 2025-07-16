@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opendbc/safety/safety_declarations.h"
-#include "opendbc/safety/modes/safety_volkswagen_meb.h"
+#include "opendbc/safety/modes/volkswagen_meb.h"
 
 
 static int volkswagen_steer_power_prev = 0;

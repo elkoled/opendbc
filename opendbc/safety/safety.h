@@ -28,7 +28,7 @@
 // CAN-FD only safety modes
 #ifdef CANFD
 #include "opendbc/safety/modes/hyundai_canfd.h"
-#include "opendbc/safety/modes/safety_volkswagen_meb.h"
+#include "opendbc/safety/modes/volkswagen_meb.h"
 #endif
 
 uint32_t GET_BYTES(const CANPacket_t *msg, int start, int len) {
