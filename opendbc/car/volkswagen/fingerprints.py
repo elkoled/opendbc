@@ -983,6 +983,7 @@ FW_VERSIONS = {
     ],
     (Ecu.fwdRadar, 0x757, None): [
       b'\xf1\x871EA907572H \xf1\x890234',
+      b'\xf1\x871EA907567D \xf1\x890250',
     ],
   },
   CAR.SKODA_FABIA_MK4: {
