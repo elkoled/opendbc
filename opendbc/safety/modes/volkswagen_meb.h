@@ -9,17 +9,17 @@ static int volkswagen_steer_power_prev = 0;
 
 static safety_config volkswagen_meb_init(uint16_t param) {
   // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
-  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, true}, {MSG_EA_01, 0, 8, false}, {MSG_EA_02, 0, 8, false}, {MSG_GRA_ACC_01, 0, 8, false},
-                                                       {MSG_GRA_ACC_01, 2, 8, false}, {MSG_LDW_02, 0, 8, false}};
+  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true}, {MSG_EA_01, 0, 8, .check_relay = false}, {MSG_EA_02, 0, 8, .check_relay = false}, {MSG_GRA_ACC_01, 0, 8, .check_relay = false},
+                                                       {MSG_GRA_ACC_01, 2, 8, .check_relay = false}, {MSG_LDW_02, 0, 8, .check_relay = false}};
 
   static RxCheck volkswagen_meb_rx_checks[] = {
-    {.msg = {{MSG_LH_EPS_03, 0, 8, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_MOTOR_14, 0, 8, .max_counter = 15U, .frequency = 10U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_Motor_51, 0, 48, .ignore_checksum = true, .max_counter = 15U, .frequency = 50U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_GRA_ACC_01, 0, 8, .max_counter = 15U, .frequency = 33U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_QFK_01, 0, 32, .ignore_checksum = true, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_ESC_51, 0, 64, .ignore_checksum = true, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
-    {.msg = {{MSG_Motor_54, 0, 32, .ignore_checksum = true, .max_counter = 15U, .frequency = 10U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_LH_EPS_03, 0, 8, .max_counter = 15U, .ignore_quality_flag = true, .frequency = 100U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_MOTOR_14, 0, 8, .max_counter = 15U, .ignore_quality_flag = true, .frequency = 10U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_Motor_51, 0, 48, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .max_counter = 15U, .frequency = 50U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_GRA_ACC_01, 0, 8, .max_counter = 15U, .ignore_quality_flag = true, .frequency = 33U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_QFK_01, 0, 32, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_ESC_51, 0, 64, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .max_counter = 15U, .frequency = 100U}, { 0 }, { 0 }}},
+    {.msg = {{MSG_Motor_54, 0, 32, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .max_counter = 15U, .frequency = 10U}, { 0 }, { 0 }}},
   };
 
   volkswagen_set_button_prev = false;
