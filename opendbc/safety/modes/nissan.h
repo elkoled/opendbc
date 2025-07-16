@@ -1,6 +1,6 @@
 #pragma once
 
-#include "safety_declarations.h"
+#include "opendbc/safety/safety_declarations.h"
 
 static bool nissan_alt_eps = false;
 
@@ -25,7 +25,7 @@ static void nissan_rx_hook(const CANPacket_t *to_push) {
       uint16_t right_rear = (GET_BYTE(to_push, 0) << 8) | (GET_BYTE(to_push, 1));
       uint16_t left_rear = (GET_BYTE(to_push, 2) << 8) | (GET_BYTE(to_push, 3));
       vehicle_moving = (right_rear | left_rear) != 0U;
-      UPDATE_VEHICLE_SPEED((right_rear + left_rear) / 2.0 * 0.005 / 3.6);
+      UPDATE_VEHICLE_SPEED((right_rear + left_rear) / 2.0 * 0.005 * KPH_TO_MS);
     }
 
     // X-Trail 0x15c, Leaf 0x239
@@ -100,45 +100,30 @@ static bool nissan_tx_hook(const CANPacket_t *to_send) {
 }
 
 
-static bool nissan_fwd_hook(int bus_num, int addr) {
-  bool block_msg = false;
-
-  if (bus_num == 0) {
-    block_msg = (addr == 0x280); // CANCEL_MSG
-  }
-
-  if (bus_num == 2) {
-    // 0x169 is LKAS, 0x2b1 LKAS_HUD, 0x4cc LKAS_HUD_INFO_MSG
-    block_msg = ((addr == 0x169) || (addr == 0x2b1) || (addr == 0x4cc));
-  }
-
-  return block_msg;
-}
-
 static safety_config nissan_init(uint16_t param) {
   static const CanMsg NISSAN_TX_MSGS[] = {
-    {0x169, 0, 8, true},   // LKAS
-    {0x2b1, 0, 8, false},  // PROPILOT_HUD
-    {0x4cc, 0, 8, false},  // PROPILOT_HUD_INFO_MSG
-    {0x20b, 2, 6, false},  // CRUISE_THROTTLE (X-Trail)
-    {0x20b, 1, 6, false},  // CRUISE_THROTTLE (Altima)
-    {0x280, 2, 8, false}   // CANCEL_MSG (Leaf)
+    {0x169, 0, 8, .check_relay = true},   // LKAS
+    {0x2b1, 0, 8, .check_relay = true},   // PROPILOT_HUD
+    {0x4cc, 0, 8, .check_relay = true},   // PROPILOT_HUD_INFO_MSG
+    {0x20b, 2, 6, .check_relay = false},  // CRUISE_THROTTLE (X-Trail)
+    {0x20b, 1, 6, .check_relay = false},  // CRUISE_THROTTLE (Altima)
+    {0x280, 2, 8, .check_relay = true}    // CANCEL_MSG (Leaf)
   };
 
   // Signals duplicated below due to the fact that these messages can come in on either CAN bus, depending on car model.
   static RxCheck nissan_rx_checks[] = {
-    {.msg = {{0x2, 0, 5, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U},
-             {0x2, 1, 5, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }}},  // STEER_ANGLE_SENSOR
-    {.msg = {{0x285, 0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U},
-             {0x285, 1, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U}, { 0 }}}, // WHEEL_SPEEDS_REAR
-    {.msg = {{0x30f, 2, 3, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U},
-             {0x30f, 1, 3, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U}, { 0 }}}, // CRUISE_STATE
-    {.msg = {{0x15c, 0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U},
-             {0x15c, 1, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U},
-             {0x239, 0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U}}}, // GAS_PEDAL
-    {.msg = {{0x454, 0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U},
-             {0x454, 1, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U},
-             {0x1cc, 0, 4, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}}}, // DOORS_LIGHTS / BRAKE
+    {.msg = {{0x2, 0, 5, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 100U},
+             {0x2, 1, 5, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 100U}, { 0 }}},  // STEER_ANGLE_SENSOR
+    {.msg = {{0x285, 0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U},
+             {0x285, 1, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U}, { 0 }}}, // WHEEL_SPEEDS_REAR
+    {.msg = {{0x30f, 2, 3, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 10U},
+             {0x30f, 1, 3, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 10U}, { 0 }}}, // CRUISE_STATE
+    {.msg = {{0x15c, 0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U},
+             {0x15c, 1, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U},
+             {0x239, 0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U}}}, // GAS_PEDAL
+    {.msg = {{0x454, 0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 10U},
+             {0x454, 1, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 10U},
+             {0x1cc, 0, 4, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 100U}}}, // DOORS_LIGHTS / BRAKE
   };
 
   // EPS Location. false = V-CAN, true = C-CAN
@@ -152,5 +137,4 @@ const safety_hooks nissan_hooks = {
   .init = nissan_init,
   .rx = nissan_rx_hook,
   .tx = nissan_tx_hook,
-  .fwd = nissan_fwd_hook,
 };

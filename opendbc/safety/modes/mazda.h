@@ -1,6 +1,6 @@
 #pragma once
 
-#include "safety_declarations.h"
+#include "opendbc/safety/safety_declarations.h"
 
 // CAN msgs we care about
 #define MAZDA_LKAS          0x243
@@ -77,7 +77,7 @@ static bool mazda_tx_hook(const CANPacket_t *to_send) {
     // cruise buttons check
     if (addr == MAZDA_CRZ_BTNS) {
       // allow resume spamming while controls allowed, but
-      // only allow cancel while contrls not allowed
+      // only allow cancel while controls not allowed
       bool cancel_cmd = (GET_BYTE(to_send, 0) == 0x1U);
       if (!controls_allowed && !cancel_cmd) {
         tx = false;
@@ -88,25 +88,15 @@ static bool mazda_tx_hook(const CANPacket_t *to_send) {
   return tx;
 }
 
-static bool mazda_fwd_hook(int bus, int addr) {
-  bool block_msg = false;
-
-  if (bus == MAZDA_CAM) {
-    block_msg = (addr == MAZDA_LKAS) || (addr == MAZDA_LKAS_HUD);
-  }
-
-  return block_msg;
-}
-
 static safety_config mazda_init(uint16_t param) {
-  static const CanMsg MAZDA_TX_MSGS[] = {{MAZDA_LKAS, 0, 8, true}, {MAZDA_CRZ_BTNS, 0, 8, false}, {MAZDA_LKAS_HUD, 0, 8, false}};
+  static const CanMsg MAZDA_TX_MSGS[] = {{MAZDA_LKAS, 0, 8, .check_relay = true}, {MAZDA_CRZ_BTNS, 0, 8, .check_relay = false}, {MAZDA_LKAS_HUD, 0, 8, .check_relay = true}};
 
   static RxCheck mazda_rx_checks[] = {
-    {.msg = {{MAZDA_CRZ_CTRL,     0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U}, { 0 }, { 0 }}},
-    {.msg = {{MAZDA_CRZ_BTNS,     0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U}, { 0 }, { 0 }}},
-    {.msg = {{MAZDA_STEER_TORQUE, 0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 83U}, { 0 }, { 0 }}},
-    {.msg = {{MAZDA_ENGINE_DATA,  0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }, { 0 }}},
-    {.msg = {{MAZDA_PEDALS,       0, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 50U}, { 0 }, { 0 }}},
+    {.msg = {{MAZDA_CRZ_CTRL,     0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U}, { 0 }, { 0 }}},
+    {.msg = {{MAZDA_CRZ_BTNS,     0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 10U}, { 0 }, { 0 }}},
+    {.msg = {{MAZDA_STEER_TORQUE, 0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 83U}, { 0 }, { 0 }}},
+    {.msg = {{MAZDA_ENGINE_DATA,  0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 100U}, { 0 }, { 0 }}},
+    {.msg = {{MAZDA_PEDALS,       0, 8, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true, .frequency = 50U}, { 0 }, { 0 }}},
   };
 
   UNUSED(param);
@@ -117,5 +107,4 @@ const safety_hooks mazda_hooks = {
   .init = mazda_init,
   .rx = mazda_rx_hook,
   .tx = mazda_tx_hook,
-  .fwd = mazda_fwd_hook,
 };

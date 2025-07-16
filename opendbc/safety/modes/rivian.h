@@ -1,10 +1,6 @@
 #pragma once
 
-#include "safety_declarations.h"
-
-#define RIVIAN_MAX_SPEED_DELTA 2.0  // m/s
-
-static bool rivian_longitudinal = false;
+#include "opendbc/safety/safety_declarations.h"
 
 static uint8_t rivian_get_counter(const CANPacket_t *to_push) {
   int addr = GET_ADDR(to_push);
@@ -83,7 +79,7 @@ static void rivian_rx_hook(const CANPacket_t *to_push) {
     if (addr == 0x208) {
       float speed = ((GET_BYTE(to_push, 6) << 8) | GET_BYTE(to_push, 7)) * 0.01;
       vehicle_moving = speed > 0.0;
-      UPDATE_VEHICLE_SPEED(speed / 3.6);
+      UPDATE_VEHICLE_SPEED(speed * KPH_TO_MS);
     }
 
     // Gas pressed and second speed source for variable torque limit
@@ -91,12 +87,8 @@ static void rivian_rx_hook(const CANPacket_t *to_push) {
       gas_pressed = GET_BYTE(to_push, 3) | (GET_BYTE(to_push, 4) & 0xC0U);
 
       // Disable controls if speeds from VDM and ESP ECUs are too far apart.
-      float vdm_speed = ((GET_BYTE(to_push, 5) << 8) | GET_BYTE(to_push, 6)) * 0.01 / 3.6;
-      bool is_invalid_speed = ABS(vdm_speed - ((float)vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR)) > RIVIAN_MAX_SPEED_DELTA;
-      // TODO: this should generically cause rx valid to fall until re-enable
-      if (is_invalid_speed) {
-        controls_allowed = false;
-      }
+      float vdm_speed = ((GET_BYTE(to_push, 5) << 8) | GET_BYTE(to_push, 6)) * 0.01 * KPH_TO_MS;
+      speed_mismatch_check(vdm_speed);
     }
 
     // Driver torque
@@ -171,51 +163,23 @@ static bool rivian_tx_hook(const CANPacket_t *to_send) {
   return tx;
 }
 
-static bool rivian_fwd_hook(int bus, int addr) {
-  bool block_msg = false;
-
-  if (bus == 0) {
-    // SCCM_WheelTouch: for hiding hold wheel alert
-    if (addr == 0x321) {
-      block_msg = true;
-    }
-
-    // VDM_AdasSts: for canceling stock ACC
-    // cppcheck-suppress knownConditionTrueFalse
-    if ((addr == 0x162) && !rivian_longitudinal) {
-      block_msg = true;
-    }
-  }
-
-  if (bus == 2) {
-    // ACM_lkaHbaCmd: lateral control message
-    if (addr == 0x120) {
-      block_msg = true;
-    }
-
-    // ACM_longitudinalRequest: longitudinal control message
-    // cppcheck-suppress knownConditionTrueFalse
-    if (rivian_longitudinal && (addr == 0x160)) {
-      block_msg = true;
-    }
-  }
-
-  return block_msg;
-}
-
 static safety_config rivian_init(uint16_t param) {
+  // SCCM_WheelTouch: for hiding hold wheel alert
+  // VDM_AdasSts: for canceling stock ACC
   // 0x120 = ACM_lkaHbaCmd, 0x321 = SCCM_WheelTouch, 0x162 = VDM_AdasSts
-  static const CanMsg RIVIAN_TX_MSGS[] = {{0x120, 0, 8, true}, {0x321, 2, 7, false}, {0x162, 2, 8, false}};
+  static const CanMsg RIVIAN_TX_MSGS[] = {{0x120, 0, 8, .check_relay = true}, {0x321, 2, 7, .check_relay = true}, {0x162, 2, 8, .check_relay = true}};
   // 0x160 = ACM_longitudinalRequest
-  static const CanMsg RIVIAN_LONG_TX_MSGS[] = {{0x120, 0, 8, true}, {0x321, 2, 7, false}, {0x160, 0, 5, true}};
+  static const CanMsg RIVIAN_LONG_TX_MSGS[] = {{0x120, 0, 8, .check_relay = true}, {0x321, 2, 7, .check_relay = true}, {0x160, 0, 5, .check_relay = true}};
 
   static RxCheck rivian_rx_checks[] = {
-    {.msg = {{0x208, 0, 8, .frequency = 50U, .max_counter = 14U, .quality_flag = true}, { 0 }, { 0 }}},          // ESP_Status (speed)
-    {.msg = {{0x150, 0, 7, .frequency = 50U, .max_counter = 14U, .quality_flag = true}, { 0 }, { 0 }}},          // VDM_PropStatus (gas pedal & 2nd speed)
-    {.msg = {{0x380, 0, 5, .frequency = 100U, .ignore_checksum = true, .ignore_counter = true}, { 0 }, { 0 }}},  // EPAS_SystemStatus (driver torque)
-    {.msg = {{0x38f, 0, 6, .frequency = 50U, .ignore_checksum = true, .ignore_counter = true}, { 0 }, { 0 }}},   // iBESP2 (brakes)
-    {.msg = {{0x100, 2, 8, .frequency = 100U, .ignore_checksum = true, .ignore_counter = true}, { 0 }, { 0 }}},  // ACM_Status (cruise state)
+    {.msg = {{0x208, 0, 8, .frequency = 50U, .max_counter = 14U}, { 0 }, { 0 }}},                                                             // ESP_Status (speed)
+    {.msg = {{0x150, 0, 7, .frequency = 50U, .max_counter = 14U}, { 0 }, { 0 }}},                                                             // VDM_PropStatus (gas pedal & 2nd speed)
+    {.msg = {{0x380, 0, 5, .frequency = 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  // EPAS_SystemStatus (driver torque)
+    {.msg = {{0x38f, 0, 6, .frequency = 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},   // iBESP2 (brakes)
+    {.msg = {{0x100, 2, 8, .frequency = 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  // ACM_Status (cruise state)
   };
+
+  bool rivian_longitudinal = false;
 
   UNUSED(param);
   #ifdef ALLOW_DEBUG
@@ -234,7 +198,6 @@ const safety_hooks rivian_hooks = {
   .init = rivian_init,
   .rx = rivian_rx_hook,
   .tx = rivian_tx_hook,
-  .fwd = rivian_fwd_hook,
   .get_counter = rivian_get_counter,
   .get_checksum = rivian_get_checksum,
   .compute_checksum = rivian_compute_checksum,
