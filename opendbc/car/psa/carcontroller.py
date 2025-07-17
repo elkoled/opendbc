@@ -1,41 +1,48 @@
-from opendbc.car import Bus, AngleSteeringLimits, ACCELERATION_DUE_TO_GRAVITY, DT_CTRL, rate_limit
+import math
+import numpy as np
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, AngleSteeringLimits, DT_CTRL, rate_limit
 from opendbc.can.packer import CANPacker
 from opendbc.car.interfaces import CarControllerBase, ISO_LATERAL_ACCEL
 from opendbc.car.psa.psacan import create_lka_steering
 from opendbc.car.psa.values import CarControllerParams
 from opendbc.car.vehicle_model import VehicleModel
-import numpy as np
-import math
-
-# limit angle rate to both prevent a fault and for low speed comfort
-MAX_ANGLE_RATE = 5  # deg/20ms frame
 
 # Add extra tolerance for average banked road since safety doesn't have the roll
-AVERAGE_ROAD_ROLL = 0.06
-MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)
-MAX_LATERAL_JERK = 3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)
+AVERAGE_ROAD_ROLL = 0.06  # ~3.4 degrees, 6% superelevation. higher actual roll lowers lateral acceleration
+MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)  # ~3.6 m/s^2
+MAX_LATERAL_JERK = 3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)  # ~3.6 m/s^3
 
 
-def get_max_angle_delta(v_ego_raw, VM):
-  max_curvature_rate_sec = MAX_LATERAL_JERK / (v_ego_raw ** 2)
-  max_angle_rate_sec = math.degrees(VM.get_steer_from_curvature(max_curvature_rate_sec, v_ego_raw, 0))
-  return max_angle_rate_sec * (DT_CTRL * CarControllerParams.STEER_STEP)
+def get_max_angle_delta(v_ego_raw: float, VM: VehicleModel):
+  max_curvature_rate_sec = MAX_LATERAL_JERK / (v_ego_raw ** 2)  # (1/m)/s
+  max_angle_rate_sec = math.degrees(VM.get_steer_from_curvature(max_curvature_rate_sec, v_ego_raw, 0))  # deg/s
+  return max_angle_rate_sec * (DT_CTRL * 1)
 
 
-def get_max_angle(v_ego_raw, VM):
-  max_curvature = MAX_LATERAL_ACCEL / (v_ego_raw ** 2)
-  return math.degrees(VM.get_steer_from_curvature(max_curvature, v_ego_raw, 0))
+def get_max_angle(v_ego_raw: float, VM: VehicleModel):
+  max_curvature = MAX_LATERAL_ACCEL / (v_ego_raw ** 2)  # 1/m
+  return math.degrees(VM.get_steer_from_curvature(max_curvature, v_ego_raw, 0))  # deg
 
 
-def apply_psa_steer_angle_limits(apply_angle, apply_angle_last, v_ego_raw, steering_angle, lat_active, limits, VM):
+def apply_psa_steer_angle_limits(apply_angle: float, apply_angle_last: float, v_ego_raw: float, steering_angle: float,
+                                 lat_active: bool, limits: AngleSteeringLimits, VM: VehicleModel) -> float:
   v_ego_raw = max(v_ego_raw, 1)
+
+  # *** max lateral jerk limit ***
   max_angle_delta = get_max_angle_delta(v_ego_raw, VM)
-  max_angle_delta = min(max_angle_delta, MAX_ANGLE_RATE)
+
+  # use PSA angle limits
   new_apply_angle = rate_limit(apply_angle, apply_angle_last, -max_angle_delta, max_angle_delta)
+
+  # *** max lateral accel limit ***
   max_angle = get_max_angle(v_ego_raw, VM)
   new_apply_angle = np.clip(new_apply_angle, -max_angle, max_angle)
+
+  # angle is current angle when inactive
   if not lat_active:
     new_apply_angle = steering_angle
+
+  # prevent fault
   return float(np.clip(new_apply_angle, -limits.STEER_ANGLE_MAX, limits.STEER_ANGLE_MAX))
 
 

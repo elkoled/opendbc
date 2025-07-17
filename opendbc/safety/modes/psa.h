@@ -113,14 +113,14 @@ static bool psa_tx_hook(const CANPacket_t *to_send) {
   int addr = GET_ADDR(to_send);
 
   static const AngleSteeringLimits PSA_STEERING_LIMITS = {
-    .angle_deg_to_can = 100,
-    .angle_rate_up_lookup = {
+      .angle_deg_to_can = 100,
+      .angle_rate_up_lookup = {
       {0., 5., 25.},
-      {5., 5., 5.},  // force flat 5 deg/20ms up rate for testing vehicle model
+      {2.5, 1.5, 0.2},
     },
     .angle_rate_down_lookup = {
       {0., 5., 25.},
-      {5., 5., 5.},  // force flat 5 deg/20ms down rate for testing vehicle model
+      {5., 2.0, 0.3},
     },
   };
 
