@@ -3,7 +3,7 @@ def calculate_checksum(dat: bytearray, chk_ini: int) -> int:
   return (chk_ini - checksum) & 0xF
 
 
-def create_lka_steering(packer, frame: int, lat_active: bool, apply_angle: float):
+def create_lka_steering(packer, frame: int, lat_active: bool, apply_angle: float, torque_factor: int):
   values = {
     'DRIVE': 1,
     'COUNTER': frame % 0x10,
@@ -11,7 +11,7 @@ def create_lka_steering(packer, frame: int, lat_active: bool, apply_angle: float
     # Cycle STATUS 2->3->4->2.. this keeps control active. 0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
     'STATUS': (frame % 3) + 2 if lat_active else 0,
     'LXA_ACTIVATION': 1,
-    'TORQUE_FACTOR': lat_active * 100,
+    'TORQUE_FACTOR': torque_factor,
     'SET_ANGLE': apply_angle,
   }
 
