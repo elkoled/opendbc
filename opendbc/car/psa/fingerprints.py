@@ -16,6 +16,7 @@ FW_VERSIONS = {
     # ARTIV - Radar
     (Ecu.fwdRadar, 0x6B6, None): [
         b'212053276',
+        b'222256113', # NZ
         b'\xff\xff\x00\x00\x0f\xe8\x18\x05!@Y\xa4\x03\xff\xff\xff\x00\x02\x00\x00\x01\x94\x80\x97'
     ],
     # DIRECTN - Electronic Power Steering
