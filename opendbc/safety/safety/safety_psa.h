@@ -19,10 +19,7 @@ RxCheck psa_rx_checks[] = {
   // TODO: counters and checksums
   {.msg = {{PSA_STEERING, PSA_CAM_BUS, 7, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }, { 0 }}},            // driver torque
   {.msg = {{PSA_STEERING_ALT, PSA_CAM_BUS, 7, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }, { 0 }}},        // steering angle
-  // {.msg = {{PSA_DRIVER, PSA_MAIN_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U}, { 0 }, { 0 }}},              // gas pedal
-  // {.msg = {{PSA_DAT_BSI, PSA_MAIN_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}},             // doors
-  // {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_ADAS_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 25U}, { 0 }, { 0 }}},     // speed
-  // {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}}, // cruise state
+  {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}}, // cruise state
 };
 
 static bool psa_lkas_msg_check(int addr) {
@@ -33,15 +30,90 @@ static void psa_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
   int addr = GET_ADDR(to_push);
 
+  print("PSA_RX: bus=");
+  puth(bus);
+  print(" addr=");
+  puth(addr);
+  print(" controls_allowed=");
+  puth(controls_allowed);
+  print("\n");
+
   if (bus == PSA_ADAS_BUS) {
     if (addr == PSA_HS2_DAT_MDD_CMD_452) {
-      pcm_cruise_check(GET_BIT(to_push, 23)); // DDE_ACTIVATION_RVV_ACC
+      print("PSA: Got cruise msg, data: ");
+      for (int i = 0; i < 6; i++) {
+        puth(to_push->data[i]);
+        print(" ");
+      }
+      print("\n");
+
+      bool cruise_bit = GET_BIT(to_push, 23);
+      print("PSA: Cruise bit 23 = ");
+      puth(cruise_bit);
+      print(" cruise_engaged_prev = ");
+      puth(cruise_engaged_prev);
+      print("\n");
+
+      print("PSA: Before pcm_cruise_check - controls_allowed = ");
+      puth(controls_allowed);
+      print("\n");
+
+      pcm_cruise_check(cruise_bit);
+
+      print("PSA: After pcm_cruise_check - controls_allowed = ");
+      puth(controls_allowed);
+      print(" cruise_engaged_prev = ");
+      puth(cruise_engaged_prev);
+      print("\n");
     }
   }
+
+  if (bus == PSA_CAM_BUS) {
+    if (addr == PSA_STEERING) {
+      print("PSA: Got steering torque msg\n");
+    }
+    if (addr == PSA_STEERING_ALT) {
+      print("PSA: Got steering angle msg\n");
+    }
+  }
+
+  print("PSA: Safety state - gas_pressed=");
+  puth(gas_pressed);
+  print(" brake_pressed=");
+  puth(brake_pressed);
+  print(" regen_braking=");
+  puth(regen_braking);
+  print(" steering_disengage=");
+  puth(steering_disengage);
+  print(" vehicle_moving=");
+  puth(vehicle_moving);
+  print(" relay_malfunction=");
+  puth(relay_malfunction);
+  print("\n");
 }
 
 static bool psa_tx_hook(const CANPacket_t *to_send) {
-  UNUSED(to_send);
+  int addr = GET_ADDR(to_send);
+  int bus = GET_BUS(to_send);
+
+  print("PSA_TX: addr=");
+  puth(addr);
+  print(" bus=");
+  puth(bus);
+  print(" controls_allowed=");
+  puth(controls_allowed);
+  print(" relay_malfunction=");
+  puth(relay_malfunction);
+
+  if (addr == PSA_LANE_KEEP_ASSIST) {
+    print(" LKAS_MSG data: ");
+    for (int i = 0; i < 8; i++) {
+      puth(to_send->data[i]);
+      print(" ");
+    }
+  }
+  print("\n");
+
   return true;
 }
 
@@ -50,14 +122,33 @@ static bool psa_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == PSA_MAIN_BUS) {
     block_msg = psa_lkas_msg_check(addr);
+    if (block_msg) {
+      print("PSA_FWD: Blocking LKAS msg addr=");
+      puth(addr);
+      print(" on bus=");
+      puth(bus_num);
+      print("\n");
+    }
   }
 
   return block_msg;
 }
 
 static safety_config psa_init(uint16_t param) {
-  UNUSED(param);
-  print("psa_init\n");
+  print("PSA: psa_init called with param=");
+  puth(param);
+  print("\n");
+
+  print("PSA: Initial state - controls_allowed=");
+  puth(controls_allowed);
+  print(" gas_pressed=");
+  puth(gas_pressed);
+  print(" brake_pressed=");
+  puth(brake_pressed);
+  print(" cruise_engaged_prev=");
+  puth(cruise_engaged_prev);
+  print("\n");
+
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
 }
 
@@ -66,6 +157,4 @@ const safety_hooks psa_hooks = {
   .rx = psa_rx_hook,
   .tx = psa_tx_hook,
   .fwd = psa_fwd_hook,
-  // .get_counter = psa_get_counter,
-  // .get_checksums = psa_get_checksum,
 };
