@@ -35,7 +35,7 @@ class CarState(CarStateBase):
 
     # brake
     ret.brake = cp.vl['Dyn2_FRE']['BRAKE_PRESSURE'] / 1500.
-    ret.brakePressed = ret.brake > 0.6
+    ret.brakePressed = bool(cp_main.vl['Dat_BSI']['P013_MainBrake'])
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
     # steering wheel
@@ -98,7 +98,7 @@ class CarState(CarStateBase):
       # ('HS2_DYN_MDD_ETAT_2F6', 50),
     ]
     main_messages = [
-      # ('Dat_BSI', 20),
+      ('Dat_BSI', 20),
       ('RESTRAINTS', 10),
       # ('DRIVER', 10),
       ('HS2_DAT7_BSI_612', 10),
