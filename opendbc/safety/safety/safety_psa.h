@@ -62,6 +62,7 @@ static void psa_rx_hook(const CANPacket_t *to_push) {
 }
 
 static bool psa_tx_hook(const CANPacket_t *to_send) {
+  UNUSED(to_send);
   static bool last_tx_result = true;
   bool result = true;
 
@@ -87,6 +88,7 @@ static bool psa_fwd_hook(int bus_num, int addr) {
 }
 
 static safety_config psa_init(uint16_t param) {
+  UNUSED(param);
   print("PSA_INIT\n");
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
 }
