@@ -87,7 +87,7 @@ uint16_t current_safety_param = 0;
 static const safety_hooks *current_hooks = &nooutput_hooks;
 safety_config current_safety_config;
 
-static void generic_rx_checks(void);
+// static void generic_rx_checks(void);
 static void stock_ecu_check(bool stock_ecu_detected);
 
 static bool is_msg_valid(RxCheck addr_list[], int index) {
@@ -347,31 +347,31 @@ static void relay_malfunction_set(void) {
   fault_occurred(FAULT_RELAY_MALFUNCTION);
 }
 
-static void generic_rx_checks(void) {
-  // exit controls on rising edge of gas press
-  if (gas_pressed && !gas_pressed_prev && !(alternative_experience & ALT_EXP_DISABLE_DISENGAGE_ON_GAS)) {
-    controls_allowed = false;
-  }
-  gas_pressed_prev = gas_pressed;
+// static void generic_rx_checks(void) {
+//   // exit controls on rising edge of gas press
+//   if (gas_pressed && !gas_pressed_prev && !(alternative_experience & ALT_EXP_DISABLE_DISENGAGE_ON_GAS)) {
+//     controls_allowed = false;
+//   }
+//   gas_pressed_prev = gas_pressed;
 
-  // exit controls on rising edge of brake press
-  if (brake_pressed && (!brake_pressed_prev || vehicle_moving)) {
-    controls_allowed = false;
-  }
-  brake_pressed_prev = brake_pressed;
+//   // exit controls on rising edge of brake press
+//   if (brake_pressed && (!brake_pressed_prev || vehicle_moving)) {
+//     controls_allowed = false;
+//   }
+//   brake_pressed_prev = brake_pressed;
 
-  // exit controls on rising edge of regen paddle
-  if (regen_braking && (!regen_braking_prev || vehicle_moving)) {
-    controls_allowed = false;
-  }
-  regen_braking_prev = regen_braking;
+//   // exit controls on rising edge of regen paddle
+//   if (regen_braking && (!regen_braking_prev || vehicle_moving)) {
+//     controls_allowed = false;
+//   }
+//   regen_braking_prev = regen_braking;
 
-  // exit controls on rising edge of steering override/disengage
-  if (steering_disengage && !steering_disengage_prev) {
-    controls_allowed = false;
-  }
-  steering_disengage_prev = steering_disengage;
-}
+//   // exit controls on rising edge of steering override/disengage
+//   if (steering_disengage && !steering_disengage_prev) {
+//     controls_allowed = false;
+//   }
+//   steering_disengage_prev = steering_disengage;
+// }
 
 static void stock_ecu_check(bool stock_ecu_detected) {
   // allow 1s of transition timeout after relay changes state before assessing malfunctioning
