@@ -35,7 +35,7 @@ class CarState(CarStateBase):
 
     # brake
     ret.brake = cp.vl['Dyn2_FRE']['BRAKE_PRESSURE'] / 1500.
-    ret.brakePressed = ret.brake > 0.5
+    ret.brakePressed = ret.brake > 0.6
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
     # steering wheel
