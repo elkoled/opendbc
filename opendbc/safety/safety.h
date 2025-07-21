@@ -193,7 +193,7 @@ bool safety_rx_hook(const CANPacket_t *to_push) {
   }
 
   // Handles gas, brake, and regen paddle
-  // generic_rx_checks();
+  generic_rx_checks();
 
   // the relay malfunction hook runs on all incoming rx messages.
   // check all applicable tx msgs for liveness on sending bus.
