@@ -19,56 +19,21 @@ RxCheck psa_rx_checks[] = {
   // TODO: counters and checksums
   {.msg = {{PSA_STEERING, PSA_CAM_BUS, 7, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }, { 0 }}},            // driver torque
   {.msg = {{PSA_STEERING_ALT, PSA_CAM_BUS, 7, .ignore_checksum = true, .ignore_counter = true, .frequency = 100U}, { 0 }, { 0 }}},        // steering angle
-  {.msg = {{PSA_DRIVER, PSA_MAIN_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U}, { 0 }, { 0 }}},              // gas pedal
-  {.msg = {{PSA_DAT_BSI, PSA_MAIN_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}},             // doors
-  {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_ADAS_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 25U}, { 0 }, { 0 }}},     // speed
-  {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}}, // cruise state
+  // {.msg = {{PSA_DRIVER, PSA_MAIN_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 10U}, { 0 }, { 0 }}},              // gas pedal
+  // {.msg = {{PSA_DAT_BSI, PSA_MAIN_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}},             // doors
+  // {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_ADAS_BUS, 8, .ignore_checksum = true, .ignore_counter = true, .frequency = 25U}, { 0 }, { 0 }}},     // speed
+  // {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .ignore_checksum = true, .ignore_counter = true, .frequency = 20U}, { 0 }, { 0 }}}, // cruise state
 };
 
 static bool psa_lkas_msg_check(int addr) {
   return addr == PSA_LANE_KEEP_ASSIST;
 }
 
-// TODO: update rate limits
-// Currently set to ISO11270 limits
-const AngleSteeringLimits PSA_STEERING_LIMITS = {
-    .angle_deg_to_can = 100,
-    .angle_rate_up_lookup = {
-    {0., 5., 15.},
-    {2.5, 1.5, 0.2},
-  },
-  .angle_rate_down_lookup = {
-    {0., 5., 15.},
-    {5., 2.0, 0.3},
-  },
-};
-
 static void psa_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
   int addr = GET_ADDR(to_push);
 
-  if (bus == PSA_CAM_BUS) {
-    if (addr == PSA_DAT_BSI) {
-      brake_pressed = GET_BIT(to_push, 5); // P013_MainBrake
-    }
-    if (addr == PSA_DRIVER) {
-      gas_pressed = GET_BYTE(to_push, 3) > 0U; // GAS_PEDAL
-    }
-    if (addr == PSA_STEERING) {
-      int torque_driver_new = GET_BYTE(to_push, 1); // TODO: check
-      update_sample(&torque_driver, torque_driver_new);
-    }
-    if (addr == PSA_STEERING_ALT) {
-      int angle_meas_new = to_signed((GET_BYTE(to_push, 0) << 8) | GET_BYTE(to_push, 1), 16);
-      update_sample(&angle_meas, angle_meas_new);
-    }
-  }
   if (bus == PSA_ADAS_BUS) {
-    if (addr == PSA_HS2_DYN_ABR_38D) {
-      int speed = (GET_BYTE(to_push, 0) << 8) | GET_BYTE(to_push, 1);
-      vehicle_moving = speed > 0;
-      UPDATE_VEHICLE_SPEED(speed * 0.01); // VITESSE_VEHICULE_ROUES
-    }
     if (addr == PSA_HS2_DAT_MDD_CMD_452) {
       pcm_cruise_check(GET_BIT(to_push, 23)); // DDE_ACTIVATION_RVV_ACC
     }
@@ -76,25 +41,8 @@ static void psa_rx_hook(const CANPacket_t *to_push) {
 }
 
 static bool psa_tx_hook(const CANPacket_t *to_send) {
-  bool tx = true;
-  int addr = GET_ADDR(to_send);
-
-  // TODO: Safety check for cruise buttons
-  // TODO: check resume is not pressed when controls not allowed
-  // TODO: check cancel is not pressed when cruise isn't engaged
-
-  // Safety check for LKA
-  if (addr == PSA_LANE_KEEP_ASSIST) {
-    // SET_ANGLE
-    int desired_angle = to_signed((GET_BYTE(to_send, 6) << 6) | ((GET_BYTE(to_send, 7) & 0xFCU) >> 2), 14);
-    // TORQUE_FACTOR
-    bool lka_active = ((GET_BYTE(to_send, 5) & 0xFEU) >> 1) == 100U;
-
-    if (steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS)) {
-      tx = false;
-    }
-  }
-  return tx;
+  UNUSED(to_send);
+  return true;
 }
 
 static bool psa_fwd_hook(int bus_num, int addr) {
