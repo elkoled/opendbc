@@ -29,92 +29,51 @@ static bool psa_lkas_msg_check(int addr) {
 static void psa_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
   int addr = GET_ADDR(to_push);
+  static bool last_controls_allowed = false;
 
-  print("PSA_RX: bus=");
-  puth(bus);
-  print(" addr=");
-  puth(addr);
-  print(" controls_allowed=");
-  puth(controls_allowed);
-  print("\n");
+  if (bus == PSA_ADAS_BUS && addr == PSA_HS2_DAT_MDD_CMD_452) {
+    bool cruise_bit = GET_BIT(to_push, 23);
+    pcm_cruise_check(cruise_bit);
 
-  if (bus == PSA_ADAS_BUS) {
-    if (addr == PSA_HS2_DAT_MDD_CMD_452) {
-      print("PSA: Got cruise msg, data: ");
-      for (int i = 0; i < 6; i++) {
-        puth(to_push->data[i]);
-        print(" ");
-      }
-      print("\n");
-
-      bool cruise_bit = GET_BIT(to_push, 23);
-      print("PSA: Cruise bit 23 = ");
+    if (cruise_bit || controls_allowed != last_controls_allowed) {
+      print("CRUISE:");
       puth(cruise_bit);
-      print(" cruise_engaged_prev = ");
-      puth(cruise_engaged_prev);
-      print("\n");
-
-      print("PSA: Before pcm_cruise_check - controls_allowed = ");
+      print(" CTRL:");
       puth(controls_allowed);
-      print("\n");
-
-      pcm_cruise_check(cruise_bit);
-
-      print("PSA: After pcm_cruise_check - controls_allowed = ");
-      puth(controls_allowed);
-      print(" cruise_engaged_prev = ");
-      puth(cruise_engaged_prev);
       print("\n");
     }
   }
 
-  if (bus == PSA_CAM_BUS) {
-    if (addr == PSA_STEERING) {
-      print("PSA: Got steering torque msg\n");
-    }
-    if (addr == PSA_STEERING_ALT) {
-      print("PSA: Got steering angle msg\n");
-    }
+  if (controls_allowed != last_controls_allowed) {
+    print("CTRL_CHG:");
+    puth(controls_allowed);
+    print(" G:");
+    puth(gas_pressed);
+    print(" B:");
+    puth(brake_pressed);
+    print(" S:");
+    puth(steering_disengage);
+    print(" R:");
+    puth(relay_malfunction);
+    print("\n");
   }
 
-  print("PSA: Safety state - gas_pressed=");
-  puth(gas_pressed);
-  print(" brake_pressed=");
-  puth(brake_pressed);
-  print(" regen_braking=");
-  puth(regen_braking);
-  print(" steering_disengage=");
-  puth(steering_disengage);
-  print(" vehicle_moving=");
-  puth(vehicle_moving);
-  print(" relay_malfunction=");
-  puth(relay_malfunction);
-  print("\n");
+  last_controls_allowed = controls_allowed;
 }
 
 static bool psa_tx_hook(const CANPacket_t *to_send) {
-  int addr = GET_ADDR(to_send);
-  int bus = GET_BUS(to_send);
+  static bool last_tx_result = true;
+  bool result = true;
 
-  print("PSA_TX: addr=");
-  puth(addr);
-  print(" bus=");
-  puth(bus);
-  print(" controls_allowed=");
-  puth(controls_allowed);
-  print(" relay_malfunction=");
-  puth(relay_malfunction);
-
-  if (addr == PSA_LANE_KEEP_ASSIST) {
-    print(" LKAS_MSG data: ");
-    for (int i = 0; i < 8; i++) {
-      puth(to_send->data[i]);
-      print(" ");
+  if (!controls_allowed || relay_malfunction) {
+    result = false;
+    if (result != last_tx_result) {
+      print("TX_BLOCK\n");
     }
   }
-  print("\n");
 
-  return true;
+  last_tx_result = result;
+  return result;
 }
 
 static bool psa_fwd_hook(int bus_num, int addr) {
@@ -122,33 +81,13 @@ static bool psa_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == PSA_MAIN_BUS) {
     block_msg = psa_lkas_msg_check(addr);
-    if (block_msg) {
-      print("PSA_FWD: Blocking LKAS msg addr=");
-      puth(addr);
-      print(" on bus=");
-      puth(bus_num);
-      print("\n");
-    }
   }
 
   return block_msg;
 }
 
 static safety_config psa_init(uint16_t param) {
-  print("PSA: psa_init called with param=");
-  puth(param);
-  print("\n");
-
-  print("PSA: Initial state - controls_allowed=");
-  puth(controls_allowed);
-  print(" gas_pressed=");
-  puth(gas_pressed);
-  print(" brake_pressed=");
-  puth(brake_pressed);
-  print(" cruise_engaged_prev=");
-  puth(cruise_engaged_prev);
-  print("\n");
-
+  print("PSA_INIT\n");
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
 }
 
