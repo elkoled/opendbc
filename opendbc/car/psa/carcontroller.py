@@ -15,13 +15,9 @@ class CarController(CarControllerBase):
     can_sends = []
     actuators = CC.actuators
 
-    # reset torque_factor on driver steering intervention
-    if CS.out.steeringPressed:
-      self.torque_factor = 0
-
-    # ramp torque_factor over 1 second
+    # ramp torque_factor over 5 seconds
     if CC.latActive:
-      self.torque_factor = min(100, self.torque_factor + 1)
+      self.torque_factor = min(100, self.torque_factor + 0.2)
     else:
       self.torque_factor = 0
 
