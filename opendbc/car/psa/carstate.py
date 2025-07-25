@@ -28,7 +28,7 @@ class CarState(CarStateBase):
     ret.vEgoRaw = cp_adas.vl['HS2_DYN_ABR_38D']['VITESSE_VEHICULE_ROUES'] * CV.KPH_TO_MS
     ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    ret.standstill = ret.vEgo < 0.1
+    ret.standstill = abs(ret.vEgoRaw) < 0.1
 
     # gas
     ret.gas = cp.vl['Dyn_CMM']['P002_Com_rAPP'] / 100.0

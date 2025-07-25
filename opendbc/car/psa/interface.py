@@ -24,6 +24,7 @@ class CarInterface(CarInterfaceBase):
     ret.steerControlType = structs.CarParams.SteerControlType.angle
     ret.radarUnavailable = True
 
-    ret.alphaLongitudinalAvailable = False
+    ret.alphaLongitudinalAvailable = True
+    ret.openpilotLongitudinalControl = True
 
     return ret
