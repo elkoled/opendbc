@@ -46,7 +46,7 @@ class CarState(CarStateBase):
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     ret.steerFaultTemporary = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 4
     ret.steerFaultPermanent = False
-    ret.espDisabled = bool(cp_adas.vl['ESP']['ESP_STATUS_INV'])
+    ret.espDisabled = False
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
