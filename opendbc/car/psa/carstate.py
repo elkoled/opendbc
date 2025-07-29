@@ -30,8 +30,7 @@ class CarState(CarStateBase):
     ret.standstill = ret.vEgo < 0.1
 
     # gas
-    ret.gas = cp.vl['Dyn_CMM']['P002_Com_rAPP'] / 100.0
-    ret.gasPressed = ret.gas > 0
+    ret.gasPressed = (cp.vl['Dyn_CMM']['P002_Com_rAPP'] / 100.0) > 0
 
     # brake
     ret.brake = cp.vl['Dyn2_FRE']['BRAKE_PRESSURE'] / 1500.
