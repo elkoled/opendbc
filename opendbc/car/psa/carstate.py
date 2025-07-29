@@ -18,7 +18,7 @@ class CarState(CarStateBase):
     ret = structs.CarState()
 
     # car speed
-    ret.wheelSpeeds = self.get_wheel_speeds(
+    self.parse_wheel_speeds(ret,
       cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'],
       cp.vl['Dyn4_FRE']['P264_VehV_VPsvValWhlFrtR'],
       cp.vl['Dyn4_FRE']['P265_VehV_VPsvValWhlBckL'],
