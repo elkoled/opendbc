@@ -54,13 +54,6 @@ PSA_RX_OFFSET = -0x20
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[request for bus in (0, 1) for request in [
     Request(
-      [PSA_DIAG_REQ, PSA_SERIAL_REQ],
-      [PSA_DIAG_RESP, PSA_SERIAL_RESP],
-      rx_offset=PSA_RX_OFFSET,
-      bus=bus,
-      obd_multiplexing=False,
-    ),
-    Request(
       [PSA_DIAG_REQ, PSA_VERSION_REQ],
       [PSA_DIAG_RESP, PSA_VERSION_RESP],
       rx_offset=PSA_RX_OFFSET,
