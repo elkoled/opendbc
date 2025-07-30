@@ -45,7 +45,17 @@ class CarController(CarControllerBase):
       if self.CP.flags & VolkswagenFlags.MEB:
         # The QFK (lateral control coordinator) control loop compares actuation curvature to its own current curvature
         # Calibrate our actuator command by the offset between openpilot's vehicle model and QFK perceived curvatures
-        apply_curvature = actuators.curvature
+        # Speed-dependent filtering
+        vehicle_speed_kmh = CS.out.vEgo * CV.MS_TO_KPH
+        alpha = np.interp(vehicle_speed_kmh, [50, 80], [0.8, 0.1])
+
+        target_curvature = actuators.curvature + (CS.qfk_curvature - CC.currentCurvature)
+        apply_curvature = alpha * target_curvature + (1 - alpha) * self.apply_curvature_last
+
+        # Speed-dependent rate limiting
+        max_delta = np.interp(vehicle_speed_kmh, [50, 80], [0.001, 0.0003])
+        delta = np.clip(apply_curvature - self.apply_curvature_last, -max_delta, max_delta)
+        apply_curvature = self.apply_curvature_last + delta
 
         # Progressive QFK power control: smooth engage and disengage, reduce power when the driver is overriding
         qfk_enable = True
