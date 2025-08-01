@@ -86,7 +86,6 @@ class CarState(CarStateBase):
       ('IS_DAT_DIRA', 10),
     ]
     adas_messages = [
-      ('ESP', 50),
       ('HS2_DYN_ABR_38D', 25),
       ('HS2_DYN_UCF_MDD_32D', 50),
       ('HS2_DAT_MDD_CMD_452', 20),
