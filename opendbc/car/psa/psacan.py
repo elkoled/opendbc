@@ -7,8 +7,7 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
 def create_lka_steering(packer, frame: int, lat_active: bool, apply_angle: float):
   values = {
     'DRIVE': 1,
-    # Cycle STATUS 2->3->4->2.. this keeps control active. 0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-    'STATUS': (frame % 3) + 2 if lat_active else 0,
+    'STATUS': 4 if lat_active else 3,
     'LXA_ACTIVATION': 1,
     'TORQUE_FACTOR': lat_active * 100,
     'SET_ANGLE': apply_angle,
