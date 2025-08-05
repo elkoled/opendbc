@@ -8,6 +8,7 @@ FW_VERSIONS = {
     # ARTIV - Radar
     (Ecu.fwdRadar, 0x6B6, None): [
         b'212053276',
+        b'194504751',
     ],
   }
 }
