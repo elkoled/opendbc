@@ -4,7 +4,7 @@ from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
 from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.docs_definitions import CarDocs, CarHarness, CarParts
-from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries, uds
+from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
@@ -38,6 +38,7 @@ class CAR(Platforms):
     [PSACarDocs("Peugeot 208 2019-25")],
     CarSpecs(mass=1530, wheelbase=2.54, steerRatio=17.6),
   )
+
 
 PSA_DIAG_REQ  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, 0x01])
 PSA_DIAG_RESP = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL + 0x40, 0x01])

@@ -56,6 +56,7 @@ class TestPsaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTes
     return self.packer.make_can_msg_panda("Dyn_CMM", self.MAIN_BUS, values)
 
 
+
 class TestPsaStockSafety(TestPsaSafetyBase):
 
   def setUp(self):
