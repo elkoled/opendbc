@@ -20,8 +20,7 @@ class CarController(CarControllerBase):
     apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
                                                 CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
 
-    if self.frame % 5 == 0:
-      can_sends.append(create_lka_steering(self.packer, self.frame // 5, CC.latActive, apply_angle))
+    can_sends.append(create_lka_steering(self.packer, self.frame, CC.latActive, apply_angle))
 
     self.apply_angle_last = apply_angle
 
