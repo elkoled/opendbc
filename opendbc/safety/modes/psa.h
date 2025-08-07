@@ -15,62 +15,62 @@
 #define PSA_ADAS_BUS 1
 #define PSA_MAIN_BUS 2
 
-static uint8_t psa_get_counter(const CANPacket_t *to_push) {
-  int addr = GET_ADDR(to_push);
+// static uint8_t psa_get_counter(const CANPacket_t *to_push) {
+//   int addr = GET_ADDR(to_push);
 
-  uint8_t cnt = 0;
-  if (addr == PSA_HS2_DAT_MDD_CMD_452) {
-    cnt = (GET_BYTE(to_push, 3) >> 4) & 0xFU;
-  } else if (addr == PSA_HS2_DYN_ABR_38D) {
-    cnt = (GET_BYTE(to_push, 5) >> 4) & 0xFU;
-  } else {
-  }
-  return cnt;
-}
+//   uint8_t cnt = 0;
+//   if (addr == PSA_HS2_DAT_MDD_CMD_452) {
+//     cnt = (GET_BYTE(to_push, 3) >> 4) & 0xFU;
+//   } else if (addr == PSA_HS2_DYN_ABR_38D) {
+//     cnt = (GET_BYTE(to_push, 5) >> 4) & 0xFU;
+//   } else {
+//   }
+//   return cnt;
+// }
 
-static uint32_t psa_get_checksum(const CANPacket_t *to_push) {
-  int addr = GET_ADDR(to_push);
+// static uint32_t psa_get_checksum(const CANPacket_t *to_push) {
+//   int addr = GET_ADDR(to_push);
 
-  uint8_t chksum = 0;
-  if (addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chksum = GET_BYTE(to_push, 5) & 0xFU;
-  } else if (addr == PSA_HS2_DYN_ABR_38D) {
-    chksum = GET_BYTE(to_push, 5) & 0xFU;
-  } else {
-  }
-  return chksum;
-}
+//   uint8_t chksum = 0;
+//   if (addr == PSA_HS2_DAT_MDD_CMD_452) {
+//     chksum = GET_BYTE(to_push, 5) & 0xFU;
+//   } else if (addr == PSA_HS2_DYN_ABR_38D) {
+//     chksum = GET_BYTE(to_push, 5) & 0xFU;
+//   } else {
+//   }
+//   return chksum;
+// }
 
-static uint8_t _psa_compute_checksum(const CANPacket_t *to_push, uint8_t chk_ini, int chk_pos) {
-  int len = GET_LEN(to_push);
+// static uint8_t _psa_compute_checksum(const CANPacket_t *to_push, uint8_t chk_ini, int chk_pos) {
+//   int len = GET_LEN(to_push);
 
-  uint8_t sum = 0;
-  for (int i = 0; i < len; i++) {
-    uint8_t b = to_push->data[i];
+//   uint8_t sum = 0;
+//   for (int i = 0; i < len; i++) {
+//     uint8_t b = to_push->data[i];
 
-    if (i == chk_pos) {
-      // set checksum in low nibble to 0
-      b &= 0xF0U;
-    }
-    sum += (b >> 4) + (b & 0xFU);
-  }
-  return (chk_ini - sum) & 0xFU;
-}
+//     if (i == chk_pos) {
+//       // set checksum in low nibble to 0
+//       b &= 0xF0U;
+//     }
+//     sum += (b >> 4) + (b & 0xFU);
+//   }
+//   return (chk_ini - sum) & 0xFU;
+// }
 
 
-static uint32_t psa_compute_checksum(const CANPacket_t *to_push) {
-  int addr = GET_ADDR(to_push);
+// static uint32_t psa_compute_checksum(const CANPacket_t *to_push) {
+//   int addr = GET_ADDR(to_push);
 
-  uint8_t chk = 0;
-  if (addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chk = _psa_compute_checksum(to_push, 0x4, 5);
-  } else if (addr == PSA_HS2_DYN_ABR_38D) {
-    chk = _psa_compute_checksum(to_push, 0x7, 5);
-  } else {
-  }
+//   uint8_t chk = 0;
+//   if (addr == PSA_HS2_DAT_MDD_CMD_452) {
+//     chk = _psa_compute_checksum(to_push, 0x4, 5);
+//   } else if (addr == PSA_HS2_DYN_ABR_38D) {
+//     chk = _psa_compute_checksum(to_push, 0x7, 5);
+//   } else {
+//   }
 
-  return chk;
-}
+//   return chk;
+// }
 
 static void psa_rx_hook(const CANPacket_t *to_push) {
   int bus = GET_BUS(to_push);
@@ -174,7 +174,7 @@ const safety_hooks psa_hooks = {
   .rx = psa_rx_hook,
   .tx = psa_tx_hook,
   .fwd = psa_fwd_hook,
-  .get_counter = psa_get_counter,
-  .get_checksum = psa_get_checksum,
-  .compute_checksum = psa_compute_checksum,
+  // .get_counter = psa_get_counter,
+  // .get_checksum = psa_get_checksum,
+  // .compute_checksum = psa_compute_checksum,
 };
