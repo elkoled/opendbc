@@ -100,7 +100,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
   // static const AngleSteeringLimits PSA_STEERING_LIMITS = {
   //   .max_angle = 3900,
-  //   .angle_deg_to_can = 100,
+  //   .angle_deg_to_can = 10,
   //   .angle_rate_up_lookup = {
   //     {0., 5., 25.},
   //     {2.5, 1.5, .2},

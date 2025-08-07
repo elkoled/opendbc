@@ -175,7 +175,6 @@ static bool rt_angle_rate_limit_check(AngleSteeringLimits limits) {
 // Safety checks for angle-based steering commands
 bool steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const AngleSteeringLimits limits) {
   bool violation = false;
-  static int debug_counter = 0;
 
   if (controls_allowed && steer_control_enabled) {
     // convert floating point angle rate limits to integers in the scale of the desired angle on CAN,
@@ -247,57 +246,24 @@ bool steer_angle_cmd_checks(int desired_angle, bool steer_control_enabled, const
     }
 
     // check for violation;
-    bool rate_violation = max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
-    violation |= rate_violation;
-
-    // Debug print every 50 frames (2 times per second) when there's a violation or during first few seconds
-    debug_counter++;
-    if (rate_violation || debug_counter < 500) {
-      if (debug_counter % 50 == 0 || rate_violation) {
-        print("STEER_DBG: desired=");
-        puth(desired_angle);
-        print(" last=");
-        puth(desired_angle_last);
-        print(" range=");
-        puth(lowest_desired_angle);
-        print("-");
-        puth(highest_desired_angle);
-        if (rate_violation) {
-          print(" VIOLATION!");
-        }
-        print("\n");
-      }
-    }
+    violation |= max_limit_check(desired_angle, highest_desired_angle, lowest_desired_angle);
   }
   desired_angle_last = desired_angle;
 
   // Angle should either be 0 or same as current angle while not steering
   if (!steer_control_enabled) {
-    bool inactive_violation = false;
     if (limits.inactive_angle_is_zero) {
-      inactive_violation = (desired_angle != 0);
+      violation |= desired_angle != 0;
     } else {
       const int max_inactive_angle = CLAMP(angle_meas.max, -limits.max_angle, limits.max_angle) + 1;
       const int min_inactive_angle = CLAMP(angle_meas.min, -limits.max_angle, limits.max_angle) - 1;
-      inactive_violation = max_limit_check(desired_angle, max_inactive_angle, min_inactive_angle);
-    }
-    violation |= inactive_violation;
-
-    if (inactive_violation) {
-      print("STEER_DBG: INACTIVE_VIOL desired=");
-      puth(desired_angle);
-      print("\n");
+      violation |= max_limit_check(desired_angle, max_inactive_angle, min_inactive_angle);
     }
   }
 
   // No angle control allowed when controls are not allowed
   if (!controls_allowed) {
-    bool controls_violation = steer_control_enabled;
-    violation |= controls_violation;
-
-    if (controls_violation) {
-      print("STEER_DBG: CONTROLS_NOT_ALLOWED\n");
-    }
+    violation |= steer_control_enabled;
   }
 
   // reset to current angle if either controls is not allowed or there's a violation
