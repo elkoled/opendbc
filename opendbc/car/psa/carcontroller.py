@@ -18,22 +18,22 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
 
     # lateral control
-    apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
-                                                CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
-
-    # EPS disengages on steering override, cycle activation sequence 2->3->4 to re-engage
-    # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-    if not CC.latActive:
-      self.status = 2
-    elif not CS.eps_active:
-      self.status = 2 if self.status == 4 else self.status + 1
-    else:
-      self.status = 4
-
     if self.frame % 5 == 0:
+      apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
+                                                  CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+
+      # EPS disengages on steering override, cycle activation sequence 2->3->4 to re-engage
+      # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+      if not CC.latActive:
+        self.status = 2
+      elif not CS.eps_active:
+        self.status = 2 if self.status == 4 else self.status + 1
+      else:
+        self.status = 4
+
       can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
-    self.apply_angle_last = apply_angle
+      self.apply_angle_last = apply_angle
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = self.apply_angle_last
