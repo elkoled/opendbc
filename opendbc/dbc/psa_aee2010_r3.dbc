@@ -64,8 +64,8 @@ BO_ 264 Vers_CMM: 8 CMM___Motor_SG
  SG_ P083_Calibration : 56|8@1+ (1,0) [0|255] "-" Vector__XXX
 
 BO_ 461 ESP: 3 XXX
- SG_ COUNTER : 3|4@0+ (1,0) [0|15] "" XXX
- SG_ CHECKSUM : 4|4@1+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 3|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 4|4@1+ (1,0) [0|15] "" XXX
  SG_ UNCLEAR : 14|10@0+ (1,0) [0|1023] "" XXX
  SG_ ESP_STATUS : 15|1@0+ (1,0) [0|1] "" XXX
  SG_ ESP_STATUS_INV : 20|1@0+ (1,0) [0|1] "" XXX
@@ -162,8 +162,8 @@ BO_ 773 STEERING_ALT: 7 XXX
  SG_ ANGLE : 7|16@0- (0.1,0) [-3276.8|3276.7] "degrees" XXX
  SG_ RATE : 23|8@0+ (1,0) [0|255] "" XXX
  SG_ RATE_SIGN : 31|1@0+ (1,0) [0|1] "" XXX
- SG_ COUNTER : 35|4@0+ (1,0) [0|255] "" XXX
- SG_ CHECKSUM : 39|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 35|4@0+ (1,0) [0|255] "" XXX
+ SG_ 0_CHECKSUM : 39|4@0+ (1,0) [0|15] "" XXX
  SG_ RATE_ALT : 47|8@0+ (1,0) [0|255] "" XXX
 
 BO_ 781 Dyn4_FRE: 8 CDS___Fahrdynamikregelung
@@ -322,8 +322,8 @@ BO_ 1042 Dat_BSI: 8 BSI___Kombiinstrument
  SG_ PASSENGER_DOOR : 52|1@0+ (1,0) [0|1] "" Vector__XXX
 
 BO_ 1069 NEW_MSG_42D: 4 XXX
- SG_ COUNTER : 16|4@1+ (1,0) [0|15] "" XXX
- SG_ CHECKSUM : 20|4@1+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 16|4@1+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 20|4@1+ (1,0) [0|15] "" XXX
  SG_ ACC_RELATED : 31|8@0+ (1,0) [0|255] "" XXX
 
 BO_ 1074 Dat_BSI1: 8 BSI___Kombiinstrument
