@@ -34,7 +34,8 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.54, steerRatio=17.6),
+    # TODO: Peugeot 508 wheelbase/steerRatio:
+    CarSpecs(mass=1800, wheelbase=2.79, steerRatio=10.6),
   )
 
 PSA_DIAG_REQ  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, 0x01])
