@@ -73,27 +73,28 @@ class CarState(CarStateBase):
     ret.seatbeltUnlatched = cp_main.vl['RESTRAINTS']['DRIVER_SEATBELT'] != 2
     return ret
 
+  # TODO: reset frequencies
   @staticmethod
   def get_can_parsers(CP):
     cam_messages = [
-      ('Dyn4_FRE', 50),
-      ('STEERING_ALT', 100),
-      ('STEERING', 100),
-      ('Dyn2_FRE', 100),
-      ('Dyn2_CMM', 50),
-      ('Dyn_CMM', 100),
-      ('Dyn_EasyMove', 50),
-      ('IS_DAT_DIRA', 10),
+      ('Dyn4_FRE', 1),
+      ('STEERING_ALT', 1),
+      ('STEERING', 1),
+      ('Dyn2_FRE', 1),
+      ('Dyn2_CMM', 1),
+      ('Dyn_CMM', 1),
+      ('Dyn_EasyMove', 1),
+      ('IS_DAT_DIRA', 1),
     ]
     adas_messages = [
-      ('HS2_DYN_ABR_38D', 25),
-      ('HS2_DYN_UCF_MDD_32D', 50),
-      ('HS2_DAT_MDD_CMD_452', 20),
+      ('HS2_DYN_ABR_38D', 1),
+      ('HS2_DYN_UCF_MDD_32D', 1),
+      ('HS2_DAT_MDD_CMD_452', 1),
     ]
     main_messages = [
-      ('Dat_BSI', 20),
-      ('RESTRAINTS', 10),
-      ('HS2_DAT7_BSI_612', 10),
+      ('Dat_BSI', 1),
+      ('RESTRAINTS', 1),
+      ('HS2_DAT7_BSI_612', 1),
     ]
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], main_messages, 2),
