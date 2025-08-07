@@ -21,7 +21,7 @@ class CarController(CarControllerBase):
                                                 CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
 
     if self.frame % 5 == 0:
-      can_sends.append(create_lka_steering(self.packer, self.frame, CC.latActive, apply_angle, CS.eps_active))
+      can_sends.append(create_lka_steering(self.packer, self.frame // 5, CC.latActive, apply_angle, CS.eps_active))
 
     self.apply_angle_last = apply_angle
 
