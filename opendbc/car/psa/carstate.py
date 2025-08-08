@@ -14,6 +14,7 @@ class CarState(CarStateBase):
     cp_adas = can_parsers[Bus.adas]
     cp_cam = can_parsers[Bus.cam]
     ret = structs.CarState()
+    ret_sp = structs.CarStateSP()
 
     # car speed
     self.parse_wheel_speeds(ret,
