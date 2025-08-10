@@ -22,8 +22,8 @@ class TestPsaSafetyBase(common.PandaCarSafetyTest, common.AngleSteeringSafetyTes
   DEG_TO_CAN = 10
 
   ANGLE_RATE_BP = [0., 5., 25.]
-  ANGLE_RATE_UP = [2.5, 1.5, .2]
-  ANGLE_RATE_DOWN = [5., 2., .3]
+  ANGLE_RATE_UP = [5., 3., .4]
+  ANGLE_RATE_DOWN = [10., 4., .6]
 
   def setUp(self):
     self.packer = CANPackerPanda("psa_aee2010_r3")
