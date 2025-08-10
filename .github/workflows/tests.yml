@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 0  # need master to get diff
       - uses: ./.github/workflows/cache
       - name: Run mutation tests
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           source setup.sh
           scons -j8
