@@ -48,8 +48,6 @@ PSA_SERIAL_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF1, 
 
 PSA_RX_OFFSET = -0x20
 
-# PSA ECUs send an unpadded response on tester_present request.
-# _is_tester_present_response only accepts padded responses, so needed to be modified.
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[
     Request(
