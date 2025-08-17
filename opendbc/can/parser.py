@@ -69,7 +69,7 @@ class MessageState:
 
     # must have good counter and checksum to update data
     if checksum_failed or counter_failed:
-      carlog.warning(f"{hex(self.address)} {self.name} checks failed, {checksum_failed=} {counter_failed=}")
+      carlog.error(f"{hex(self.address)} {self.name} checks failed, {checksum_failed=} {counter_failed=}")
       return False
 
     if not self.vals:
@@ -87,6 +87,8 @@ class MessageState:
       if (dt > 1.0 or len(self.timestamps) >= self.timestamps.maxlen) and dt != 0:
         self.frequency = min(len(self.timestamps) / dt, 100.0)
         self.timeout_threshold = (1_000_000_000 / self.frequency) * 10
+        carlog.error(f"{hex(self.address)} {self.name} learned frequency: {self.frequency:.2f} Hz "
+                     f"(timeout_threshold={self.timeout_threshold})")
     return True
 
   def update_counter(self, cur_count: int, cnt_size: int) -> bool:
@@ -95,6 +97,9 @@ class MessageState:
     elif self.counter_fail > 0:
       self.counter_fail -= 1
     self.counter = cur_count
+    if self.counter_fail == MAX_BAD_COUNTER:
+      carlog.error(f"{hex(self.address)} {self.name} counter stuck/bad too often. "
+                  f"cur_count={cur_count}, expected={(self.counter+1)&((1<<cnt_size)-1)}")
     return self.counter_fail < MAX_BAD_COUNTER
 
   def valid(self, current_nanos: int, bus_timeout: bool) -> bool:
@@ -103,6 +108,9 @@ class MessageState:
     if not self.timestamps:
       return False
     if (current_nanos - self.timestamps[-1]) > self.timeout_threshold:
+      carlog.error(f"{hex(self.address)} {self.name} timeout: "
+                  f"last={self.timestamps[-1]}, now={current_nanos}, "
+                  f"threshold={self.timeout_threshold}")
       return False
     return True
 
@@ -234,6 +242,10 @@ class CANParser:
         if st.timeout_threshold > 0:
           bus_timeout_threshold = min(bus_timeout_threshold, st.timeout_threshold)
       self.bus_timeout = ((t - self.last_nonempty_nanos) > bus_timeout_threshold) and not ignore_alive
+      if self.bus_timeout:
+        carlog.error(f"BUS {self.bus} timeout: (t={t}, last_nonempty={self.last_nonempty_nanos}, "
+                    f"threshold={bus_timeout_threshold})")
+
       self.update_valid(t)
 
     return updated_addrs
