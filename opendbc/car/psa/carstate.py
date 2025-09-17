@@ -27,7 +27,7 @@ class CarState(CarStateBase):
     ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
 
     # gas
-    ret.gasPressed = cp.vl['Dyn_CMM']['P002_Com_rAPP'] > 0
+    ret.gasPressed = cp.vl['DRIVER']['GAS_PEDAL'] > 0
 
     # brake
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
