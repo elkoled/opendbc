@@ -23,7 +23,6 @@ class CarController(CarControllerBase):
     can_sends.append(create_lka_steering(self.packer, self.frame, CC.latActive, apply_angle))
     self.apply_angle_last = apply_angle
 
-
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = self.apply_angle_last
     self.frame += 1
