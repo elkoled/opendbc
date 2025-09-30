@@ -18,4 +18,10 @@ FW_VERSIONS = {
         b'200603842', # Peugeot 508 Hybrid
     ],
   },
+  CAR.PSA_CITROEN_BERLINGO: {
+    # ARTIV - Radar
+    (Ecu.fwdRadar, 0x6B6, None): [
+        b'xxxxxxx', # Citroen Berlingo
+    ],
+  },
 }

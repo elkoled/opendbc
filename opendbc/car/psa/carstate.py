@@ -35,6 +35,7 @@ class CarState(CarStateBase):
     # steering wheel
     STEERING_ALT_BUS = {
       CAR.PSA_PEUGEOT_208: cp.vl,
+      CAR.PSA_CITROEN_BERLINGO: cp.vl,
       CAR.PSA_PEUGEOT_508: cp_cam.vl,
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
