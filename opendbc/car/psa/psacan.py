@@ -15,7 +15,7 @@ def create_lka_steering(packer, lat_active: bool, angle:float, apply_angle: floa
     'STATUS': status,
     # 'LXA_ACTIVATION': 1,
     'TORQUE_FACTOR': lat_active * 100,
-    'SET_ANGLE': angle,
+    'SET_ANGLE': 0,
   }
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
