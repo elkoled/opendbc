@@ -136,6 +136,7 @@ static safety_config psa_init(uint16_t param) {
     {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
     // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
+    // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
     {.msg = {                                                                                                                                         // gas_pedal
       {PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
