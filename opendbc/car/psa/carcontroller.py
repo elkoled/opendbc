@@ -16,6 +16,7 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
+    apply_angle = CS.out.steeringAngleDeg
 
     # lateral control
     if self.frame % 5 == 0:
