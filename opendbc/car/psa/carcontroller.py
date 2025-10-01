@@ -16,7 +16,6 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
-    apply_angle = CS.out.steeringAngleDeg
 
     # lateral control
     if self.frame % 5 == 0:
@@ -32,7 +31,7 @@ class CarController(CarControllerBase):
       else:
         self.status = 4
 
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
+      can_sends.append(create_lka_steering(self.packer, CC.latActive, CS.out.steeringAngleDeg, apply_angle, self.status))
 
       self.apply_angle_last = apply_angle
 

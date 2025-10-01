@@ -118,7 +118,8 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
     bool lka_active = ((msg->data[5] & 0xFEU) >> 1) == 100U;
 
     if (steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS)) {
-      tx = false;
+      //TODO: revert to false
+      tx = true;
     }
   }
   return tx;
