@@ -296,8 +296,8 @@ BO_ 973 Dyn2_FRE: 8 ABS___Antiblockiersystem
 
 BO_ 1010 LANE_KEEP_ASSIST: 8 XXX
  SG_ DRIVE : 6|1@0+ (1,0) [0|1] "" XXX
- SG_ COUNTER : 11|4@0+ (1,0) [0|15] "" XXX
- SG_ CHECKSUM : 15|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 11|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 15|4@0+ (1,0) [0|15] "" XXX
  SG_ unknown2 : 23|8@0+ (1,0) [0|255] "" XXX
  SG_ TORQUE : 31|11@0- (1,0) [0|2047] "" XXX
  SG_ LANE_DEPARTURE : 33|2@0+ (1,0) [0|3] "" XXX
