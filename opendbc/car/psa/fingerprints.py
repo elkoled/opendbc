@@ -18,4 +18,10 @@ FW_VERSIONS = {
         b'200603842', # Peugeot 508 Hybrid
     ],
   },
+  CAR.PSA_PEUGEOT_3008: {
+    # ARTIV - Radar
+    (Ecu.fwdRadar, 0x6B6, None): [
+        b'xxxxxx', # Peugeot 3008 Automatic
+    ],
+  },
 }

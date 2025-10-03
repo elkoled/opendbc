@@ -36,6 +36,7 @@ class CarState(CarStateBase):
     STEERING_ALT_BUS = {
       CAR.PSA_PEUGEOT_208: cp.vl,
       CAR.PSA_PEUGEOT_508: cp_cam.vl,
+      CAR.PSA_PEUGEOT_3008: cp.vl,
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
