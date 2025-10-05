@@ -42,5 +42,9 @@ FW_VERSIONS = {
     (Ecu.fwdRadar, 0x6B6, None): [
         b'200603842', # Peugeot 508 Hybrid
     ],
+    # DIRECTN - Electronic Power Steering
+    (Ecu.eps, 0x6B5, None): [
+        b'085095308910190312', # Citroen C5 Aircross CC-only
+    ],
   },
 }
