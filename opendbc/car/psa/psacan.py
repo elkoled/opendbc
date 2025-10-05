@@ -6,11 +6,9 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   return (chk_ini - checksum) & 0xF
 
 
-def create_lka_steering(packer, lat_active: bool, angle: float, apply_angle: float, status: int):
-  # max torque 100
-  torque = max((apply_angle-angle) * 10, 100)
+def create_lka_steering(packer, lat_active: bool, apply_torque: float, status: int):
   values = {
-    'TORQUE':0 if not lat_active else torque,
+    'TORQUE': apply_torque,
     # 'LANE_DEPARTURE':0 if not lat_active else 1 if torque>0 else 2,
     # 'DRIVE': 1,
     'STATUS': status,

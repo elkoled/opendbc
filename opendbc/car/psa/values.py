@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 
 from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
-from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.docs_definitions import CarDocs, CarHarness, CarParts
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
@@ -10,15 +9,18 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-  STEER_STEP = 1
-
-  ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
-    390, # deg
-    ([0., 5., 25.], [2.5, 1.5, .2]),
-    ([0., 5., 25.], [5., 2., .3]),
-  )
+  # TODO: tune these params
+  STEER_MAX = 100  # TODO: find max torque
+  # STEER_MAX_LOOKUP = [9, 17], [200, 100]
+  STEER_STEP = 5
+  STEER_DELTA_UP = 5  # TODO: torque increase per refresh
+  STEER_DELTA_DOWN = 5  # TODO: torque decrease per refresh
+  STEER_DRIVER_MULTIPLIER = 1  # TODO: weight driver torque
+  STEER_DRIVER_FACTOR = 100
   STEER_DRIVER_ALLOWANCE = 5  # Driver intervention threshold, 0.5 Nm
 
+  def __init__(self, CP):
+    pass
 
 @dataclass
 class PSACarDocs(CarDocs):
