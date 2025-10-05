@@ -11,19 +11,6 @@ FW_VERSIONS = {
         b'194504751', # Peugeot e208 GT CC-only
         b'222256113', # Peugeot e208 GT NZ
     ],
-  },
-  CAR.PSA_PEUGEOT_508: {
-    # ARTIV - Radar
-    (Ecu.fwdRadar, 0x6B6, None): [
-        b'200603842', # Peugeot 508 Hybrid
-    ],
-  },
-  CAR.PSA_CITROEN_BERLINGO: {
-    # ARTIV - Radar
-    (Ecu.fwdRadar, 0x6B6, None): [
-        b'xxxxxxx', # Citroen Berlingo
-    ],
-    ############# PLACEHOLDER ################
     # DIRECTN - Electronic Power Steering
     (Ecu.eps, 0x6B5, None): [
         b'6077GC0817309',
@@ -49,6 +36,18 @@ FW_VERSIONS = {
         b'085095700857210527',
         b'\x00\x00\x00\x00\x03\x93!\x08 \x01\xc2\x12\x12\xff\xff\xff\x00\x02\x00\x00\x01\x94'
     ],
-    ############### PLACEHODER END ##############
+  },
+  CAR.PSA_PEUGEOT_508: {
+    # ARTIV - Radar
+    (Ecu.fwdRadar, 0x6B6, None): [
+        b'200603842', # Peugeot 508 Hybrid
+    ],
+  },
+  CAR.PSA_CITROEN_BERLINGO: {
+    # DIRECTN - Electronic Power Steering
+    (Ecu.eps, 0x6B5, None): [
+        b'085095200769200218', # Citroen Berlingo - Torque API
+        b"\x00\x00\x00\x00\x03\x92\x03\x07\x13\x01\xa4'\x00\xff\xff\xff\x00\x02\x00\x00\x01\x93\x94\x16",
+    ],
   }
 }
