@@ -10,7 +10,8 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
     super().__init__(dbc_names, CP)
     self.packer = CANPacker(dbc_names[Bus.main])
-    self.apply_angle_last = 0
+    self.apply_torque_last = 0
+    self.apply_torque = 0
     self.status = 2
 
   def update(self, CC, CS, now_nanos):
@@ -20,7 +21,7 @@ class CarController(CarControllerBase):
     # lateral control
     if self.frame % 5 == 0:
       new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-      apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+      self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
                                                       CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
       # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
@@ -32,13 +33,13 @@ class CarController(CarControllerBase):
       else:
         self.status = 4
 
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
+      can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.status))
 
-      self.apply_torque_last = apply_torque
+      self.apply_torque_last = self.apply_torque
 
     new_actuators = actuators.as_builder()
-    new_actuators.torque = apply_torque / CarControllerParams.STEER_MAX
-    new_actuators.torqueOutputCan = apply_torque
+    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
+    new_actuators.torqueOutputCan = self.apply_torque
 
     self.frame += 1
     return new_actuators, can_sends
