@@ -34,9 +34,7 @@ FW_VERSIONS = {
     # ABRASR - ABS/ESP
     (Ecu.abs, 0x6AD, None): [
         b'085095700857210527',
-        b'085065315928191130', # Citroen Berlingo VP K9
         b'\x00\x00\x00\x00\x03\x93!\x08 \x01\xc2\x12\x12\xff\xff\xff\x00\x02\x00\x00\x01\x94',
-        b'\x00\x00\x00\x00\x03\x92\x19\x02\x13\x03\x98&\x00\xff\xff\xff\x00\x02\x00\x00\x01\x93f\x97' # Citroen Berlingo VP K9
     ],
   },
   CAR.PSA_PEUGEOT_508: {
@@ -47,6 +45,7 @@ FW_VERSIONS = {
     # ABRASR - ABS/ESP
     (Ecu.abs, 0x6AD, None): [
         b'085095308910190312', # Citroen C5 Aircross CC-only
+        b'085065315928191130', # Citroen Berlingo VP K9
     ],
   },
 }
