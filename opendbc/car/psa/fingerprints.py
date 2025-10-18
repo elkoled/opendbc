@@ -46,6 +46,7 @@ FW_VERSIONS = {
     ],
     # ABRASR - ABS/ESP
     (Ecu.abs, 0x6AD, None): [
+        b'085065201906190129', # Peugeot 3008
         b'085095700857210527',
         b'\x00\x00\x00\x00\x03\x93!\x08 \x01\xc2\x12\x12\xff\xff\xff\x00\x02\x00\x00\x01\x94'
     ],
