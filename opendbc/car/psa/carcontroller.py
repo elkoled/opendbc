@@ -1,6 +1,6 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
-from opendbc.car.lateral import apply_std_steer_angle_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering
 from opendbc.car.psa.values import CarControllerParams
@@ -10,17 +10,19 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
     super().__init__(dbc_names, CP, CP_SP)
     self.packer = CANPacker(dbc_names[Bus.main])
-    self.apply_angle_last = 0
+    self.apply_torque_last = 0
+    self.apply_torque = 0
     self.status = 2
 
-  def update(self, CC, CC_SP, CS, now_nanos):
+  def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
 
     # lateral control
     if self.frame % 5 == 0:
-      apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
-                                                 CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+      new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
+      self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+                                                      CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
 
       # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
       # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
@@ -31,11 +33,13 @@ class CarController(CarControllerBase):
       else:
         self.status = 4
 
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
+      can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.status))
 
-      self.apply_angle_last = apply_angle
+      self.apply_torque_last = self.apply_torque
 
     new_actuators = actuators.as_builder()
-    new_actuators.steeringAngleDeg = self.apply_angle_last
+    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
+    new_actuators.torqueOutputCan = self.apply_torque
+
     self.frame += 1
     return new_actuators, can_sends
