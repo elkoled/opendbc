@@ -14,7 +14,7 @@ class CarController(CarControllerBase):
     self.apply_torque = 0
     self.status = 2
 
-  def update(self, CC, CS, now_nanos):
+  def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
 
