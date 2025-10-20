@@ -12,9 +12,9 @@ class CarControllerParams:
   # TODO: tune these params
   STEER_MAX = 200  # TODO: find max torque
   # STEER_MAX_LOOKUP = [9, 17], [200, 100]
-  STEER_STEP = 5
-  STEER_DELTA_UP = 2  # TODO: torque increase per refresh
-  STEER_DELTA_DOWN = 3  # TODO: torque decrease per refresh
+  STEER_STEP = 1
+  STEER_DELTA_UP = 1  # TODO: torque increase per refresh
+  STEER_DELTA_DOWN = 1  # TODO: torque decrease per refresh
   STEER_DRIVER_MULTIPLIER = 1  # TODO: weight driver torque
   STEER_DRIVER_FACTOR = 100
   STEER_DRIVER_ALLOWANCE = 5  # Driver intervention threshold, 0.5 Nm
@@ -38,7 +38,7 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.73, steerRatio=21.5), # TODO: these are set to live learned Berlingo values
+    CarSpecs(mass=1530, wheelbase=2.73, steerRatio=17.6), # TODO: these are set to live learned Berlingo values
   )
   PSA_PEUGEOT_508 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 508 2019-23")],

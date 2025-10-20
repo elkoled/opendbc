@@ -19,7 +19,7 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
 
     # lateral control
-    if self.frame % 5 == 0:
+    if self.frame % CarControllerParams.STEER_STEP == 0:
       new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
       self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
                                                       CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
