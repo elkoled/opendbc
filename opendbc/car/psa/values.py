@@ -12,9 +12,9 @@ class CarControllerParams:
   # TODO: tune these params
   STEER_MAX = 200  # TODO: find max torque
   # STEER_MAX_LOOKUP = [9, 17], [200, 100]
-  STEER_STEP = 5
-  STEER_DELTA_UP = 2  # TODO: torque increase per refresh
-  STEER_DELTA_DOWN = 3  # TODO: torque decrease per refresh
+  STEER_STEP = 1
+  STEER_DELTA_UP = 1  # TODO: torque increase per refresh
+  STEER_DELTA_DOWN = 1  # TODO: torque decrease per refresh
   STEER_DRIVER_MULTIPLIER = 1  # TODO: weight driver torque
   STEER_DRIVER_FACTOR = 100
   STEER_DRIVER_ALLOWANCE = 5  # Driver intervention threshold, 0.5 Nm
