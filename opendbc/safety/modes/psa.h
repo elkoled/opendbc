@@ -9,6 +9,7 @@
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
+#define PSA_IS_DAT_DIRA           1173U // TX from OP,  hold steering wheel
 
 // CAN bus
 #define PSA_MAIN_BUS 0U
@@ -129,12 +130,14 @@ static safety_config psa_init(uint16_t param) {
   UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
+    {PSA_IS_DAT_DIRA, PSA_MAIN_BUS, 4, .check_relay = false}, // hold steering wheel
+    {PSA_STEERING, PSA_CAM_BUS, 7, .check_relay = false}, // driver torque
   };
 
   static RxCheck psa_rx_checks[] = {
     {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
     {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
-    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
+    //{.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
     // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
     // TODO: Berlingo uses Dyn5_CMM on MAIN_BUS for gas pedal
