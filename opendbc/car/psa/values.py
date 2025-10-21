@@ -10,7 +10,7 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   # TODO: tune these params
-  STEER_MAX = 200  # TODO: find max torque
+  STEER_MAX = 50  # TODO: find max torque
   # STEER_MAX_LOOKUP = [9, 17], [200, 100]
   STEER_STEP = 1
   STEER_DELTA_UP = 1  # TODO: torque increase per refresh
@@ -39,7 +39,7 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.73, steerRatio=17.6), # TODO: these are set to live learned Berlingo values
+    CarSpecs(mass=1530, wheelbase=2.73, steerRatio=14.0), # TODO: these are set to live learned Berlingo values
   )
 
 
