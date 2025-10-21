@@ -18,3 +18,10 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, status: i
   }
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
+
+
+def create_steering_hold(packer, lat_active: bool, is_dat_dira):
+  # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
+  if lat_active:
+    is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
+  return packer.make_can_msg('STEERING', 2, is_dat_dira)

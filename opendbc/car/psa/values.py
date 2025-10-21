@@ -22,6 +22,7 @@ class CarControllerParams:
   def __init__(self, CP):
     pass
 
+
 @dataclass
 class PSACarDocs(CarDocs):
   package: str = "Adaptive Cruise Control (ACC) & Lane Assist"

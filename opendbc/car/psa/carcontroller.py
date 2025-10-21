@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering
+from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold
 from opendbc.car.psa.values import CarControllerParams
 
 
@@ -34,6 +34,10 @@ class CarController(CarControllerBase):
       self.status = 4
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
+
+    if self.frame % 10 == 0:
+      # send steering wheel hold message at 10 Hz to keep EPS engaged
+      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     self.apply_torque_last = apply_torque
 
