@@ -1,3 +1,4 @@
+import copy
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
@@ -9,10 +10,10 @@ TransmissionType = structs.CarParams.TransmissionType
 
 
 class CarState(CarStateBase):
-  def __init__(self, CP):
-    super().__init__(CP)
-    self.is_dat_dira = {}
-    self.steering = {}
+  def __init__(self, CP, CP_SP):
+    CarStateBase.__init__(self, CP, CP_SP)
+    self.is_dat_dira = None
+    self.steering = None
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
@@ -45,8 +46,8 @@ class CarState(CarStateBase):
     ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    self.is_dat_dira = cp.vl['IS_DAT_DIRA']
-    self.steering = cp.vl['STEERING']
+    self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
+    self.steering = copy.copy(cp.vl['STEERING'])
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
