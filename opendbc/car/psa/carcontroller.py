@@ -11,7 +11,6 @@ class CarController(CarControllerBase):
     super().__init__(dbc_names, CP)
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_torque_last = 0
-    self.apply_torque = 0
     self.status = 2
 
   def update(self, CC, CS, now_nanos):
@@ -19,27 +18,28 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
 
     # lateral control
-    if self.frame % CarControllerParams.STEER_STEP == 0:
+    apply_torque = 0
+    if CC.latActive:
       new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-      self.apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                      CS.out.steeringTorque, CarControllerParams, CarControllerParams.STEER_MAX)
+      apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
+                                                      CS.out.steeringTorque, CarControllerParams)
 
-      # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
-      # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
-      if not CC.latActive:
-        self.status = 2
-      elif not CS.eps_active and not CS.out.steeringPressed:
-        self.status = 2 if self.status == 4 else self.status + 1
-      else:
-        self.status = 4
+    # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
+    # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
+    if not CC.latActive:
+      self.status = 2
+    elif not CS.eps_active and not CS.out.steeringPressed:
+      self.status = 2 if self.status == 4 else self.status + 1
+    else:
+      self.status = 4
 
-      can_sends.append(create_lka_steering(self.packer, CC.latActive, self.apply_torque, self.status))
+    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
 
-      self.apply_torque_last = self.apply_torque
+    self.apply_torque_last = apply_torque
 
     new_actuators = actuators.as_builder()
-    new_actuators.torque = self.apply_torque / CarControllerParams.STEER_MAX
-    new_actuators.torqueOutputCan = self.apply_torque
+    new_actuators.torque = apply_torque / CarControllerParams.STEER_MAX
+    new_actuators.torqueOutputCan = apply_torque
 
     self.frame += 1
     return new_actuators, can_sends
