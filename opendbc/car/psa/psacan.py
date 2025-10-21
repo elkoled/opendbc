@@ -20,6 +20,16 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, status: i
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
 
+def create_driver_torque(packer, steering):
+  # abs(driver_torque) > 10 to keep EPS engaged
+  torque = steering['DRIVER_TORQUE']
+
+  if abs(torque) < 10:
+    steering['DRIVER_TORQUE'] = 10 if torque > 0 else -10
+
+  return packer.make_can_msg('STEERING', 0, steering)
+
+
 def create_steering_hold(packer, lat_active: bool, is_dat_dira):
   # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
   if lat_active:
