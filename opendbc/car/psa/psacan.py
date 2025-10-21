@@ -34,5 +34,5 @@ def create_steering_hold(packer, lat_active: bool, is_dat_dira):
   # set STEERWHL_HOLD_BY_DRV to keep EPS engaged when lat active
   if lat_active:
     is_dat_dira['STEERWHL_HOLD_BY_DRV'] = 1
-  return packer.make_can_msg('STEERING', 2, is_dat_dira)
+  return packer.make_can_msg('IS_DAT_DIRA', 2, is_dat_dira)
 

@@ -9,6 +9,11 @@ TransmissionType = structs.CarParams.TransmissionType
 
 
 class CarState(CarStateBase):
+  def __init__(self, CP):
+    super().__init__(CP)
+    self.is_dat_dira = {}
+    self.steering = {}
+
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
