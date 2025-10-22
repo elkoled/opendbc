@@ -1,6 +1,6 @@
 from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
-from opendbc.car.lateral import apply_driver_steer_torque_limits
+from opendbc.car.lateral import apply_meas_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque
 from opendbc.car.psa.values import CarControllerParams
@@ -20,9 +20,10 @@ class CarController(CarControllerBase):
     # lateral control
     apply_torque = 0
     if CC.latActive:
+      scaled_eps_torque = CS.out.steeringTorqueEps * 100
       new_torque = int(round(CC.actuators.torque * CarControllerParams.STEER_MAX))
-      apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
-                                                      CS.out.steeringTorque, CarControllerParams)
+      apply_torque = apply_meas_steer_torque_limits(new_torque, self.apply_torque_last,
+                                                     scaled_eps_torque, CarControllerParams)
       # emulate driver torque message at 1 Hz
       if self.frame % 100 == 0:
         can_sends.append(create_driver_torque(self.packer, CS.steering))
