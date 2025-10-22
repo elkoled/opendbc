@@ -130,7 +130,7 @@ static safety_config psa_init(uint16_t param) {
   UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
-    {PSA_IS_DAT_DIRA, PSA_MAIN_BUS, 4, .check_relay = false}, // hold steering wheel
+    {PSA_IS_DAT_DIRA, PSA_MAIN_BUS, 4, .check_relay = true}, // hold steering wheel
     {PSA_STEERING, PSA_CAM_BUS, 7, .check_relay = false}, // driver torque
   };
 
