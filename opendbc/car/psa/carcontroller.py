@@ -26,8 +26,8 @@ class CarController(CarControllerBase):
       apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last,
                                                       CS.out.steeringTorque, CarControllerParams)
       # emulate driver torque message at 1 Hz
-      if self.frame % 100 == 0:
-        can_sends.append(create_driver_torque(self.packer, CS.steering))
+      # if self.frame % 100 == 0:
+      #   can_sends.append(create_driver_torque(self.packer, CS.steering))
 
     # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
     # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
@@ -40,9 +40,9 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_torque, self.status))
 
-    if self.frame % 10 == 0:
-      # send steering wheel hold message at 10 Hz to keep EPS engaged
-      can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
+    # if self.frame % 10 == 0:
+    #   # send steering wheel hold message at 10 Hz to keep EPS engaged
+    #   can_sends.append(create_steering_hold(self.packer, CC.latActive, CS.is_dat_dira))
 
     self.apply_torque_last = apply_torque
 
