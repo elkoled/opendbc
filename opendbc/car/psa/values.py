@@ -10,7 +10,7 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   # TODO: tune these params
-  STEER_MAX = 50  # TODO: find max torque
+  STEER_MAX = 100  # TODO: find max torque
   # STEER_MAX_LOOKUP = [9, 17], [200, 100]
   STEER_STEP = 1
   STEER_DELTA_UP = 1  # TODO: torque increase per refresh
