@@ -8,7 +8,7 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "NISSAN_ROGUE" = [nan, 1.5, nan]
 
 # PSA angle based controllers
-"PSA_PEUGEOT_208" = [1.2, 2.0, 0.25]
+"PSA_PEUGEOT_208" = [1.5, 2.0, 0.2]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]
