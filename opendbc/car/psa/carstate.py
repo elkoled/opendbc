@@ -33,7 +33,7 @@ class CarState(CarStateBase):
     ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
 
     # gas
-    ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
+    # ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
 
     # brake
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
@@ -48,6 +48,8 @@ class CarState(CarStateBase):
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
     self.is_dat_dira = copy.copy(cp.vl['IS_DAT_DIRA'])
     self.steering = copy.copy(cp.vl['STEERING'])
+    # ret.steerTempUnavailable = not self.eps_active
+    ret.gasPressed = not self.eps_active
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed

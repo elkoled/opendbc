@@ -2,6 +2,7 @@ from opendbc.car import structs, get_safety_config
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.psa.carcontroller import CarController
 from opendbc.car.psa.carstate import CarState
+from opendbc.car.common.conversions import Conversions as CV
 
 TransmissionType = structs.CarParams.TransmissionType
 
@@ -21,6 +22,7 @@ class CarInterface(CarInterfaceBase):
     ret.steerActuatorDelay = 0.3
     ret.steerLimitTimer = 0.1
     ret.steerAtStandstill = True
+    ret.minSteerSpeed = 50 * CV.KPH_TO_MS
 
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
