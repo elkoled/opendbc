@@ -65,10 +65,10 @@ class CarState(CarStateBase):
     else:
       ret.gearShifter = GearShifter.drive
 
-    # blinkers
+    # blinkers TODO: swapped for aee2010_r2 / 3008 / C4
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
-    ret.leftBlinker = blinker == 1
-    ret.rightBlinker = blinker == 2
+    ret.leftBlinker = blinker == 2
+    ret.rightBlinker = blinker == 1
 
     # lock info
     ret.doorOpen = any((cp_cam.vl['Dat_BSI']['DRIVER_DOOR'], cp_cam.vl['Dat_BSI']['PASSENGER_DOOR']))
