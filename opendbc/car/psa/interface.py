@@ -23,6 +23,7 @@ class CarInterface(CarInterfaceBase):
     ret.steerLimitTimer = 0.1
     ret.steerAtStandstill = True
     ret.minSteerSpeed = 50 * CV.KPH_TO_MS
+    ret.minEnableSpeed = 50 * CV.KPH_TO_MS
 
     CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
