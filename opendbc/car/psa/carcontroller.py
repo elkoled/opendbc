@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_steering_hold, create_driver_torque
+from opendbc.car.psa.psacan import create_lka_steering#, create_steering_hold, create_driver_torque
 from opendbc.car.psa.values import CarControllerParams
 
 
@@ -17,7 +17,6 @@ class CarController(CarControllerBase):
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
-
 
     # lateral control
     apply_torque = 0

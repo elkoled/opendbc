@@ -35,5 +35,17 @@ FW_VERSIONS = {
         b'085095700857210527',
         b'\x00\x00\x00\x00\x03\x93!\x08 \x01\xc2\x12\x12\xff\xff\xff\x00\x02\x00\x00\x01\x94'
     ],
+    # INJ - Engine
+    (Ecu.epb, 0x6a8, None): [
+        b'xxxxx',
+    ],
+    # BOITEVIT - Transmission
+    (Ecu.transmission, 0x6A9, None): [
+        b'xxxxx',
+    ],
+    # CORPRO - Headlamps
+    (Ecu.telematics, 0x6b7, None): [
+        b'xxxxx',
+    ],
   },
 }
