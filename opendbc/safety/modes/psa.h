@@ -128,6 +128,7 @@ static safety_config psa_init(uint16_t param) {
   UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
+    {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
   };
 
   static RxCheck psa_rx_checks[] = {
