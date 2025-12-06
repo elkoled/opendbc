@@ -40,7 +40,7 @@ class CarController(CarControllerBase):
       self.resume = 5
 
     if self.resume>0:
-      can_sends.append(create_resume_acc(self.packer, CC.hs2_dat_mdd_cmd_452))
+      can_sends.append(create_resume_acc(self.packer, CS.hs2_dat_mdd_cmd_452))
       self.resume -= 1
 
     if starting:
@@ -48,6 +48,5 @@ class CarController(CarControllerBase):
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle
-    new_actuators.startingState = starting
     self.frame += 1
     return new_actuators, can_sends
