@@ -44,7 +44,10 @@ class CarController(CarControllerBase):
       self.resume -= 1
 
     if starting:
-      print("starting in progress...")
+      print("starting = 1")
+
+    if actuators.longControlState == LongCtrlState.starting:
+      print("LongCtrlState.starting = 1")
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle
