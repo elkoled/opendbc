@@ -1,3 +1,4 @@
+import copy
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
@@ -53,6 +54,8 @@ class CarState(CarStateBase):
     ret.cruiseState.nonAdaptive = False # not available for CC-only
     ret.cruiseState.standstill = False # not available for CC-only
     ret.accFaulted = False # not available for CC-only
+    # resume request
+    ret.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
