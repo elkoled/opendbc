@@ -37,7 +37,7 @@ class CarController(CarControllerBase):
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
     # ACC resume
-    if starting and self.resume==0:
+    if starting and self.frame%100==0:
       self.resume = 15
     if self.resume > 0:
       stock_status = CS.hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST']
