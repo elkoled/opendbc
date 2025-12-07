@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_gas, create_dyn_cmm, create_dyn_cmm2, create_new_msg_4f8
+from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc
 from opendbc.car.psa.values import CarControllerParams
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -36,7 +36,14 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
-    can_sends.append(create_new_msg_4f8(self.packer, 1, CS.new_msg_4f8))
+    # if self.frame%500==0:
+    #    self.resume = 10
+
+    # if self.frame%10==0:
+    #   can_sends.append(create_new_msg_4f8(self.packer, self.resume>0, CS.new_msg_4f8))
+    #   can_sends.append(create_new_msg_4f8_2(self.packer, self.resume>0, CS.new_msg_4f8))
+    #   if self.resume>0:
+    #     self.resume-=1
     # step = self.frame % 100
     # self.resume = step if step <= 50 else 0
 
@@ -61,12 +68,14 @@ class CarController(CarControllerBase):
     #   can_sends.append(create_gas(self.packer, 5.0, CS.driver))
     #   self.resume-=1
 
-    # if self.frame%100==0:
-    #   self.resume = 5
+    if starting:
+      self.resume = 10
 
-    # if self.resume>0:
-    #   can_sends.append(create_resume_acc(self.packer, self.resume<3, CS.hs2_dat_mdd_cmd_452))
-    #   self.resume -= 1
+    if self.frame%4==0:
+      # if self.resume>0:
+      can_sends.append(create_resume_acc(self.packer, self.resume<5, CS.hs2_dat_mdd_cmd_452))
+      if self.resume>0:
+        self.resume -= 1
 
     if starting:
       print("starting = 1")
