@@ -32,3 +32,7 @@ def create_dyn_cmm(packer, gas, dyn_cmm):
 def create_dyn_cmm2(packer, gas, dyn_cmm):
   dyn_cmm['P027_ACCtl_stLogicOut'] = gas
   return packer.make_can_msg('Dyn_CMM', 0, dyn_cmm)
+
+def create_new_msg_4f8(packer, resume, new_msg_4f8):
+  new_msg_4f8['ACC_GO_RELATED'] = resume
+  return packer.make_can_msg('NEW_MSG_4F8', 2, new_msg_4f8)

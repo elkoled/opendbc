@@ -10,6 +10,7 @@
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U // TX from OP,  EPS
 #define PSA_DYN_CMM               520U  // TX from GAS
+#define PSA_NEW_MSG_4F8           1272U // TX from 4F8
 
 // CAN bus
 #define PSA_MAIN_BUS 0U
@@ -130,10 +131,11 @@ static safety_config psa_init(uint16_t param) {
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true}, // EPS steering
     {PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, .check_relay = false}, // resume acc
-    {PSA_DRIVER, PSA_MAIN_BUS, 6, .check_relay = false}, // spoof gas
-    {PSA_DRIVER, PSA_CAM_BUS, 6, .check_relay = false},  // spoof gas
-    {PSA_DYN_CMM, PSA_CAM_BUS, 8, .check_relay = true},  // spoof gas
-    {PSA_DYN_CMM, PSA_MAIN_BUS, 8, .check_relay = false},  // spoof gas
+    {PSA_NEW_MSG_4F8, PSA_MAIN_BUS, 5, .check_relay = true},
+    // {PSA_DRIVER, PSA_MAIN_BUS, 6, .check_relay = false}, // spoof gas
+    // {PSA_DRIVER, PSA_CAM_BUS, 6, .check_relay = false},  // spoof gas
+    // {PSA_DYN_CMM, PSA_CAM_BUS, 8, .check_relay = true},  // spoof gas
+    // {PSA_DYN_CMM, PSA_MAIN_BUS, 8, .check_relay = false},  // spoof gas
   };
 
   static RxCheck psa_rx_checks[] = {
