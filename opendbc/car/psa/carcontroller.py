@@ -36,47 +36,15 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
-    # if self.frame%500==0:
-    #    self.resume = 10
-
-    # if self.frame%10==0:
-    #   can_sends.append(create_new_msg_4f8(self.packer, self.resume>0, CS.new_msg_4f8))
-    #   can_sends.append(create_new_msg_4f8_2(self.packer, self.resume>0, CS.new_msg_4f8))
-    #   if self.resume>0:
-    #     self.resume-=1
-    # step = self.frame % 100
-    # self.resume = step if step <= 50 else 0
-
-    # if self.frame%1000==0:
-    #   self.resume = 2
-
-
-    # can_sends.append(create_dyn_cmm(self.packer, self.resume>0, CS.dyn_cmm))
-    # can_sends.append(create_dyn_cmm2(self.packer, self.resume>0, CS.dyn_cmm))
-
-    # if self.resume>0:
-    #   self.resume -=1
-
-    # if self.frame%1000==0:
-    #   self.resume = 20
-
-    # if self.resume>0:
-    #   can_sends.append(create_dyn_cmm2(self.packer, self.resume, CS.dyn_cmm))
-    #   self.resume-=1
-
-    # if self.resume>0:
-    #   can_sends.append(create_gas(self.packer, 5.0, CS.driver))
-    #   self.resume-=1
-
+    # ACC resume request
     if starting:
       self.resume = 10
 
-    if self.frame%4==0:
-      # if self.resume>0:
-      can_sends.append(create_resume_acc(self.packer, self.resume<5, CS.hs2_dat_mdd_cmd_452))
-      if self.resume>0:
+    if self.frame%4==0 and self.resume>0:
+        can_sends.append(create_resume_acc(self.packer, self.resume<5, CS.hs2_dat_mdd_cmd_452))
         self.resume -= 1
 
+    # TODO: delete debug print
     if starting:
       print("starting = 1")
 
