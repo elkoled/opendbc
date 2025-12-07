@@ -37,11 +37,13 @@ class CarController(CarControllerBase):
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
     # ACC resume request
-    if starting:
-      self.resume = 10
+    if starting and self.resume ==0:
+      self.resume = 20
+    # if self.frame%200==0:
+    #   self.resume=20
 
-    if self.frame%4==0 and self.resume>0:
-        can_sends.append(create_resume_acc(self.packer, self.resume<5, CS.hs2_dat_mdd_cmd_452))
+    if self.frame%3==0 and self.resume>0:
+        can_sends.append(create_resume_acc(self.packer, CS.hs2_dat_mdd_cmd_452))
         self.resume -= 1
 
     # TODO: delete debug print
