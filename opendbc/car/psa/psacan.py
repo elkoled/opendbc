@@ -26,5 +26,9 @@ def create_gas(packer, gas, driver):
   return packer.make_can_msg('DRIVER', 0, driver)
 
 def create_dyn_cmm(packer, gas, dyn_cmm):
-  dyn_cmm['P002_Com_rAPP'] = gas
+  dyn_cmm['P027_ACCtl_stLogicOut'] = gas
   return packer.make_can_msg('Dyn_CMM', 2, dyn_cmm)
+
+def create_dyn_cmm2(packer, gas, dyn_cmm):
+  dyn_cmm['P027_ACCtl_stLogicOut'] = gas
+  return packer.make_can_msg('Dyn_CMM', 0, dyn_cmm)

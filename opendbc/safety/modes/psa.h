@@ -133,6 +133,7 @@ static safety_config psa_init(uint16_t param) {
     {PSA_DRIVER, PSA_MAIN_BUS, 6, .check_relay = false}, // spoof gas
     {PSA_DRIVER, PSA_CAM_BUS, 6, .check_relay = false},  // spoof gas
     {PSA_DYN_CMM, PSA_CAM_BUS, 8, .check_relay = true},  // spoof gas
+    {PSA_DYN_CMM, PSA_MAIN_BUS, 8, .check_relay = false},  // spoof gas
   };
 
   static RxCheck psa_rx_checks[] = {
