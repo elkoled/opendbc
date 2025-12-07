@@ -17,6 +17,14 @@ def create_lka_steering(packer, lat_active: bool, apply_angle: float, status: in
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
-def create_resume_acc(packer, hs2_dat_mdd_cmd_452):
-  hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = 1
+def create_resume_acc(packer, resume, hs2_dat_mdd_cmd_452):
+  hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = resume
   return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
+
+def create_gas(packer, gas, driver):
+  driver['GAS_PEDAL'] = gas
+  return packer.make_can_msg('DRIVER', 0, driver)
+
+def create_dyn_cmm(packer, gas, dyn_cmm):
+  dyn_cmm['P002_Com_rAPP'] = gas
+  return packer.make_can_msg('Dyn_CMM', 2, dyn_cmm)

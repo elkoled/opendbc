@@ -77,7 +77,8 @@ BO_ 488 DAT3_CMM: 3 Vector__XXX
 
 BO_ 520 Dyn_CMM: 8 CMM___Motor_SG
  SG_ P000_Com_nEng : 7|16@0+ (0.125,0) [0|8191.75] "1/min" Vector__XXX
- SG_ P003_Com_trqActOut : 16|8@1+ (3,-150) [-150|615] "Nm" Vector__XXX
+ SG_ COUNTER : 19|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 23|4@0+ (1,0) [0|15] "" XXX
  SG_ P002_Com_rAPP : 24|8@1+ (0.5,0) [0|100] "%" Vector__XXX
  SG_ P027_ACCtl_stLogicOut : 32|1@1+ (1,0) [0|1] "-" Vector__XXX
  SG_ P014_Brk_stRed : 33|1@1+ (1,0) [0|1] "-" Vector__XXX
