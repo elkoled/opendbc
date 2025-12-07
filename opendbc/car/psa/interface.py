@@ -26,7 +26,7 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = False
-    # ret.openpilotLongitudinalControl = True # TODO: disable when startingState=True is enough!
+    ret.openpilotLongitudinalControl = True # TODO: disable when startingState=True is enough!
     ret.startingState = True
 
     return ret

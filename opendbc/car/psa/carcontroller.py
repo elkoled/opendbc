@@ -36,25 +36,16 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
-    # ACC resume request
-    if starting and self.resume ==0:
-      self.resume = 20
-    # if self.frame%200==0:
-    #   self.resume=20
+    # ACC resume
+    if starting and self.resume==0:
+      self.resume = 15
+    if self.resume > 0:
+      stock_status = CS.hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST']
+      status = 0 if stock_status == 1 else 1
 
-    if self.frame%3==0 and self.resume>0:
-        can_sends.append(create_resume_acc(self.packer, CS.hs2_dat_mdd_cmd_452))
+      if self.frame % 3 == 0:
+        can_sends.append(create_resume_acc(self.packer, status, CS.hs2_dat_mdd_cmd_452))
         self.resume -= 1
-
-    # TODO: delete debug print
-    if starting:
-      print("starting = 1")
-
-    if actuators.longControlState == LongCtrlState.starting:
-      print("LongCtrlState.starting = 1")
-
-    if self.frame%100 == 0:
-      print(actuators.longControlState)
 
     self.apply_angle_last = apply_angle
 
