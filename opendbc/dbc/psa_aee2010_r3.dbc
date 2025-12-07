@@ -444,6 +444,11 @@ BO_ 1270 HS2_DAT_ARTIV_V2_4F6: 5 ARTIV
  SG_ ARTIV_TARGET_CHANGE_INFO : 37|1@0+ (1,0) [0|0] "" RITCS,BSI,CMF
  SG_ TRAFFIC_DIRECTION : 39|2@0+ (1,0) [0|0] "" RITCS,BSI,CMF
 
+BO_ 1272 NEW_MSG_4F8: 5 XXX
+ SG_ COUNTER : 19|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 23|4@0+ (1,0) [0|15] "" XXX
+ SG_ ACC_GO_RELATED : 26|1@0+ (1,0) [0|1] "" XXX
+
 BO_ 1293 Dat_ABR: 7 ABS___Antiblockiersystem
  SG_ P351_Com_bABSIntvActv : 5|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P415_Com_stABSSTTReqRaw : 52|2@1+ (1,0) [0|3] "" Vector__XXX
