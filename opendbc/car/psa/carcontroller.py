@@ -20,6 +20,7 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     # longitudinal
     starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
+    stopping = actuators.longControlState == LongCtrlState.stopping
 
     # lateral control
     apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
@@ -37,7 +38,7 @@ class CarController(CarControllerBase):
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
 
     # ACC resume
-    if starting and self.frame%100==0:
+    if (starting or stopping) and self.frame%400==0:
       self.resume = 15
     if self.resume > 0:
       stock_status = CS.hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST']
@@ -48,6 +49,10 @@ class CarController(CarControllerBase):
         self.resume -= 1
 
     self.apply_angle_last = apply_angle
+
+    # TODO: delete debug print
+    if self.frame%100==0:
+      print(f"stopping: {stopping}, starting: {starting}, resume: {self.resume}, status: {self.status}, apply_angle: {apply_angle}")
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle
