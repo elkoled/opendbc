@@ -14,6 +14,8 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0
     self.status = 2
     self.resume = 0
+    self.burst_left = 0
+    self.last_acc_counter = 0
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -37,23 +39,13 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
-    # ACC resume
-    if starting and self.frame%50==0:
-      self.resume = 10
-    if self.resume > 0:
-      stock_status = CS.hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST']
-      status = 0 if stock_status == 1 else 1
-
-      if self.frame % 3 == 0:
-        can_sends.append(create_resume_acc(self.packer, status, CS.hs2_dat_mdd_cmd_452))
-        can_sends.append(create_drive_away_request(self.packer, CS.hs2_dyn_mdd_etat_2f6))
-        self.resume -= 1
+    if starting and self.frame % 5 == 0:
+      msg = CS.hs2_dat_mdd_cmd_452
+      target_val = 1 if (self.frame % 100) < 50 else 0
+      future_counter = (msg['COUNTER'] + 1) % 16
+      can_sends.append(create_resume_acc(self.packer, future_counter, target_val, msg))
 
     self.apply_angle_last = apply_angle
-
-    # TODO: delete debug print
-    if self.frame%50==0:
-      print(f"start:{starting} | blocked:{CS.drive_away_requested}")
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle

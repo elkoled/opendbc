@@ -18,7 +18,8 @@ def create_lka_steering(packer, lat_active: bool, apply_angle: float, status: in
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
-def create_resume_acc(packer, status, hs2_dat_mdd_cmd_452):
+def create_resume_acc(packer, counter, status, hs2_dat_mdd_cmd_452):
+  hs2_dat_mdd_cmd_452['COUNTER'] = counter
   hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST'] = status
   return packer.make_can_msg('HS2_DAT_MDD_CMD_452', 1, hs2_dat_mdd_cmd_452)
 
