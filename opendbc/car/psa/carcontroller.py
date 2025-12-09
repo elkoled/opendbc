@@ -39,9 +39,10 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
+    # TODO: only trigger when lead car is present
     if starting and self.frame % 5 == 0:
       msg = CS.hs2_dat_mdd_cmd_452
-      target_val = 1 if (self.frame % 100) < 50 else 0
+      target_val = 1 if (self.frame % 20) < 10 else 0
       future_counter = (msg['COUNTER'] + 1) % 16
       can_sends.append(create_resume_acc(self.packer, future_counter, target_val, msg))
 
