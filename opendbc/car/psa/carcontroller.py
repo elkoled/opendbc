@@ -35,7 +35,7 @@ class CarController(CarControllerBase):
     else:
       self.status = 4
 
-    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
+    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else -1 if stopping else 0))
 
     # ACC resume
     if starting and self.frame%50==0:

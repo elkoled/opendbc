@@ -5,14 +5,15 @@ def psa_checksum(address: int, sig, d: bytearray) -> int:
   checksum = sum((b >> 4) + (b & 0xF) for b in d)
   return (chk_ini - checksum) & 0xF
 
-
-def create_lka_steering(packer, lat_active: bool, apply_angle: float, status: int):
+# TODO: delete debug param LANE_DEPARTURE
+def create_lka_steering(packer, lat_active: bool, apply_angle: float, status: int, debug: bool):
   values = {
     'DRIVE': 1,
     'STATUS': status,
     'LXA_ACTIVATION': 1,
     'TORQUE_FACTOR': lat_active * 100,
     'SET_ANGLE': apply_angle,
+    'LANE_DEPARTURE': debug, # 0: off/pid, 1: starting, -1: stopping
   }
 
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
