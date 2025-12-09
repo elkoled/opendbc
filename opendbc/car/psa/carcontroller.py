@@ -39,7 +39,7 @@ class CarController(CarControllerBase):
 
     # ACC resume
     if starting and self.frame%50==0:
-      self.resume = 15
+      self.resume = 10
     if self.resume > 0:
       stock_status = CS.hs2_dat_mdd_cmd_452['COCKPIT_GO_ACC_REQUEST']
       status = 0 if stock_status == 1 else 1
