@@ -21,11 +21,9 @@ class CarController(CarControllerBase):
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
-    hud_control = CC.hudControl
-
     # longitudinal
-    # starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
-    stopping = actuators.longControlState == LongCtrlState.stopping
+    starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
+    # stopping = actuators.longControlState == LongCtrlState.stopping
 
     # lateral control
     apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
@@ -40,17 +38,15 @@ class CarController(CarControllerBase):
     else:
       self.status = 4
 
-    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if stopping else 0, 1 if hud_control.leadVisible else 0))
+    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
-    # send resume request when stopped behind a lead car
-    if hud_control.leadVisible and stopping:
-      if self.frame % 5 == 0:
+    # emulate resume button press every 4 seconds to prevent autohold timeout
+    if CC.latActive and CS.out.standstill:
+      cycle = self.frame % 400
+      # send edge at frame 0 and frame 5 (20 Hz)
+      if cycle == 0 or cycle == 5:
+        status = 1 if cycle == 5 else 0
         msg = CS.hs2_dat_mdd_cmd_452
-
-        # send resume request every 4s to stay below 5s autohold timeout
-        cycle_pos = self.frame % 400
-        status = 1 if cycle_pos < 20 else 0
-
         counter = (msg['COUNTER'] + 1) % 16
         can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
