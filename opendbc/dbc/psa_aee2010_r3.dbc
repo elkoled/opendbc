@@ -111,8 +111,8 @@ BO_ 694 HS2_DYN1_MDD_ETAT_2B6: 8 ARTIV
  SG_ MDD_DECEL_CONTROL_REQ : 53|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
  SG_ GEAR_TYPE : 54|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
  SG_ PREFILL_REQUEST : 55|1@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
- SG_ DYN_ACC_CHECKSUM : 59|4@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
- SG_ DYN_ACC_PROCESS_COUNTER : 63|4@0+ (1,0) [0|15] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
+ SG_ CHECKSUM : 59|4@0+ (1,0) [0|0] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
+ SG_ COUNTER : 63|4@0+ (1,0) [0|15] "" CMM,UC_FREIN,BSI,PASS_HCU2,CMF
 
 BO_ 717 HS2_DYN_UCF_2CD: 3 UC_FREIN
  SG_ AUTO_BRAKING_PRESSURE : 7|8@0+ (0.2,0) [0|50.6] "bar" BV,BVN
@@ -820,7 +820,6 @@ CM_ SG_ 264 P082_Edition "P082  Software issue";
 CM_ SG_ 264 P083_Calibration "P083  Calibration issue";
 CM_ BO_ 520 "ID 208:  Engine Dynamic Frame (Period time 10 ms)";
 CM_ SG_ 520 P000_Com_nEng "P000  Motordrehzahl";
-CM_ SG_ 520 P003_Com_trqActOut "P003  Actual torque";
 CM_ SG_ 520 P002_Com_rAPP "P002  rueckgerechnete PWG-Stellung";
 CM_ SG_ 520 P027_ACCtl_stLogicOut "P027  Klimakompressor Status ein/aus";
 CM_ SG_ 520 P014_Brk_stRed "P014  Redundanter Bremskontakt";
@@ -832,8 +831,8 @@ CM_ SG_ 520 P042_Inm_bCanMon "P042  CAN-Fehlerbehandlung im Startfall mit Hilfe 
 CM_ SG_ 520 P127_EGT_st_Bit30 "P127: Regeneration aid by electric consumers (engine load increase).";
 CM_ SG_ 520 P198_ActMod_trqClthTraIntv "P084  Vorweggenommenes Drehmoment";
 CM_ SG_ 694 ACC_STATUS "Indicates the operational state of the ACC system.";
-CM_ SG_ 694 DYN_ACC_CHECKSUM "CHK_INI = 0x3";
-CM_ SG_ 694 DYN_ACC_PROCESS_COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
+CM_ SG_ 694 CHECKSUM "CHK_INI = 0x3";
+CM_ SG_ 694 COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
 CM_ SG_ 757 ANGLE "asymmetric, could be init";
 CM_ SG_ 758 CHECKSUM "CHK_INI = 0x7";
 CM_ SG_ 758 COUNTER "This counter increments from 0 to 15 at each activation of the calculation process.";
