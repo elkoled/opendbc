@@ -37,13 +37,13 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
-    # emulate resume button press every 4 seconds to prevent autohold timeout
+    # emulate resume button every 4 seconds to prevent autohold timeout
     if CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
       cycle = self.frame % 400
-      # send edge at frame 0 and frame 5 (20 Hz)
-      if cycle == 0 or cycle == 5:
-        status = 1 if cycle == 5 else 0
+      # send 2 button edges to be sure
+      if cycle <= 15 and cycle % 5 == 0:
         msg = CS.hs2_dat_mdd_cmd_452
+        status = (cycle // 5) % 2
         counter = (msg['COUNTER'] + 1) % 16
         can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
