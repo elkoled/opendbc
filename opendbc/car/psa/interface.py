@@ -25,8 +25,8 @@ class CarInterface(CarInterfaceBase):
     ret.steerControlType = structs.CarParams.SteerControlType.angle
     ret.radarUnavailable = True
 
-    ret.alphaLongitudinalAvailable = False
-    ret.openpilotLongitudinalControl = True # TODO: disable when startingState=True is enough!
+    ret.alphaLongitudinalAvailable = True
+    ret.openpilotLongitudinalControl = True
     ret.startingState = True
 
     return ret
