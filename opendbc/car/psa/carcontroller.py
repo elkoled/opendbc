@@ -14,9 +14,6 @@ class CarController(CarControllerBase):
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_angle_last = 0
     self.status = 2
-    self.resume = 0
-    self.burst_left = 0
-    self.last_acc_counter = 0
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -41,7 +38,7 @@ class CarController(CarControllerBase):
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
     # emulate resume button press every 4 seconds to prevent autohold timeout
-    if CC.latActive and CS.out.standstill:
+    if CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
       cycle = self.frame % 400
       # send edge at frame 0 and frame 5 (20 Hz)
       if cycle == 0 or cycle == 5:
