@@ -2,10 +2,11 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_drive_away_request
+from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc
 from opendbc.car.psa.values import CarControllerParams
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP, CP_SP):
@@ -20,8 +21,10 @@ class CarController(CarControllerBase):
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
+    hud_control = CC.hudControl
+
     # longitudinal
-    starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
+    # starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
     stopping = actuators.longControlState == LongCtrlState.stopping
 
     # lateral control
@@ -37,14 +40,19 @@ class CarController(CarControllerBase):
     else:
       self.status = 4
 
-    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
+    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if stopping else 0, 1 if hud_control.leadVisible else 0))
 
-    # TODO: only trigger when lead car is present
-    if starting and self.frame % 5 == 0:
-      msg = CS.hs2_dat_mdd_cmd_452
-      target_val = 1 if (self.frame % 20) < 10 else 0
-      future_counter = (msg['COUNTER'] + 1) % 16
-      can_sends.append(create_resume_acc(self.packer, future_counter, target_val, msg))
+    # send resume request when stopped behind a lead car
+    if hud_control.leadVisible and stopping:
+      if self.frame % 5 == 0:
+        msg = CS.hs2_dat_mdd_cmd_452
+
+        # send resume request every 4s to stay below 5s autohold timeout
+        cycle_pos = self.frame % 400
+        status = 1 if cycle_pos < 20 else 0
+
+        counter = (msg['COUNTER'] + 1) % 16
+        can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
     self.apply_angle_last = apply_angle
 

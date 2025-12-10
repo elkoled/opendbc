@@ -56,8 +56,6 @@ class CarState(CarStateBase):
     ret.accFaulted = False # not available for CC-only
     # resume request
     self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
-    self.hs2_dyn_mdd_etat_2f6 = copy.copy(cp_adas.vl['HS2_DYN_MDD_ETAT_2F6'])
-    self.drive_away_requested = cp_adas.vl['HS2_DYN_MDD_ETAT_2F6']['DRIVE_AWAY_REQUEST']
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
