@@ -78,7 +78,7 @@ class CarController(CarControllerBase):
       # Lowest brake mode accel seen: -4.85m/s²
 
       if self.frame % 2 == 0: # 50 Hz
-        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CC.latActive, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
+        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
         can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer))
 
       # if self.frame % 10 == 0: # 10 Hz
