@@ -51,8 +51,8 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
     'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
     'MDD_DECEL_TYPE': int(braking),
     'MDD_DECEL_CONTROL_REQ': int(braking),
-    'GEAR_TYPE': frame % 2, # 0,1,0,1...
-    'PREFILL_REQUEST': 0,
+    # 'GEAR_TYPE': frame % 2, # 0,1,0,1...
+    # 'PREFILL_REQUEST': 0,
   }
 
   return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', 1, values)
@@ -61,21 +61,21 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
 # Radar, 50 Hz
 def create_HS2_DYN_MDD_ETAT_2F6(packer, frame: int, enabled: bool, braking: bool):
   values = {
-    'TARGET_DETECTED': 0, # TODO: <target detected>
-    'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
-    'BLIND_SENSOR': 0,
-    'REQ_VISUAL_COLL_ALERT_ARC': 0,
-    'REQ_AUDIO_COLL_ALERT_ARC': 0,
-    'REQ_HAPTIC_COLL_ALERT_ARC': 0,
-    'INTER_VEHICLE_DISTANCE': 255.5, # TODO: <distance> if enabled else 255.5,
-    'ARC_STATUS': 6,  # 12 after 50 frames (1 sec) after AUTO_BRAKING_STATUS else 6
-    'AUTO_BRAKING_IN_PROGRESS': 0,
-    'AEB_ENABLED': 0,
-    'DRIVE_AWAY_REQUEST': 0, # TODO: potential RESUME request?
-    'DISPLAY_INTERVEHICLE_TIME': 6.2, # TODO: <time to vehicle> if enabled else 6.2,
-    'MDD_DECEL_CONTROL_REQ': int(braking),
-    'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
-    'TARGET_POSITION': 4, # distance to lead car, far - 4, 3, 2, 1 - near
+    # 'TARGET_DETECTED': 0, # TODO: <target detected>
+    # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
+    # 'BLIND_SENSOR': 0,
+    # 'REQ_VISUAL_COLL_ALERT_ARC': 0,
+    # 'REQ_AUDIO_COLL_ALERT_ARC': 0,
+    # 'REQ_HAPTIC_COLL_ALERT_ARC': 0,
+    # 'INTER_VEHICLE_DISTANCE': 255.5, # TODO: <distance> if enabled else 255.5,
+    # 'ARC_STATUS': 6,  # 12 after 50 frames (1 sec) after AUTO_BRAKING_STATUS else 6
+    # 'AUTO_BRAKING_IN_PROGRESS': 0,
+    # 'AEB_ENABLED': 0,
+    # 'DRIVE_AWAY_REQUEST': 0, # TODO: potential RESUME request?
+    # 'DISPLAY_INTERVEHICLE_TIME': 6.2, # TODO: <time to vehicle> if enabled else 6.2,
+    # 'MDD_DECEL_CONTROL_REQ': int(braking),
+    # 'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
+    # 'TARGET_POSITION': 4, # distance to lead car, far - 4, 3, 2, 1 - near
   }
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
