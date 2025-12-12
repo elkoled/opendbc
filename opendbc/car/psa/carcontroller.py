@@ -38,14 +38,14 @@ class CarController(CarControllerBase):
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
-    # emulate resume button every 4 seconds to prevent autohold timeout
-    if CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
-      # map: {frame:status} - 0, 0, 1, 1
-      status = {0: 0, 5: 0, 10: 1, 15: 1}.get(self.frame % 400)
-      if status is not None:
-        msg = CS.hs2_dat_mdd_cmd_452
-        counter = (msg['COUNTER'] + 1) % 16
-        can_sends.append(create_resume_acc(self.packer, counter, status, msg))
+    # # emulate resume button every 4 seconds to prevent autohold timeout
+    # if CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
+    #   # map: {frame:status} - 0, 0, 1, 1
+    #   status = {0: 0, 5: 0, 10: 1, 15: 1}.get(self.frame % 400)
+    #   if status is not None:
+    #     msg = CS.hs2_dat_mdd_cmd_452
+    #     counter = (msg['COUNTER'] + 1) % 16
+    #     can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
     self.apply_angle_last = apply_angle
 
