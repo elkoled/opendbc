@@ -61,7 +61,6 @@ class CarController(CarControllerBase):
     # braking = torque < -300 and not CS.out.gasPressed
     if self.CP.openpilotLongitudinalControl:
       # disable radar ECU by setting to programming mode
-      # if self.frame > 1000:
       if self.radar_disabled == 0:
         can_sends.append(create_disable_radar())
         self.radar_disabled = 1
@@ -72,17 +71,13 @@ class CarController(CarControllerBase):
 
       # TODO: tune torque multiplier
       # TODO: tune braking threshold
-      # TODO: check if disengage on accelerator is already in CC.longActive
       # Highest torque seen without gas input: ~1000
       # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)
       # Lowest brake mode accel seen: -4.85m/s²
 
-      if self.frame % 2 == 0: # 50 Hz
-        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
+      if self.frame % 2 == 0:
+        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
         can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer))
-
-      # if self.frame % 10 == 0: # 10 Hz
-      #   can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(self.packer, CC.longActive))
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle
