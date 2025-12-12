@@ -80,6 +80,7 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, frame: int, enabled: bool, braking: bool
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
+
 # TODO: do this in interface.py init()
 # Disable radar ECU by setting it to programming mode
 def create_disable_radar():
