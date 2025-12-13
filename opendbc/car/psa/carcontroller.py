@@ -4,6 +4,7 @@ from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams
+from numpy import interp
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
@@ -51,10 +52,21 @@ class CarController(CarControllerBase):
 
     # longitudinal control
     # TUNING
-    brake_accel = -0.5 # below this accel, go into brake mode
-    torque_raw = actuators.accel * 10 * 70 # accel in m/s^2 to torque in Nm * 10 for CAN
-    torque = max(-300, min(torque_raw, 2000)) # apply torque CAN Nm limits
-    braking = actuators.accel<brake_accel and not CS.out.gasPressed
+    # >=-0.8: Engine brakes only
+    # <-0.8: Add friction brakes
+    brake_accel = -0.8
+
+    # torque lookup
+    ACCEL_LOOKUP = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 700, 900, 1000]
+
+    # calculate Torque
+    torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
+    torque_raw = torque_nm * 10
+    torque = max(-6000, min(torque_raw, 10000))
+
+    # engine/friction brake transition
+    braking = actuators.accel < brake_accel and not CS.out.gasPressed
 
     # # twitchy on gas/accel transition but ok car following and braking
     # torque = actuators.accel * 1000
