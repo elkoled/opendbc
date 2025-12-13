@@ -30,8 +30,5 @@ class CarInterface(CarInterfaceBase):
     ret.startingState = True
     ret.startAccel = 1.0
     ret.stopAccel = -10.65
-    # TODO: remove ACCEL_MAX
-    ACCEL_MAX = 4.0
-    ACCEL_MIN = -4.0
 
     return ret
