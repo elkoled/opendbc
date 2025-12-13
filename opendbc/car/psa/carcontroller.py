@@ -10,14 +10,14 @@ LongCtrlState = structs.CarControl.Actuators.LongControlState
 
 
 class CarController(CarControllerBase):
-  def __init__(self, dbc_names, CP):
-    super().__init__(dbc_names, CP)
+  def __init__(self, dbc_names, CP, CP_SP):
+    super().__init__(dbc_names, CP, CP_SP)
     self.packer = CANPacker(dbc_names[Bus.main])
     self.apply_angle_last = 0
     self.radar_disabled = 0
     self.status = 2
 
-  def update(self, CC, CS, now_nanos):
+  def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
     # longitudinal
@@ -49,9 +49,10 @@ class CarController(CarControllerBase):
 
     # longitudinal control
     # TUNING
-    # >=-0.8: Engine brakes only
-    # <-0.8: Add friction brakes
-    brake_accel = -0.5
+    # TODO: Different between EV and ICE due to recuperation
+    # >=0.0: Engine brakes only
+    # <-0.0: Add friction brakes
+    brake_accel = 0.0
 
     # torque lookup
     ACCEL_LOOKUP = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
@@ -85,7 +86,7 @@ class CarController(CarControllerBase):
 
       if self.frame % 2 == 0:
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CS.out.cruiseState.enabled))
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
     self.apply_angle_last = apply_angle
