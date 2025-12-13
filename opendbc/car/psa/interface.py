@@ -29,6 +29,7 @@ class CarInterface(CarInterfaceBase):
     ret.openpilotLongitudinalControl = True
     ret.startingState = True
     ret.startAccel = 0.5
+    # TODO: check
     ret.stopAccel = -10.65
 
     return ret
