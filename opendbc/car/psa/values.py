@@ -4,7 +4,7 @@ from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
 from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.docs_definitions import CarDocs, CarHarness, CarParts
-from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
+from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
@@ -36,19 +36,42 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.54, steerRatio=17.6),
+    CarSpecs(mass=1623, wheelbase=2.605, steerRatio=17.7),
+  )
+  PSA_PEUGEOT_508 = PSAPlatformConfig(
+    [PSACarDocs("Peugeot 508 2019-23")],
+    CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6), # TODO: set steerRatio
   )
 
 
-# Placeholder, FW Query will be added in separate PR
+PSA_DIAG_REQ  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, 0x01])
+PSA_DIAG_RESP = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL + 0x40, 0x01])
+
+PSA_SERIAL_REQ = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER,  0xF1, 0x8C])
+PSA_SERIAL_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF1, 0x8C])
+
+PSA_VERSION_REQ  = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER, 0xF0, 0xFE])
+PSA_VERSION_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF0, 0xFE])
+
+PSA_RX_OFFSET = -0x20
+
 FW_QUERY_CONFIG = FwQueryConfig(
-  requests=[
+  requests=[request for bus in (1, 2) for request in [
     Request(
-      [StdQueries.TESTER_PRESENT_REQUEST, StdQueries.UDS_VERSION_REQUEST],
-      [StdQueries.TESTER_PRESENT_RESPONSE, StdQueries.UDS_VERSION_RESPONSE],
-      bus=0,
+      [PSA_DIAG_REQ, PSA_SERIAL_REQ],
+      [PSA_DIAG_RESP, PSA_SERIAL_RESP],
+      rx_offset=PSA_RX_OFFSET,
+      bus=bus,
+      obd_multiplexing=False,
     ),
-  ],
+    Request(
+      [PSA_DIAG_REQ, PSA_VERSION_REQ],
+      [PSA_DIAG_RESP, PSA_VERSION_RESP],
+      rx_offset=PSA_RX_OFFSET,
+      bus=bus,
+      obd_multiplexing=False,
+    ),
+  ]]
 )
 
 DBC = CAR.create_dbc_map()
