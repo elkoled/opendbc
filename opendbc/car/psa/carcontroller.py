@@ -51,11 +51,11 @@ class CarController(CarControllerBase):
     # TUNING
     # >=-0.8: Engine brakes only
     # <-0.8: Add friction brakes
-    brake_accel = -0.8
+    brake_accel = -0.5
 
     # torque lookup
     ACCEL_LOOKUP = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 800, 1000, 1200]
+    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 700, 900, 1000]
 
     # calculate Torque
     torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
@@ -85,7 +85,7 @@ class CarController(CarControllerBase):
 
       if self.frame % 2 == 0:
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking))
 
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, actuators.accel, torque))
     self.apply_angle_last = apply_angle

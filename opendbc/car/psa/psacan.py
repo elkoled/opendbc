@@ -58,7 +58,7 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
 
 
 # Radar, 50 Hz
-def create_HS2_DYN_MDD_ETAT_2F6(packer):
+def create_HS2_DYN_MDD_ETAT_2F6(packer, braking):
   values = {
     # 'TARGET_DETECTED': 0, # TODO: <target detected>
     # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
@@ -72,7 +72,7 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer):
     # 'AEB_ENABLED': 0,
     # 'DRIVE_AWAY_REQUEST': 0, # TODO: potential RESUME request?
     # 'DISPLAY_INTERVEHICLE_TIME': 6.2, # TODO: <time to vehicle> if enabled else 6.2,
-    # 'MDD_DECEL_CONTROL_REQ': int(braking),
+    'MDD_DECEL_CONTROL_REQ': int(braking),
     # 'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
     # 'TARGET_POSITION': 4, # distance to lead car, far - 4, 3, 2, 1 - near
   }
