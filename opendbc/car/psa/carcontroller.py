@@ -37,7 +37,6 @@ class CarController(CarControllerBase):
     else:
       self.status = 4
 
-    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, 1 if starting else 0))
 
     # # emulate resume button every 4 seconds to prevent autohold timeout
     # if CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
@@ -48,8 +47,6 @@ class CarController(CarControllerBase):
     #     counter = (msg['COUNTER'] + 1) % 16
     #     can_sends.append(create_resume_acc(self.packer, counter, status, msg))
 
-    self.apply_angle_last = apply_angle
-
     # longitudinal control
     # TUNING
     # >=-0.8: Engine brakes only
@@ -58,7 +55,7 @@ class CarController(CarControllerBase):
 
     # torque lookup
     ACCEL_LOOKUP = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 700, 900, 1000]
+    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 800, 1000, 1200]
 
     # calculate Torque
     torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
@@ -89,6 +86,9 @@ class CarController(CarControllerBase):
       if self.frame % 2 == 0:
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
         can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer))
+
+    can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status, actuators.accel, torque))
+    self.apply_angle_last = apply_angle
 
     new_actuators = actuators.as_builder()
     new_actuators.steeringAngleDeg = apply_angle
