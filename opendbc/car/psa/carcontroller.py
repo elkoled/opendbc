@@ -87,6 +87,10 @@ class CarController(CarControllerBase):
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
         can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking))
 
+      # debug output
+      if self.frame % 50 == 0:
+        print("set_accel: {actuators.accel}\n is_accel: {CS.accel_longi_calib}")
+
     can_sends.append(create_lka_steering(self.packer, CC.latActive, apply_angle, self.status))
     self.apply_angle_last = apply_angle
 
