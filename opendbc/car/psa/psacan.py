@@ -33,7 +33,7 @@ def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
 
 
 # Radar, 50 Hz
-def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: int, brakePressed: int, standstill: bool, torque: int):
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: bool, brakePressed: bool, standstill: bool, torque: int):
   # TODO: if gas pressed, ACC_STATUS is set to suspended and decel can be set negative (about -300 Nm / -0.6m/s²) with brake mode inactive
   # TODO: tune torque multiplier
   # TODO: check difference between GMP_POTENTIAL_WHEEL_TORQUE and GMP_WHEEL_TORQUE
@@ -44,12 +44,12 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
     'POTENTIAL_WHEEL_TORQUE_REQUEST': (2 if braking else 1) if enabled else 0,
     'MIN_TIME_FOR_DESIRED_GEAR': 0.0 if braking or not enabled else 6.2,
     'GMP_POTENTIAL_WHEEL_TORQUE': torque if not braking and enabled else -4000,
-    'ACC_STATUS': (5 if gasPressed else 2 if brakePressed and not standstill else 4) if enabled else (2 if brakePressed else 3),
+    'ACC_STATUS': (5 if gasPressed else 2 if brakePressed and not standstill else 4) if enabled else (2 if brakePressed and not standstill else 3),
     'GMP_WHEEL_TORQUE': torque if not braking and enabled else -4000,
     'WHEEL_TORQUE_REQUEST': 1 if enabled and not braking else 0, # TODO: test 1: high torque range 2: low torque range
     'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
-    'MDD_DECEL_TYPE': int(braking),
-    'MDD_DECEL_CONTROL_REQ': int(braking),
+    'MDD_DECEL_TYPE': braking,
+    'MDD_DECEL_CONTROL_REQ': braking,
   }
 
   return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', 1, values)
