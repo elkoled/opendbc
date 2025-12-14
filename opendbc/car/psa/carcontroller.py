@@ -49,9 +49,9 @@ class CarController(CarControllerBase):
 
     # longitudinal control
     # TUNING
-    # >=-0.8: Engine brakes only
-    # <-0.8: Add friction brakes
-    brake_accel = -0.8
+    # >=-0.5: Engine brakes only
+    # <-0.5: Add friction brakes
+    brake_accel = -0.5
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
