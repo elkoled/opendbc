@@ -54,8 +54,7 @@ class CarState(CarStateBase):
     ret.accFaulted = False # not available for CC-only
     # resume request
     self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
-    # switch between stock and OP ACC
-    self.adaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] == 3
+    self.accel_longi_calib = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACCEL_LONGI_CALIB']
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
