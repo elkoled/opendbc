@@ -82,7 +82,9 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg->bus == PSA_ADAS_BUS) {
     if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
-      pcm_cruise_check((msg->data[2U] >> 7U) & 1U); // RVV_ACC_ACTIVATION_REQ
+      // TODO: hacky, go back to RVV_ACC_ACTIVATION_REQ
+      // pcm_cruise_check((msg->data[2U] >> 7U) & 1U); // RVV_ACC_ACTIVATION_REQ
+      pcm_cruise_check(msg->data[1U] != 0xFFU);
     }
   }
 
