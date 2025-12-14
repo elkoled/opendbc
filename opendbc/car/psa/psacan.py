@@ -40,7 +40,7 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
   # TODO: transition from waiting to active enables torque control. For now, deactivate autohold or enable on brake pressed
 
   values = {
-    'MDD_DESIRED_DECELERATION': accel if braking and enabled else 2.05, # m/s²
+    'MDD_DESIRED_DECELERATION': (-10.65 if standstill else accel) if  braking and enabled else 2.05, # m/s²
     'POTENTIAL_WHEEL_TORQUE_REQUEST': (2 if braking else 1) if enabled else 0,
     'MIN_TIME_FOR_DESIRED_GEAR': 0.0 if braking or not enabled else 6.2,
     'GMP_POTENTIAL_WHEEL_TORQUE': torque if not braking and enabled else -4000,

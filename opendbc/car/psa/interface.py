@@ -26,10 +26,8 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = True
-    ret.openpilotLongitudinalControl = alpha_long
+    ret.openpilotLongitudinalControl = True
     ret.startingState = True
     ret.startAccel = 1.0
-    # for autohold, accel is set to -10.65m/s²
-    ret.stopAccel = -10.65
-    ACCEL_MIN = -10.65
+
     return ret
