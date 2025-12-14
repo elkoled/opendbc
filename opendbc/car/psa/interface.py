@@ -29,6 +29,7 @@ class CarInterface(CarInterfaceBase):
     ret.openpilotLongitudinalControl = True
     ret.startingState = True
     ret.startAccel = 1.0
+    # for autohold, break is set to -10.65m/s²
     ret.stopAccel = -10.65
-
+    MIN_ACCEL = -10.65
     return ret

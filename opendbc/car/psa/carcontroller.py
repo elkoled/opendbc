@@ -64,9 +64,6 @@ class CarController(CarControllerBase):
     # engine/friction brake transition
     braking = actuators.accel < brake_accel and not CS.out.gasPressed
 
-    # # twitchy on gas/accel transition but ok car following and braking
-    # torque = actuators.accel * 1000
-    # braking = torque < -300 and not CS.out.gasPressed
     if self.CP.openpilotLongitudinalControl:
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0:
@@ -77,8 +74,6 @@ class CarController(CarControllerBase):
       if self.frame % 100 == 0 and self.frame>0: # TODO check if disable_radar is sent 100 frames before
         can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
-      # TODO: tune torque multiplier
-      # TODO: tune braking threshold
       # Highest torque seen without gas input: ~1000
       # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)
       # Lowest brake mode accel seen: -4.85m/s²
