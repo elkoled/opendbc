@@ -62,6 +62,8 @@ class CarState(CarStateBase):
     else:
       ret.gearShifter = GearShifter.drive
 
+    self.drive = ret.gearShifter == GearShifter.drive
+
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
     ret.leftBlinker = blinker == 1
