@@ -49,13 +49,13 @@ class CarController(CarControllerBase):
 
     # longitudinal control
     # TUNING
-    # >=-0.5: Engine brakes only
-    # <-0.5: Add friction brakes
-    brake_accel = -0.5
+    # >=-0.8: Engine brakes only
+    # <-0.8: Add friction brakes
+    brake_accel = -0.8
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -100, 150, 400, 700, 900, 1000]
+    TORQUE_LOOKUP = [-400, -150, 150, 350, 550, 800, 1000]
 
     # calculate Torque
     torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
