@@ -83,7 +83,7 @@ class CarController(CarControllerBase):
     # emulate resume button every 3 seconds to prevent autohold timeout
     elif CC.latActive and CS.out.standstill and CC.hudControl.leadVisible:
       # map: {frame:status} - 0, 1
-      status = {0: 0, 5: 0}.get(self.frame % 300)
+      status = {0: 0, 5: 1}.get(self.frame % 300)
       if status is not None:
         msg = CS.hs2_dat_mdd_cmd_452
         counter = (msg['COUNTER'] + 1) % 16
