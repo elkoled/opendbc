@@ -61,12 +61,12 @@ class CarController(CarControllerBase):
     braking = actuators.accel < brake_accel and not CS.out.gasPressed
 
     if self.CP.openpilotLongitudinalControl:
-      if CS.nonadaptive == 0 and self.radar_disabled and self.radar_timer == 0:
-        self.radar_timer = 600
+      if CS.adaptive == 0 and self.radar_disabled:
+        self.radar_timer = 200
         # TODO: wake up ECU immediately
         # can_sends.append(make_uds_msg(0x686, [0x10, 0x01], suppress_response=True))
       # disable radar ECU by setting to programming mode
-      if CS.nonadaptive and self.frame>0 and not self.radar_disabled:
+      if CS.adaptive and not self.radar_disabled:
         can_sends.append(create_disable_radar())
         self.radar_disabled = True
 
@@ -76,7 +76,7 @@ class CarController(CarControllerBase):
           self.radar_disabled = False
 
       # keep radar ECU disabled by sending tester present
-      if self.frame % 100 == 0 and CS.nonadaptive:
+      if self.frame % 100 == 0 and CS.adaptive:
         can_sends.append(make_tester_present_msg(0x6b6, 1, suppress_response=False))
 
       if self.frame % 2 == 0 and self.radar_disabled:
