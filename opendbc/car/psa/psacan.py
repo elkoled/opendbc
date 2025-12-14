@@ -56,9 +56,9 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
 
 
 # Radar, 50 Hz
-def create_HS2_DYN_MDD_ETAT_2F6(packer, braking):
+def create_HS2_DYN_MDD_ETAT_2F6(packer, braking, lead_detected):
   values = {
-    # 'TARGET_DETECTED': 0, # TODO: <target detected>
+    'TARGET_DETECTED': lead_detected, # TODO: <target detected>
     # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
     # 'BLIND_SENSOR': 0,
     # 'REQ_VISUAL_COLL_ALERT_ARC': 0,
