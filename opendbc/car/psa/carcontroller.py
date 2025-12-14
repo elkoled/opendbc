@@ -51,15 +51,15 @@ class CarController(CarControllerBase):
     # TUNING
     # >=-0.8: Engine brakes only
     # <-0.8: Add friction brakes
-    brake_accel = -0.8
+    brake_accel = -0.5
 
     # torque lookup
-    ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -150, 150, 350, 550, 800, 1000]
+    ACCEL_LOOKUP = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
+    TORQUE_LOOKUP = [-600, -400, -100, 150, 400, 700, 900, 1000]
 
     # calculate Torque
     torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
-    torque = max(-400, min(torque_nm, 1000))
+    torque = max(-600, min(torque_nm, 1000))
 
     # engine/friction brake transition
     braking = actuators.accel < brake_accel and not CS.out.gasPressed
