@@ -78,7 +78,31 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking):
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
 
-# TODO: do this in interface.py init()
+# Radar, 10 Hz
+def create_HS2_DAT_ARTIV_V2_4F6(packer, enabled: bool):
+  values = {
+    'TIME_GAP':  3.0 if enabled else 25.5, # TODO sync with 2F6
+    'DISTANCE_GAP': 100 if enabled else 254, # TODO sync with 2F6
+    'RELATIVE_SPEED': 0.0 if enabled else 93.8,
+    'ARTIV_SENSOR_STATE': 2,
+    'TARGET_DETECTED': 0, # 1 if enabled else 0,
+    'ARTIV_TARGET_CHANGE_INFO': 0,
+    'TRAFFIC_DIRECTION': 0, # Right hand traffic
+  }
+  return packer.make_can_msg('HS2_DAT_ARTIV_V2_4F6', 1, values)
+
+
+# Radar, 1 Hz
+def create_HS2_SUPV_ARTIV_796(packer):
+  values = {
+    'FAULT_CODE': 0,
+    'STATUS_NO_CONFIG': 0,
+    'STATUS_PARTIAL_WAKEUP_GMP': 0,
+    'UCE_ELECTR_STATE': 0,
+  }
+  return packer.make_can_msg('HS2_SUPV_ARTIV_796', 1, values)
+
+
 # Disable radar ECU by setting it to programming mode
 def create_disable_radar():
   addr = 0x6B6
