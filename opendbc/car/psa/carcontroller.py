@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs, make_tester_present_msg
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_HS2_DAT_ARTIV_V2_4F6, create_HS2_SUPV_ARTIV_796
+from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams
 from numpy import interp
 
@@ -37,15 +37,14 @@ class CarController(CarControllerBase):
     else:
       self.status = 4
 
-    # OP long
     # TUNING
-    # >=-0.5: Engine brakes only
-    # <-0.5: Add friction brakes
-    brake_accel = -0.5
+    # >=-0.0: Engine brakes only
+    # <-0.0: Add friction brakes
+    brake_accel = 0.0
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -150, 150, 350, 550, 800, 1000]
+    TORQUE_LOOKUP = [-400, -100, 150, 400, 700, 900, 1000]
 
     # calculate Torque
     torque_nm = interp(actuators.accel, ACCEL_LOOKUP, TORQUE_LOOKUP)
@@ -67,17 +66,10 @@ class CarController(CarControllerBase):
       # Highest torque seen without gas input: ~1000
       # Lowest torque seen without break mode: -560 (but only when transitioning from brake to accel mode, else -248)
       # Lowest brake mode accel seen: -4.85m/s²
-      long_enabled = CC.longActive and CS.drive
 
       if self.frame % 2 == 0:
-        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, CS.drive, torque))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible))
-
-      if self.frame % 10 == 0:
-        can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(self.packer, CS.out.cruiseState.enabled))
-
-      if self.frame % 100 == 0:
-        can_sends.append(create_HS2_SUPV_ARTIV_796(self.packer))
+        can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking))
 
     # stock long
     # emulate resume button every 3 seconds to prevent autohold timeout

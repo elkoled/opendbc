@@ -33,18 +33,18 @@ def create_drive_away_request(packer, hs2_dyn_mdd_etat_2f6):
 
 
 # Radar, 50 Hz
-def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: bool, brakePressed: bool, standstill: bool, drive: bool, torque: int):
+def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool, gasPressed: bool, braking: bool, brakePressed: bool, standstill: bool, torque: int):
   # TODO: if gas pressed, ACC_STATUS is set to suspended and decel can be set negative (about -300 Nm / -0.6m/s²) with brake mode inactive
   # TODO: tune torque multiplier
   # TODO: check difference between GMP_POTENTIAL_WHEEL_TORQUE and GMP_WHEEL_TORQUE
   # TODO: transition from waiting to active enables torque control. For now, deactivate autohold or enable on brake pressed
 
   values = {
-    'MDD_DESIRED_DECELERATION': (-10.65 if standstill and not brakePressed else accel) if braking and enabled else 2.05, # m/s²
+    'MDD_DESIRED_DECELERATION': accel if braking and enabled else 2.05, # m/s²
     'POTENTIAL_WHEEL_TORQUE_REQUEST': (2 if braking else 1) if enabled else 0,
     'MIN_TIME_FOR_DESIRED_GEAR': 0.0 if braking or not enabled else 6.2,
     'GMP_POTENTIAL_WHEEL_TORQUE': torque if not braking and enabled else -4000,
-    'ACC_STATUS': (5 if gasPressed else 2 if brakePressed and not standstill else 4) if enabled else (2 if brakePressed or not drive else 3),
+    'ACC_STATUS': (5 if gasPressed else 2 if brakePressed and not standstill else 4) if enabled else (2 if brakePressed else 3),
     'GMP_WHEEL_TORQUE': torque if not braking and enabled else -4000,
     'WHEEL_TORQUE_REQUEST': 1 if enabled and not braking else 0, # TODO: test 1: high torque range 2: low torque range
     'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
@@ -56,9 +56,9 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
 
 
 # Radar, 50 Hz
-def create_HS2_DYN_MDD_ETAT_2F6(packer, braking, lead_detected):
+def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool):
   values = {
-    'TARGET_DETECTED': lead_detected, # TODO: <target detected>
+    # 'TARGET_DETECTED': 0, # TODO: <target detected>
     # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
     # 'BLIND_SENSOR': 0,
     # 'REQ_VISUAL_COLL_ALERT_ARC': 0,
@@ -70,7 +70,7 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking, lead_detected):
     # 'AEB_ENABLED': 0,
     # 'DRIVE_AWAY_REQUEST': 0, # TODO: potential RESUME request?
     'DISPLAY_INTERVEHICLE_TIME': 6.2, # TODO: <time to vehicle> if enabled else 6.2,
-    'MDD_DECEL_CONTROL_REQ': int(braking),
+    'MDD_DECEL_CONTROL_REQ': braking,
     'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
     'TARGET_POSITION': 4, # distance to lead car, far - 4, 3, 2, 1 - near
   }
@@ -78,31 +78,7 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking, lead_detected):
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
 
-# Radar, 10 Hz
-def create_HS2_DAT_ARTIV_V2_4F6(packer, enabled: bool):
-  values = {
-    'TIME_GAP':  3.0 if enabled else 25.5, # TODO sync with 2F6
-    'DISTANCE_GAP': 100 if enabled else 254, # TODO sync with 2F6
-    'RELATIVE_SPEED': 0.0 if enabled else 93.8,
-    'ARTIV_SENSOR_STATE': 2,
-    'TARGET_DETECTED': 0, # 1 if enabled else 0,
-    'ARTIV_TARGET_CHANGE_INFO': 0,
-    'TRAFFIC_DIRECTION': 0, # Right hand traffic
-  }
-  return packer.make_can_msg('HS2_DAT_ARTIV_V2_4F6', 1, values)
-
-
-# Radar, 1 Hz
-def create_HS2_SUPV_ARTIV_796(packer):
-  values = {
-    'FAULT_CODE': 0,
-    'STATUS_NO_CONFIG': 0,
-    'STATUS_PARTIAL_WAKEUP_GMP': 0,
-    'UCE_ELECTR_STATE': 0,
-  }
-  return packer.make_can_msg('HS2_SUPV_ARTIV_796', 1, values)
-
-
+# TODO: do this in interface.py init()
 # Disable radar ECU by setting it to programming mode
 def create_disable_radar():
   addr = 0x6B6
