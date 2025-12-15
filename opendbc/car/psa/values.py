@@ -58,7 +58,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
       [PSA_DIAG_REQ, PSA_SERIAL_REQ],
       [PSA_DIAG_RESP, PSA_SERIAL_RESP],
       rx_offset=PSA_RX_OFFSET,
-      bus=1,
+      bus=0,
       obd_multiplexing=False,
     )
   ]
