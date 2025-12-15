@@ -6,11 +6,17 @@ Ecu = CarParams.Ecu
 
 FW_VERSIONS = {
   CAR.PSA_PEUGEOT_208: {
-    # ARTIV - Radar
-    (Ecu.fwdRadar, 0x6B6, None): [
-        b'212053276', # Peugeot e208 Allure Pack 2021
-        b'194504751', # Peugeot e208 GT 2020
-        b'222256113', # Peugeot e208 GT NZ 2022
+    # ABRASR - ABS/ESP
+    (Ecu.abs, 0x6AD, None): [
+        b'085095700857210527', # Peugeot 208 ACC
+        b'285160381930060025B',# Peugeot 2008 ACC
+    ],
+  },
+  CAR.PSA_PEUGEOT_508: {
+    # ABRASR - ABS/ESP
+    (Ecu.abs, 0x6AD, None): [
+        b'085095308910190312', # Citroen C5 Aircross CC-only
+        b'085065315928191130', # Peugeot 508 Hybrid, Citroen Berlingo VP K9
     ],
   },
 }
