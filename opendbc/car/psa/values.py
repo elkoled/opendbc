@@ -36,11 +36,11 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1623, wheelbase=2.605, steerRatio=17.7),
+    CarSpecs(mass=1530, wheelbase=2.54, steerRatio=17.6),
   )
   PSA_PEUGEOT_508 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 508 2019-23")],
-    CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6), # TODO: set steerRatio
+    CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6),
   )
 
 
@@ -58,7 +58,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
       [PSA_DIAG_REQ, PSA_SERIAL_REQ],
       [PSA_DIAG_RESP, PSA_SERIAL_RESP],
       rx_offset=PSA_RX_OFFSET,
-      bus=1,
+      bus=0,
       obd_multiplexing=False,
     )
   ]
