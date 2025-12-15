@@ -26,7 +26,7 @@ class CarInterface(CarInterfaceBase):
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = True
-    ret.openpilotLongitudinalControl = True
+    ret.openpilotLongitudinalControl = alpha_long
     ret.startingState = True
     ret.startAccel = 1.0
 
