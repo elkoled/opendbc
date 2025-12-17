@@ -49,7 +49,7 @@ class CarController(CarControllerBase):
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -100, 150, 400, 700, 900, 1000]
+    TORQUE_LOOKUP = [-400, -200, 150, 350, 550, 800, 1000]
 
     # calculate Torque
     torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)
