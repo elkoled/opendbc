@@ -56,9 +56,9 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
 
 
 # Radar, 50 Hz
-def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool):
+def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool, lead_visible: bool):
   values = {
-    # 'TARGET_DETECTED': 0, # TODO: <target detected>
+    'TARGET_DETECTED': lead_visible,
     # 'REQUEST_TAKEOVER': 0, # TODO potential signal for HUD message from OP
     # 'BLIND_SENSOR': 0,
     # 'REQ_VISUAL_COLL_ALERT_ARC': 0,
@@ -77,6 +77,18 @@ def create_HS2_DYN_MDD_ETAT_2F6(packer, braking: bool):
 
   return packer.make_can_msg('HS2_DYN_MDD_ETAT_2F6', 1, values)
 
+# Radar, 10 Hz
+def create_HS2_DAT_ARTIV_V2_4F6(packer, lead_visible: bool):
+  values = {
+    'TIME_GAP': 25.5, # 3.0 if enabled else 25.5, # TODO sync with 2F6
+    'DISTANCE_GAP': 254, # 100 if enabled else 254, # TODO sync with 2F6
+    'RELATIVE_SPEED': 93.8, # 0.0 if enabled else 93.8,
+    'ARTIV_SENSOR_STATE': 2,
+    'TARGET_DETECTED': lead_visible, # 1 if enabled else 0,
+    'ARTIV_TARGET_CHANGE_INFO': 0,
+    'TRAFFIC_DIRECTION': 0, # Right hand traffic
+  }
+  return packer.make_can_msg('HS2_DAT_ARTIV_V2_4F6', 1, values)
 
 # TODO: do this in interface.py init()
 # Disable radar ECU by setting it to programming mode
