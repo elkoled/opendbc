@@ -5,11 +5,9 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams
 from numpy import interp
-from cereal import messaging
 import math
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
-sm = messaging.SubMaster(['modelV2'], poll='modelV2')
 
 
 class CarController(CarControllerBase):
@@ -19,7 +17,6 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0
     self.radar_disabled = 0
     self.status = 2
-    self.bars = 4
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -60,17 +57,6 @@ class CarController(CarControllerBase):
 
     braking = accel_cmd < brake_accel and not CS.out.gasPressed
     if self.CP.openpilotLongitudinalControl:
-      # get lead distance
-      leads_v3 = sm['modelV2'].leadsV3
-      if len(leads_v3) > 1:
-        distance = leads_v3[0]
-        if distance > 50:
-          self.bars = 4
-        elif distance > 20:
-          self.bars = 3
-        else:
-          self.bars = 2
-
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0:
         can_sends.append(create_disable_radar())
@@ -86,7 +72,7 @@ class CarController(CarControllerBase):
 
       if self.frame % 2 == 0:
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible, self.bars))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible, CC.hudControl.leadDistanceBars))
 
     # stock long
     # emulate resume button every 3 seconds to prevent autohold timeout
