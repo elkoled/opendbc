@@ -2,7 +2,7 @@ from opendbc.can.packer import CANPacker
 from opendbc.car import Bus, structs, make_tester_present_msg
 from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
+from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6, create_HS2_DAT_ARTIV_V2_4F6
 from opendbc.car.psa.values import CarControllerParams
 from numpy import interp
 
@@ -38,9 +38,9 @@ class CarController(CarControllerBase):
       self.status = 4
 
     # TUNING
-    # >=-0.0: Engine brakes only
-    # <-0.0: Add friction brakes
-    brake_accel = 0.0
+    # >=-0.5: Engine brakes only
+    # <-0.5: Add friction brakes
+    brake_accel = -0.5
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
@@ -69,7 +69,10 @@ class CarController(CarControllerBase):
 
       if self.frame % 2 == 0:
         can_sends.append(create_HS2_DYN1_MDD_ETAT_2B6(self.packer, self.frame // 2, actuators.accel, CS.out.cruiseState.enabled, CS.out.gasPressed, braking, CS.out.brakePressed, CS.out.standstill, torque))
-        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking))
+        can_sends.append(create_HS2_DYN_MDD_ETAT_2F6(self.packer, braking, CC.hudControl.leadVisible))
+
+      if self.frame % 10 == 0:
+        can_sends.append(create_HS2_DAT_ARTIV_V2_4F6(self.packer, CC.hudControl.leadVisible))
 
     # stock long
     # emulate resume button every 3 seconds to prevent autohold timeout
