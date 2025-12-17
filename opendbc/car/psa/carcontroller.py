@@ -38,9 +38,9 @@ class CarController(CarControllerBase):
       self.status = 4
 
     # TUNING
-    # >=-0.0: Engine brakes only
-    # <-0.0: Add friction brakes
-    brake_accel = 0.0
+    # >=-0.5: Engine brakes only
+    # <-0.5: Add friction brakes
+    brake_accel = -0.5
 
     # torque lookup
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
