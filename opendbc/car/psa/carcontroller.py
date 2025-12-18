@@ -29,7 +29,7 @@ class CarController(CarControllerBase):
     # starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
     # stopping = actuators.longControlState == LongCtrlState.stopping
     # Lateral offset correction
-    if CC.latActive:
+    if CC.latActive and not CS.out.steeringPressed:
         error = actuators.steeringAngleDeg - CS.out.steeringAngleDeg
 
         self.angle_offset_correction += error * self.correction_rate * self.DT_CTRL
