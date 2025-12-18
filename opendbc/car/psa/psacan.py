@@ -48,8 +48,8 @@ def create_HS2_DYN1_MDD_ETAT_2B6(packer, frame: int, accel: float, enabled: bool
     'GMP_WHEEL_TORQUE': torque if not braking and enabled else -4000,
     'WHEEL_TORQUE_REQUEST': 1 if enabled and not braking else 0, # TODO: test 1: high torque range 2: low torque range
     'AUTO_BRAKING_STATUS': 3, # AEB # TODO: testing ALWAYS ENABLED to resolve DTC errors if enabled else 3, # maybe disabled on too high steering angle
-    'MDD_DECEL_TYPE': braking,
-    'MDD_DECEL_CONTROL_REQ': braking,
+    'MDD_DECEL_TYPE': braking if enabled else 0,
+    'MDD_DECEL_CONTROL_REQ': braking if enabled else 0,
   }
 
   return packer.make_can_msg('HS2_DYN1_MDD_ETAT_2B6', 1, values)
