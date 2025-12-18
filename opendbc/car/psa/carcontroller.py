@@ -4,7 +4,7 @@ from opendbc.car.lateral import apply_std_steer_angle_limits
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams
-from numpy import interp
+from numpy import interp, clip
 import math
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -17,6 +17,10 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0
     self.radar_disabled = 0
     self.status = 2
+    self.DT_CTRL = 0.01 # control step
+    self.correction_max = 2.0 # max correction in deg
+    self.correction_rate = 0.1 # correct 1 deg over 10 sec (100Hz * 10s * 0.01 * 0.1 = 1.0)
+    self.angle_offset_correction = 0.0
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -24,9 +28,19 @@ class CarController(CarControllerBase):
     # longitudinal
     # starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
     # stopping = actuators.longControlState == LongCtrlState.stopping
+    # Lateral offset correction
+    if CC.latActive:
+        error = actuators.steeringAngleDeg - CS.out.steeringAngleDeg
+
+        self.angle_offset_correction += error * self.correction_rate * self.DT_CTRL
+        self.angle_offset_correction = clip(self.angle_offset_correction, -self.correction_max, self.correction_max)
+    else:
+        self.angle_offset_correction = 0.0
+
+    corrected_steeringAngleDeg = actuators.steeringAngleDeg + self.angle_offset_correction
 
     # lateral control
-    apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
+    apply_angle = apply_std_steer_angle_limits(corrected_steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
                                                  CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
 
     # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
