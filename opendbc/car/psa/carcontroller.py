@@ -66,23 +66,20 @@ class CarController(CarControllerBase):
         leads_v3 = sm['modelV2'].leadsV3
         if len(leads_v3) > 1 and len(leads_v3[0].x):
           distance = leads_v3[0].x[0]
-          timegap = distance / max(CS.out.vEgo, 1.0)
 
-          # todo: delete
-          if self.frame % 100==0:
-            print(f'distance: {distance}, timegap: {timegap}, bars: {self.bars}')
+          d1 = 7.0 + 0.65 * CS.out.vEgo
+          r = distance / d1
 
-          if timegap > 2.0:
+          if r > 4.0:
             self.bars = 3
-          elif timegap > 1.5:
+          elif r > 3.0:
             self.bars = 2
-          elif timegap > 0.9:
+          elif r > 2.0:
             self.bars = 1
           else:
             self.bars = 0
       else:
         self.bars = 4
-
 
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0:
