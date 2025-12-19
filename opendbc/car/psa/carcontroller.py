@@ -65,11 +65,13 @@ class CarController(CarControllerBase):
       leads_v3 = sm['modelV2'].leadsV3
       if len(leads_v3) > 1 and len(leads_v3[0].x):
         distance = leads_v3[0].x[0]
-        if distance > 50:
+        timegap = distance / max(CS.out.vEgo, 1.0)
+
+        if timegap > 2.0:
           self.bars = 4
-        elif distance > 20:
+        elif timegap > 1.5:
           self.bars = 3
-        elif distance > 10:
+        elif timegap > 0.9:
           self.bars = 2
         else:
           self.bars = 1
