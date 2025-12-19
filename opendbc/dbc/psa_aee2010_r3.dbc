@@ -422,6 +422,7 @@ BO_ 1161 Dat_V2_BV: 8 BVA___Automatikgetriebe
  SG_ P375_Com_bMILDem : 16|1@0+ (1,0) [0|1] "" Vector__XXX
  SG_ P376_Com_bMILcntResDemRaw : 18|1@0+ (1,0) [0|1] "" Vector__XXX
  SG_ P285_Com_bPNDia : 20|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ IGNITION : 40|1@0+ (1,0) [0|1] "" XXX
  SG_ P218_Com_stDrvIdx : 48|8@1+ (1,0) [0|255] "" Vector__XXX
 
 BO_ 1173 IS_DAT_DIRA: 4 PSCM
