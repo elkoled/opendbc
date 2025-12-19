@@ -331,6 +331,7 @@ BO_ 1074 Dat_BSI1: 8 BSI___Kombiinstrument
  SG_ P249_Com_stEngStopReq : 0|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ P216_Com_bSiaWkUp : 4|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P214_Com_stMnWkUp : 6|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ COUNTER : 11|4@0+ (1,0) [0|15] "" XXX
  SG_ P402_Com_stStaDemActv : 12|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ P253_Com_bEngPrepReq : 21|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P267_Exh_volRefl : 24|8@1+ (0.5,0) [0|255] "l" Vector__XXX
