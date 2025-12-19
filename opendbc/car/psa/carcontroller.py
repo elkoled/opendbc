@@ -62,22 +62,15 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl:
       if CC.hudControl.leadVisible:
         sm.update(0)
-        # get lead distance
         leads_v3 = sm['modelV2'].leadsV3
-        if len(leads_v3) > 1 and len(leads_v3[0].x):
-          distance = leads_v3[0].x[0]
-
-          d1 = 7.0 + 0.65 * CS.out.vEgo
-          r = distance / d1
-
-          if r > 4.0:
-            self.bars = 3
-          elif r > 3.0:
-            self.bars = 2
-          elif r > 2.0:
-            self.bars = 1
-          else:
-            self.bars = 0
+        if leads_v3 and leads_v3[0].x:
+          r = leads_v3[0].x[0] / (5 + CS.out.vEgo)
+          if self.bars > 3:  # initialize from "no lead"
+            self.bars = min(3, int(r))
+          elif r > self.bars + 1.2:
+            self.bars = min(3, self.bars + 1)
+          elif r < self.bars - 0.2:
+            self.bars = max(0, self.bars - 1)
       else:
         self.bars = 4
 
