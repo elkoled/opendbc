@@ -60,24 +60,29 @@ class CarController(CarControllerBase):
 
     braking = accel_cmd < brake_accel and not CS.out.gasPressed
     if self.CP.openpilotLongitudinalControl:
-      sm.update(0)
-      # get lead distance
-      leads_v3 = sm['modelV2'].leadsV3
-      if len(leads_v3) > 1 and len(leads_v3[0].x):
-        distance = leads_v3[0].x[0]
-        timegap = distance / max(CS.out.vEgo, 1.0)
+      if CC.hudControl.leadVisible:
+        sm.update(0)
+        # get lead distance
+        leads_v3 = sm['modelV2'].leadsV3
+        if len(leads_v3) > 1 and len(leads_v3[0].x):
+          distance = leads_v3[0].x[0]
+          timegap = distance / max(CS.out.vEgo, 1.0)
 
-        if timegap > 2.0:
-          self.bars = 4
-        elif timegap > 1.5:
-          self.bars = 3
-        elif timegap > 0.9:
-          self.bars = 2
-        else:
-          self.bars = 1
+          # todo: delete
+          if self.frame % 100==0:
+            print(f'distance: {distance}, timegap: {timegap}, bars: {self.bars}')
 
-      if self.frame % 100==0:
-        print(f'lead: {CC.hudControl.leadVisible}, distance: {distance}, timegap: {timegap}, bars: {self.bars}')
+          if timegap > 2.0:
+            self.bars = 3
+          elif timegap > 1.5:
+            self.bars = 2
+          elif timegap > 0.9:
+            self.bars = 1
+          else:
+            self.bars = 0
+      else:
+        self.bars = 4
+
 
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0:
