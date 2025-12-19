@@ -76,6 +76,9 @@ class CarController(CarControllerBase):
         else:
           self.bars = 1
 
+      if self.frame % 100==0:
+        print(f'lead: {CC.hudControl.leadVisible}, distance: {distance}, timegap: {timegap}, bars: {self.bars}')
+
       # disable radar ECU by setting to programming mode
       if self.radar_disabled == 0:
         can_sends.append(create_disable_radar())
