@@ -5,6 +5,8 @@
 #define PSA_STEERING              757U  // RX from XXX, driver torque
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U // RX from XXX, gas pedal
+#define PSA_DYN4_FRE              781U  // RX from CDS, wheel speeds
+#define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, standstill
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
 #define PSA_HS2_DAT_MDD_CMD_452   1106U // RX from BSI, cruise state
 #define PSA_DAT_BSI               1042U // RX from BSI, brake
@@ -73,16 +75,24 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
 
 static void psa_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == PSA_MAIN_BUS) {
-    if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-      int speed = (msg->data[0] << 8) | msg->data[1];
-      vehicle_moving = speed > 0;
-      UPDATE_VEHICLE_SPEED(speed * 0.01 * KPH_TO_MS); // VITESSE_VEHICULE_ROUES
+    // Wheel speeds from Dyn4_FRE - calculate average like carstate.py parse_wheel_speeds
+    if (msg->addr == PSA_DYN4_FRE) {
+      int fl = (msg->data[0] << 8) | msg->data[1];  // P263_VehV_VPsvValWhlFrtL
+      int fr = (msg->data[2] << 8) | msg->data[3];  // P264_VehV_VPsvValWhlFrtR
+      int rl = (msg->data[4] << 8) | msg->data[5];  // P265_VehV_VPsvValWhlBckL
+      int rr = (msg->data[6] << 8) | msg->data[7];  // P266_VehV_VPsvValWhlBckR
+      // Average of 4 wheel speeds, scale 0.01 km/h, convert to m/s (use float division)
+      UPDATE_VEHICLE_SPEED((fl + fr + rl + rr) * 0.0025 * KPH_TO_MS);
     }
   }
 
   if (msg->bus == PSA_ADAS_BUS) {
     if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
       pcm_cruise_check((msg->data[2U] >> 7U) & 1U); // RVV_ACC_ACTIVATION_REQ
+    }
+    // Standstill from HS2_DYN_UCF_MDD_32D - same as carstate.py
+    if (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) {
+      vehicle_moving = !((msg->data[2] >> 5) & 1U); // VEHICLE_STANDSTILL at bit 21
     }
   }
 
@@ -145,7 +155,8 @@ static safety_config psa_init(uint16_t param) {
 
   static RxCheck psa_rx_checks[] = {
     {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
-    {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
+    {.msg = {{PSA_DYN4_FRE, PSA_MAIN_BUS, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},      // wheel speeds (100Hz)
+    {.msg = {{PSA_HS2_DYN_UCF_MDD_32D, PSA_ADAS_BUS, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, // standstill
     {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
     // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
