@@ -52,18 +52,15 @@ class CarState(CarStateBase):
     ret.cruiseState.available = True # not available for CC-only
     ret.cruiseState.nonAdaptive = False # not available for CC-only
     ret.cruiseState.standstill = False # not available for CC-only
-    ret.accFaulted = False # not available for CC-only
+    ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3
     # resume request
     self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
-    self.accel_longi_calib = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACCEL_LONGI_CALIB']
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
       ret.gearShifter = GearShifter.reverse
     else:
       ret.gearShifter = GearShifter.drive
-
-    self.drive = ret.gearShifter == GearShifter.drive
 
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
