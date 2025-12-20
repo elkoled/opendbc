@@ -133,8 +133,8 @@ BO_ 749 NEW_MSG_2ED: 7 XXX
  SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
 
 BO_ 757 STEERING: 7 XXX
- SG_ COUNTER : 3|4@0+ (1,0) [0|255] "" XXX
- SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 3|4@0+ (1,0) [0|255] "" XXX
+ SG_ 0_CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
  SG_ DRIVER_TORQUE : 15|8@0- (1,0) [0|255] "" XXX
  SG_ ANGLE : 31|16@0- (0.1,0) [-3276.8|3276.7] "degrees" XXX
  SG_ RATE : 47|12@0- (1,0) [0|4095] "" XXX
@@ -288,8 +288,8 @@ BO_ 939 NEW_MSG_3AB: 4 XXX
 BO_ 941 Dyn_EasyMove: 8 CDS___Fahrdynamikregelung
  SG_ P299_Com_bCrCtlInhib : 17|1@1+ (1,0) [0|1] "" Vector__XXX
  SG_ P337_Com_stPrkBrk : 24|3@1+ (1,0) [0|0] "" Vector__XXX
- SG_ CHECKSUM : 59|4@0+ (1,0) [0|15] "" XXX
- SG_ COUNTER : 63|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 59|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 63|4@0+ (1,0) [0|15] "" XXX
 
 BO_ 968 Dyn_STT_CMM: 2 Vector__XXX
  SG_ P412_Com_stDeadPnt : 2|2@1+ (1,0) [0|3] "" Vector__XXX
@@ -340,8 +340,8 @@ BO_ 1042 Dat_BSI: 8 BSI___Kombiinstrument
  SG_ PASSENGER_DOOR : 52|1@0+ (1,0) [0|1] "" Vector__XXX
 
 BO_ 1069 NEW_MSG_42D: 4 XXX
- SG_ COUNTER : 16|4@1+ (1,0) [0|15] "" XXX
- SG_ CHECKSUM : 20|4@1+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 16|4@1+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 20|4@1+ (1,0) [0|15] "" XXX
  SG_ ACC_RELATED : 31|8@0+ (1,0) [0|255] "" XXX
 
 BO_ 1074 Dat_BSI1: 8 BSI___Kombiinstrument
@@ -468,8 +468,8 @@ BO_ 1270 HS2_DAT_ARTIV_V2_4F6: 5 ARTIV
  SG_ TRAFFIC_DIRECTION : 39|2@0+ (1,0) [0|0] "" RITCS,BSI,CMF
 
 BO_ 1272 NEW_MSG_4F8: 5 XXX
- SG_ COUNTER : 19|4@0+ (1,0) [0|15] "" XXX
- SG_ CHECKSUM : 23|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_COUNTER : 19|4@0+ (1,0) [0|15] "" XXX
+ SG_ 0_CHECKSUM : 23|4@0+ (1,0) [0|15] "" XXX
  SG_ ACC_GO_RELATED : 26|1@0+ (1,0) [0|1] "" XXX
 
 BO_ 1278 NEW_MSG_4FE: 3 XXX
