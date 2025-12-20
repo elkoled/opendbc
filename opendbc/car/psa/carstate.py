@@ -24,7 +24,7 @@ class CarState(CarStateBase):
       cp.vl['Dyn4_FRE']['P266_VehV_VPsvValWhlBckR'],
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
+    ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
     ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
