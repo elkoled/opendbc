@@ -78,7 +78,7 @@ class CarController(CarControllerBase):
         sm.update(0)
         leads_v3 = sm['modelV2'].leadsV3
         if leads_v3 and leads_v3[0].x:
-          r = leads_v3[0].x[0] / (5 + CS.out.vEgo)
+          r = leads_v3[0].x[0] / (3 + CS.out.vEgo)
           if self.bars > 3:  # initialize from "no lead"
             self.bars = min(3, int(r))
           elif r > self.bars + 1.2:
