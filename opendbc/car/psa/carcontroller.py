@@ -7,17 +7,9 @@ from opendbc.car.psa.values import CarControllerParams
 from numpy import interp
 from cereal import messaging
 import math
-import numpy as np
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 sm = messaging.SubMaster(['modelV2'], poll='modelV2')
-
-# Steering angle tracking PI controller gains
-# These correct for EPS tracking error (typically ~0.5° avg)
-STEER_ANGLE_KP = 0.3           # Proportional gain - responds to instantaneous error
-STEER_ANGLE_KI = 0.02          # Integral gain - corrects steady-state bias
-STEER_ANGLE_I_MAX = 2.0        # Max integrator contribution (degrees)
-STEER_ANGLE_CORRECTION_MAX = 3.0  # Max total correction (degrees)
 
 
 class CarController(CarControllerBase):
@@ -29,10 +21,6 @@ class CarController(CarControllerBase):
     self.status = 2
     self.bars = 4
 
-    # PI controller state for steering angle tracking
-    self.angle_error_integral = 0.0
-    self.lat_active_last = False
-
   def update(self, CC, CS, now_nanos):
     can_sends = []
     actuators = CC.actuators
@@ -40,40 +28,8 @@ class CarController(CarControllerBase):
     # starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
     # stopping = actuators.longControlState == LongCtrlState.stopping
 
-    # lateral control with PI correction for EPS tracking error
-    desired_angle = actuators.steeringAngleDeg
-    actual_angle = CS.out.steeringAngleDeg
-
-    # Reset integrator on activation or override
-    if not self.lat_active_last and CC.latActive:
-      self.angle_error_integral = 0.0
-    if CS.out.steeringPressed:
-      # Unwind integrator during override
-      self.angle_error_integral *= 0.95
-
-    # Calculate tracking error and PI correction
-    if CC.latActive and not CS.out.standstill:
-      angle_error = desired_angle - actual_angle
-
-      # Proportional term
-      p_correction = STEER_ANGLE_KP * angle_error
-
-      # Integral term with anti-windup
-      self.angle_error_integral += STEER_ANGLE_KI * angle_error
-      self.angle_error_integral = float(np.clip(self.angle_error_integral, -STEER_ANGLE_I_MAX, STEER_ANGLE_I_MAX))
-
-      # Total correction
-      correction = p_correction + self.angle_error_integral
-      correction = float(np.clip(correction, -STEER_ANGLE_CORRECTION_MAX, STEER_ANGLE_CORRECTION_MAX))
-
-      # Apply correction to desired angle
-      corrected_angle = desired_angle + correction
-    else:
-      corrected_angle = desired_angle
-
-    self.lat_active_last = CC.latActive
-
-    apply_angle = apply_std_steer_angle_limits(corrected_angle, self.apply_angle_last, CS.out.vEgoRaw,
+    # lateral control
+    apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
                                                  CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
 
     # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
