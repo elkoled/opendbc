@@ -20,14 +20,38 @@ def create_lka_steering(packer, lat_active: bool, apply_torque: float, status: i
   return packer.make_can_msg('LANE_KEEP_ASSIST', 0, values)
 
 
-def create_driver_torque(packer, steering):
-  # abs(driver_torque) > 10 to keep EPS engaged
+def create_driver_torque_spoof(packer, steering, min_torque=8):
+  """
+  Spoof DRIVER_TORQUE to keep EPS engaged indefinitely.
+
+  Per PSA EPS LXA spec (ST-LXA-EPS-27):
+  - MIN_DRIVER_TORQUE_DETECTION = 0.7 Nm
+  - If |DRIVER_TORQUE| >= 0.7 Nm, STEERWHL_HOLD_BY_DRV = "steering activity"
+  - This prevents FLAG_HOLD from becoming FALSE after DELAY_LXA_DEACTIVATION
+
+  Raw values have resolution 0.1 Nm, so:
+  - 0.7 Nm threshold = 7 raw units
+  - Using 8 raw units (0.8 Nm) for margin
+
+  Args:
+    packer: CAN packer
+    steering: Original STEERING message values from carstate
+    min_torque: Minimum torque in raw units (default 8 = 0.8 Nm, above 0.7 threshold)
+  """
+  # Copy original values
+  values = dict(steering)
+
+  # Increment counter (4-bit, wraps at 16)
+  values['COUNTER'] = (steering['COUNTER'] + 1) % 16
+
+  # Ensure DRIVER_TORQUE is above MIN_DRIVER_TORQUE_DETECTION (0.7 Nm)
+  # Keep the sign of the original torque for natural feel
   torque = steering['DRIVER_TORQUE']
+  if abs(torque) < min_torque:
+    values['DRIVER_TORQUE'] = min_torque if torque >= 0 else -min_torque
 
-  if abs(torque) < 10:
-    steering['DRIVER_TORQUE'] = 10 if torque > 0 else -10
-
-  return packer.make_can_msg('STEERING', 0, steering)
+  # Packer will compute checksum automatically via psa_checksum
+  return packer.make_can_msg('STEERING', 0, values)
 
 
 def create_steering_hold(packer, lat_active: bool, is_dat_dira):
