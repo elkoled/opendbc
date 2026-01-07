@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
 opendbc car behavior replay - Compare CarState outputs before/after PR changes.
-
-Usage:
-  python tools/car_behavior_replay.py --pr 2628
-  python tools/car_behavior_replay.py --pr 2628 --platform TESLA_MODEL_3
+Compares HEAD vs origin/master to detect behavior differences.
 """
 import argparse, json, re, subprocess, sys, tempfile
 from collections import defaultdict
@@ -79,9 +76,8 @@ def run_git(cmd, cwd):
   if r.returncode != 0: raise RuntimeError(f"git {' '.join(cmd)}: {r.stderr}")
   return r.stdout.strip()
 
-def get_changed_platforms(pr: int, cwd: Path, database: dict) -> list[str]:
-  run_git(["fetch", "origin", f"pull/{pr}/head:pr-{pr}"], cwd=cwd)
-  changed = run_git(["diff", "--name-only", f"origin/master...pr-{pr}"], cwd=cwd)
+def get_changed_platforms(cwd: Path, database: dict) -> list[str]:
+  changed = run_git(["diff", "--name-only", "origin/master...HEAD"], cwd=cwd)
   brands = set()
   for line in changed.splitlines():
     if m := re.search(r"opendbc/car/(\w+)/", line): brands.add(m.group(1))
@@ -177,17 +173,17 @@ print("RESULTS:", repr(results))
     return [(p, s, [Diff(d[0], d[1], d[2], d[3]) for d in diffs], e) for p, s, diffs, e in data]
   return []
 
-def test_pr(pr: int, platform: str | None = None, segments_per_platform: int = 3) -> int:
+def test_replay(platform: str | None = None, segments_per_platform: int = 3) -> int:
   cwd = Path(__file__).parent.parent.resolve()
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
 
-  print(f"{'='*60}\nTesting PR #{pr}\n{'='*60}\n")
+  print(f"{'='*60}\nComparing HEAD vs origin/master\n{'='*60}\n")
 
   database = get_database()
   if platform:
     platforms = [platform]
   else:
-    platforms = get_changed_platforms(pr, cwd, database)[:10]
+    platforms = get_changed_platforms(cwd, database)[:10]
     if not platforms:
       print("No platforms detected from changes")
       return 1
@@ -197,15 +193,15 @@ def test_pr(pr: int, platform: str | None = None, segments_per_platform: int = 3
   total = sum(len(s) for s in segments.values())
   print(f"Testing {total} segments...\n")
 
-  original = run_git(["rev-parse", "HEAD"], cwd=cwd)
+  head = run_git(["rev-parse", "HEAD"], cwd=cwd)
 
   try:
-    print("Generating baseline on master...")
+    print("Generating baseline on origin/master...")
     run_git(["checkout", "origin/master"], cwd=cwd)
     run_replay(platforms, segments, ref_path, True, cwd)
 
-    print(f"\nTesting PR #{pr}...")
-    run_git(["checkout", f"pr-{pr}"], cwd=cwd)
+    print("\nTesting HEAD...")
+    run_git(["checkout", head], cwd=cwd)
     results = run_replay(platforms, segments, ref_path, False, cwd)
 
     with_diffs = [(p, s, d) for p, s, d, e in results if d]
@@ -226,12 +222,11 @@ def test_pr(pr: int, platform: str | None = None, segments_per_platform: int = 3
 
     return 1 if with_diffs else 0
   finally:
-    run_git(["checkout", original], cwd=cwd)
+    run_git(["checkout", head], cwd=cwd)
 
 if __name__ == "__main__":
   p = argparse.ArgumentParser()
-  p.add_argument("--pr", type=int, required=True)
   p.add_argument("--platform")
   p.add_argument("--segments-per-platform", type=int, default=10)
   a = p.parse_args()
-  sys.exit(test_pr(a.pr, a.platform, a.segments_per_platform))
+  sys.exit(test_replay(a.platform, a.segments_per_platform))

@@ -60,7 +60,32 @@ jobs:
           scons -j8
           cd opendbc/safety/tests && ./mutation.sh
 
-  # TODO: this test needs to move to opendbc
+  replay_compare:
+    name: replay compare
+    runs-on: ${{ github.repository == 'commaai/opendbc' && 'namespace-profile-amd64-8x16' || 'ubuntu-latest' }}
+    if: github.event_name == 'pull_request'
+    env:
+      BASE_IMAGE: openpilot-base
+      RUN: docker run --shm-size 2G -v $PWD:/tmp/openpilot -w /tmp/openpilot -e CI=1 -e PYTHONPATH=/tmp/openpilot -v $GITHUB_WORKSPACE/.ci_cache/comma_download_cache:/tmp/comma_download_cache $BASE_IMAGE /bin/bash -c
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: 'commaai/openpilot'
+        ref: 'master'
+        submodules: true
+    - run: rm -rf opendbc_repo/
+    - uses: actions/checkout@v4
+      with:
+        path: opendbc_repo
+        fetch-depth: 0
+    - run: cd opendbc_repo && git fetch origin master
+    - uses: ./.github/workflows/setup-with-retry
+    - name: Build
+      run: ${{ env.RUN }} "scons -j$(nproc) opendbc_repo/"
+    - name: Test
+      run: ${{ env.RUN }} "python opendbc_repo/opendbc/car/tests/test_replay_compare.py --segments-per-platform 10"
+
+  # TODO: this needs to move to opendbc
   test_models:
     name: test models
     runs-on: ${{ github.repository == 'commaai/opendbc' && 'namespace-profile-amd64-8x16' || 'ubuntu-latest' }}
