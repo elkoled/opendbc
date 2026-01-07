@@ -9,6 +9,9 @@ import tempfile
 from collections import defaultdict
 from pathlib import Path
 
+BASE_URL = "https://commadataci.blob.core.windows.net/openpilotci/"
+REF_COMMIT_FN = Path(__file__).parent / "ref_commit"
+
 
 def run_git(cmd, cwd):
   r = subprocess.run(["git"] + cmd, cwd=cwd, capture_output=True, text=True)
@@ -31,6 +34,26 @@ def get_changed_platforms(cwd, database):
 def get_database():
   import requests
   return requests.get("https://huggingface.co/datasets/commaai/commaCarSegments/raw/main/database.json").json()
+
+
+def download_refs(ref_path, platforms, segments, commit):
+  import requests
+  for p in platforms:
+    for seg in segments.get(p, []):
+      fn = f"{p}_{seg.replace('/', '_')}.zst"
+      r = requests.get(f"{BASE_URL}car_replay/{commit}/{fn}")
+      if r.status_code == 200:
+        (Path(ref_path) / fn).write_bytes(r.content)
+
+
+def upload_refs(ref_path, platforms, segments, commit):
+  from openpilot.tools.lib.openpilotci import upload_file
+  for p in platforms:
+    for seg in segments.get(p, []):
+      fn = f"{p}_{seg.replace('/', '_')}.zst"
+      local = Path(ref_path) / fn
+      if local.exists():
+        upload_file(str(local), f"car_replay/{commit}/{fn}")
 
 
 def run_worker(platforms, segments, ref_path, update, cwd, worker_path, workers=8):
@@ -141,7 +164,7 @@ def format_diff(diffs):
   return lines
 
 
-def main(platform=None, segments_per_platform=10):
+def main(platform=None, segments_per_platform=10, update_refs=False):
   cwd = Path(__file__).resolve().parents[4]
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
 
@@ -150,48 +173,55 @@ def main(platform=None, segments_per_platform=10):
   shutil.copy(worker_src, worker_tmp)
 
   database = get_database()
-  platforms = [platform] if platform else get_changed_platforms(cwd, database)[:10]
+  platforms = [platform] if platform else (list(database.keys()) if update_refs else get_changed_platforms(cwd, database)[:10])
   if not platforms:
     print("No platforms detected from changes")
     return 0
 
   segments = {p: database.get(p, [])[:segments_per_platform] for p in platforms}
   n_segments = sum(len(s) for s in segments.values())
-  print(f"Comparing {n_segments} segments for: {', '.join(platforms)}")
+  print(f"{'Generating' if update_refs else 'Comparing'} {n_segments} segments for: {', '.join(platforms)}")
 
-  head = run_git(["rev-parse", "HEAD"], cwd=cwd)
-
-  try:
-    run_git(["checkout", "origin/master"], cwd=cwd)
+  commit = run_git(["rev-parse", "--short=12", "HEAD"], cwd=cwd)
+  if update_refs:
     run_worker(platforms, segments, ref_path, True, cwd, str(worker_tmp))
-
-    run_git(["checkout", head], cwd=cwd)
-    results = run_worker(platforms, segments, ref_path, False, cwd, str(worker_tmp))
-
-    passed = [(p, s) for p, s, d, e, n in results if not d and not e]
-    with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
-    errors = [(p, s, e) for p, s, d, e, n in results if e]
-
-    print(f"\nResults: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
-
-    for plat, seg, diffs, _ in with_diffs:
-      print(f"\n{plat} - {seg}")
-      by_field = defaultdict(list)
-      for d in diffs:
-        by_field[d[0]].append(d)
-      for field, fd in sorted(by_field.items()):
-        print(f"  {field}: {len(fd)} diffs")
-        for line in format_diff(fd):
-          print(line)
-
+    upload_refs(ref_path, platforms, segments, commit)
+    REF_COMMIT_FN.write_text(commit + "\n")
+    print(f"Uploaded refs for {commit}")
     return 0
-  finally:
-    run_git(["checkout", head], cwd=cwd)
+
+  ref_commit = REF_COMMIT_FN.read_text().strip() if REF_COMMIT_FN.exists() else None
+  if not ref_commit:
+    print("No ref_commit found")
+    return 1
+
+  print(f"Comparing against ref {ref_commit}")
+  download_refs(ref_path, platforms, segments, ref_commit)
+  results = run_worker(platforms, segments, ref_path, False, cwd, str(worker_tmp))
+
+  passed = [(p, s) for p, s, d, e, n in results if not d and not e]
+  with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
+  errors = [(p, s, e) for p, s, d, e, n in results if e]
+
+  print(f"\nResults: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
+
+  for plat, seg, diffs, _ in with_diffs:
+    print(f"\n{plat} - {seg}")
+    by_field = defaultdict(list)
+    for d in diffs:
+      by_field[d[0]].append(d)
+    for field, fd in sorted(by_field.items()):
+      print(f"  {field}: {len(fd)} diffs")
+      for line in format_diff(fd):
+        print(line)
+
+  return 0
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--platform")
   parser.add_argument("--segments-per-platform", type=int, default=10)
+  parser.add_argument("--update-refs", action="store_true")
   args = parser.parse_args()
-  sys.exit(main(args.platform, args.segments_per_platform))
+  sys.exit(main(args.platform, args.segments_per_platform, args.update_refs))

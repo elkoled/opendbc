@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import pickle
 import tempfile
+import zstd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -34,6 +36,15 @@ def differs(v1, v2):
   if isinstance(v1, float) and isinstance(v2, float):
     return abs(v1 - v2) > 1e-3
   return v1 != v2
+
+
+def save_ref(path, states, timestamps):
+  data = list(zip(timestamps, states, strict=True))
+  Path(path).write_bytes(zstd.compress(pickle.dumps(data)))
+
+
+def load_ref(path):
+  return pickle.loads(zstd.decompress(Path(path).read_bytes()))
 
 
 def download_segment(seg):
@@ -94,24 +105,21 @@ def process_segment(args):
   try:
     can_msgs = load_can_messages(download_segment(seg))
     states, timestamps = replay_segment(platform, can_msgs)
-    ref_file = Path(ref_path) / f"{platform}_{seg.replace('/', '_')}.json"
+    ref_file = Path(ref_path) / f"{platform}_{seg.replace('/', '_')}.zst"
 
     if update:
       ref_file.parent.mkdir(parents=True, exist_ok=True)
-      data = [{"ts": ts, **{field: get_value(s, field) for field in CARSTATE_FIELDS}}
-              for s, ts in zip(states, timestamps, strict=True)]
-      with open(ref_file, "w") as f:
-        json.dump(data, f)
+      save_ref(ref_file, states, timestamps)
       return (platform, seg, [], None, len(states))
 
     if not ref_file.exists():
       return (platform, seg, [], "no ref", 0)
 
-    with open(ref_file) as f:
-      ref = json.load(f)
-    diffs = [(field, i, ref[i].get(field), get_value(state, field), timestamps[i])
-             for i, state in enumerate(states) for field in CARSTATE_FIELDS
-             if differs(get_value(state, field), ref[i].get(field))]
+    ref = load_ref(ref_file)
+    diffs = [(field, i, get_value(ref_state, field), get_value(state, field), ts)
+             for i, ((ts, ref_state), state) in enumerate(zip(ref, states, strict=True))
+             for field in CARSTATE_FIELDS
+             if differs(get_value(state, field), get_value(ref_state, field))]
     return (platform, seg, diffs, None, len(states))
   except Exception as e:
     return (platform, seg, [], str(e), 0)
