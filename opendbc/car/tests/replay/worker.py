@@ -73,37 +73,41 @@ def replay_segment(platform, can_msgs):
   CC = structs.CarControl().as_reader()
 
   states = []
+  timestamps = []
   for ts, frames in can_msgs:
     ci.update([(ts, frames)])
     ci.apply(CC, ts)
     states.append(ci.update([(ts, frames)]))
-  return states
+    timestamps.append(ts)
+  return states, timestamps
 
 
 def process_segment(args):
   platform, seg, ref_path, update = args
   try:
     can_msgs = load_can_messages(download_segment(seg))
-    states = replay_segment(platform, can_msgs)
+    states, timestamps = replay_segment(platform, can_msgs)
     ref_file = Path(ref_path) / f"{platform}_{seg.replace('/', '_')}.json"
 
     if update:
       ref_file.parent.mkdir(parents=True, exist_ok=True)
+      data = [{"ts": ts, **{field: get_value(s, field) for field in CARSTATE_FIELDS}}
+              for s, ts in zip(states, timestamps, strict=True)]
       with open(ref_file, "w") as f:
-        json.dump([{field: get_value(s, field) for field in CARSTATE_FIELDS} for s in states], f)
-      return (platform, seg, [], None)
+        json.dump(data, f)
+      return (platform, seg, [], None, len(states))
 
     if not ref_file.exists():
-      return (platform, seg, [], "no ref")
+      return (platform, seg, [], "no ref", 0)
 
     with open(ref_file) as f:
       ref = json.load(f)
-    diffs = [(field, i, ref[i].get(field), get_value(state, field))
+    diffs = [(field, i, ref[i].get(field), get_value(state, field), timestamps[i])
              for i, state in enumerate(states) for field in CARSTATE_FIELDS
              if differs(get_value(state, field), ref[i].get(field))]
-    return (platform, seg, diffs, None)
+    return (platform, seg, diffs, None, len(states))
   except Exception as e:
-    return (platform, seg, [], str(e))
+    return (platform, seg, [], str(e), 0)
 
 
 if __name__ == "__main__":

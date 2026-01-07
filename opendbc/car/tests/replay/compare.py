@@ -52,7 +52,7 @@ def run_worker(platforms, segments, ref_path, update, cwd, worker_path, workers=
   return []
 
 
-def format_diff(diffs):
+def format_diff(diffs, total_frames=None):
   if not diffs:
     return []
   if not all(isinstance(d[2], bool) and isinstance(d[3], bool) for d in diffs):
@@ -72,20 +72,37 @@ def format_diff(diffs):
     t0, t1 = max(0, rdiffs[0][1] - 5), rdiffs[-1][1] + 6
     diff_map = {d[1]: d for d in rdiffs}
 
-    m_vals, p_vals, m_st, p_st = [], [], False, False
+    b_vals, m_vals, ts_map = [], [], {}
+    b_st, m_st = False, False
     for f in range(t0, t1):
       if f in diff_map:
-        m_st, p_st = diff_map[f][2], diff_map[f][3]
+        b_st, m_st = diff_map[f][2], diff_map[f][3]
+        if len(diff_map[f]) > 4:
+          ts_map[f] = diff_map[f][4]
       else:
         prev = [d for d in rdiffs if d[1] < f]
         if prev and prev[-1][2] != prev[-1][3]:
-          m_st = p_st = prev[-1][2] or prev[-1][3]
+          b_st = m_st = prev[-1][2] or prev[-1][3]
+      b_vals.append(b_st)
       m_vals.append(m_st)
-      p_vals.append(p_st)
 
-    lines.append(f"\n    frames {t0}-{t1-1}:")
-    for label, vals in [("master", m_vals), ("PR", p_vals)]:
-      top, bot = " " * 12, f"    {label}:".ljust(12)
+    # Get timestamps from diff data (nanoseconds -> seconds)
+    ts_start = ts_map.get(t0, rdiffs[0][4] if len(rdiffs[0]) > 4 else 0)
+    ts_end = ts_map.get(t1 - 1, rdiffs[-1][4] if len(rdiffs[-1]) > 4 else 0)
+    t0_sec = ts_start / 1e9
+    t1_sec = ts_end / 1e9
+
+    # Calculate ms per frame from actual timestamps
+    if len(ts_map) >= 2:
+      ts_vals = sorted(ts_map.items())
+      frame_ms = (ts_vals[-1][1] - ts_vals[0][1]) / 1e6 / (ts_vals[-1][0] - ts_vals[0][0])
+    else:
+      frame_ms = 10  # fallback
+
+    lines.append(f"\n  frames {t0}-{t1-1} (t={t0_sec:.2f}s - {t1_sec:.2f}s)")
+    pad = 12
+    for label, vals in [("master", b_vals), ("PR", m_vals)]:
+      top, bot = " " * pad, f"  {label}:".ljust(pad)
       for i, v in enumerate(vals):
         pv = vals[i - 1] if i > 0 else False
         if v and not pv:
@@ -102,25 +119,32 @@ def format_diff(diffs):
           bot += "─"
       lines.extend([top, bot])
 
+    b_rises = [i for i, v in enumerate(b_vals) if v and (i == 0 or not b_vals[i - 1])]
     m_rises = [i for i, v in enumerate(m_vals) if v and (i == 0 or not m_vals[i - 1])]
-    p_rises = [i for i, v in enumerate(p_vals) if v and (i == 0 or not p_vals[i - 1])]
+    b_falls = [i for i, v in enumerate(b_vals) if not v and i > 0 and b_vals[i - 1]]
     m_falls = [i for i, v in enumerate(m_vals) if not v and i > 0 and m_vals[i - 1]]
-    p_falls = [i for i, v in enumerate(p_vals) if not v and i > 0 and p_vals[i - 1]]
 
-    ann = []
-    if m_rises and p_rises:
-      delta = p_rises[0] - m_rises[0]
+    ann_lines = []
+    if b_rises and m_rises:
+      delta = m_rises[0] - b_rises[0]
       if delta:
-        ann.append(f"{'+' if delta > 0 else ''}{delta} frames")
-    m_edges, p_edges = len(m_rises) + len(m_falls), len(p_rises) + len(p_falls)
-    if m_edges > p_edges:
-      ann.append(f"master: {m_edges - p_edges} extra edge(s)")
-    elif p_edges > m_edges:
-      ann.append(f"PR: {p_edges - m_edges} extra edge(s)")
+        ms = int(abs(delta) * frame_ms)
+        direction = "lags" if delta > 0 else "leads"
+        pos = min(b_rises[0], m_rises[0])
+        arrows = "↑" * (abs(delta) + 1)
+        ann_lines.append((" " * (pad + pos) + arrows, f"rise: PR {direction} by {abs(delta)} frames ({ms}ms)"))
+    if b_falls and m_falls:
+      delta = m_falls[0] - b_falls[0]
+      if delta:
+        ms = int(abs(delta) * frame_ms)
+        direction = "lags" if delta > 0 else "leads"
+        pos = min(b_falls[0], m_falls[0])
+        arrows = "↑" * (abs(delta) + 1)
+        ann_lines.append((" " * (pad + pos) + arrows, f"fall: PR {direction} by {abs(delta)} frames ({ms}ms)"))
 
-    if ann:
-      pos = min(m_rises[0] if m_rises else 0, p_rises[0] if p_rises else 0)
-      lines.append(" " * (12 + pos) + "↑ " + ", ".join(ann))
+    for arrow, desc in ann_lines:
+      lines.append(arrow)
+      lines.append(" " * pad + "^ " + desc)
 
   return lines
 
@@ -156,21 +180,21 @@ def main(platform=None, segments_per_platform=10):
     run_git(["checkout", head], cwd=cwd)
     results = run_worker(platforms, segments, ref_path, False, cwd, str(worker_tmp))
 
-    passed = [(p, s) for p, s, d, e in results if not d and not e]
-    with_diffs = [(p, s, d) for p, s, d, e in results if d]
-    errors = [(p, s, e) for p, s, d, e in results if e]
+    passed = [(p, s) for p, s, d, e, n in results if not d and not e]
+    with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
+    errors = [(p, s, e) for p, s, d, e, n in results if e]
 
     print(f"\n{'=' * 60}")
     print(f"Results: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
 
-    for plat, seg, diffs in with_diffs:
+    for plat, seg, diffs, total_frames in with_diffs:
       print(f"\n{plat} - {seg}")
       by_field = defaultdict(list)
       for d in diffs:
         by_field[d[0]].append(d)
       for field, fd in sorted(by_field.items()):
         print(f"  {field}: {len(fd)} diffs")
-        for line in format_diff(fd):
+        for line in format_diff(fd, total_frames):
           print(line)
 
     return 0
