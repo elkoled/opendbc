@@ -107,49 +107,36 @@ def format_diff(diffs):
     init_b = not (first[2] and not first[3])
     init_m = not first[2] and first[3]
     for label, vals, init in [("master", b_vals, init_b), ("PR", m_vals, init_m)]:
-      top, bot = " " * pad, f"  {label}:".ljust(pad)
+      line = f"  {label}:".ljust(pad)
       for i, v in enumerate(vals):
         pv = vals[i - 1] if i > 0 else init
         if v and not pv:
-          top += "┌"
-          bot += "┘"
+          line += "/"
         elif not v and pv:
-          top += "┐"
-          bot += "└"
+          line += "\\"
         elif v:
-          top += "─"
-          bot += " "
+          line += "‾"
         else:
-          top += " "
-          bot += "─"
-      lines.extend([top, bot])
+          line += "_"
+      lines.append(line)
 
     b_rises = [i for i, v in enumerate(b_vals) if v and (i == 0 or not b_vals[i - 1])]
     m_rises = [i for i, v in enumerate(m_vals) if v and (i == 0 or not m_vals[i - 1])]
     b_falls = [i for i, v in enumerate(b_vals) if not v and i > 0 and b_vals[i - 1]]
     m_falls = [i for i, v in enumerate(m_vals) if not v and i > 0 and m_vals[i - 1]]
 
-    ann_lines = []
     if b_rises and m_rises:
       delta = m_rises[0] - b_rises[0]
       if delta:
         ms = int(abs(delta) * frame_ms)
         direction = "lags" if delta > 0 else "leads"
-        pos = min(b_rises[0], m_rises[0])
-        arrows = "↑" * abs(delta)
-        ann_lines.append((" " * (pad + pos) + arrows, f"rise: PR {direction} by {abs(delta)} frames ({ms}ms)"))
+        lines.append(" " * pad + f"rise: PR {direction} by {abs(delta)} frames ({ms}ms)")
     if b_falls and m_falls:
       delta = m_falls[0] - b_falls[0]
       if delta:
         ms = int(abs(delta) * frame_ms)
         direction = "lags" if delta > 0 else "leads"
-        pos = min(b_falls[0], m_falls[0])
-        arrows = "↑" * abs(delta)
-        ann_lines.append((" " * (pad + pos) + arrows, f"fall: PR {direction} by {abs(delta)} frames ({ms}ms)"))
-
-    for arrow, desc in ann_lines:
-      lines.append(arrow)
-      lines.append(" " * pad + desc)
+        lines.append(" " * pad + f"fall: PR {direction} by {abs(delta)} frames ({ms}ms)")
 
   return lines
 
