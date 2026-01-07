@@ -60,8 +60,8 @@ jobs:
           scons -j8
           cd opendbc/safety/tests && ./mutation.sh
 
-  replay_compare:
-    name: replay compare
+  opendbc_replay:
+    name: opendbc replay
     runs-on: ${{ github.repository == 'commaai/opendbc' && 'namespace-profile-amd64-8x16' || 'ubuntu-latest' }}
     if: github.event_name == 'pull_request'
     env:

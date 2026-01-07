@@ -69,38 +69,47 @@ def format_diff(diffs):
     diff_map = {d[1]: d for d in rdiffs}
 
     b_vals, m_vals, ts_map = [], [], {}
-    b_st, m_st = False, False
+    first, last = rdiffs[0], rdiffs[-1]
+    if first[2] and not first[3]:
+      b_st, m_st = False, False
+    elif not first[2] and first[3]:
+      b_st, m_st = True, True
+    else:
+      b_st, m_st = False, False
+
+    converge_frame = last[1] + 1
+    converge_val = last[2]
+
     for f in range(t0, t1):
       if f in diff_map:
         b_st, m_st = diff_map[f][2], diff_map[f][3]
         if len(diff_map[f]) > 4:
           ts_map[f] = diff_map[f][4]
-      else:
-        prev = [d for d in rdiffs if d[1] < f]
-        if prev and prev[-1][2] != prev[-1][3]:
-          b_st = m_st = prev[-1][2] or prev[-1][3]
+      elif f >= converge_frame:
+        b_st = m_st = converge_val
       b_vals.append(b_st)
       m_vals.append(m_st)
 
-    # Get timestamps from diff data (nanoseconds -> seconds)
     ts_start = ts_map.get(t0, rdiffs[0][4] if len(rdiffs[0]) > 4 else 0)
     ts_end = ts_map.get(t1 - 1, rdiffs[-1][4] if len(rdiffs[-1]) > 4 else 0)
     t0_sec = ts_start / 1e9
     t1_sec = ts_end / 1e9
 
-    # Calculate ms per frame from actual timestamps
+    # ms per frame from timestamps
     if len(ts_map) >= 2:
       ts_vals = sorted(ts_map.items())
       frame_ms = (ts_vals[-1][1] - ts_vals[0][1]) / 1e6 / (ts_vals[-1][0] - ts_vals[0][0])
     else:
-      frame_ms = 10  # fallback
+      frame_ms = 10
 
     lines.append(f"\n  frames {t0}-{t1-1} (t={t0_sec:.2f}s - {t1_sec:.2f}s)")
     pad = 12
-    for label, vals in [("master", b_vals), ("PR", m_vals)]:
+    init_b = not (first[2] and not first[3])
+    init_m = not first[2] and first[3]
+    for label, vals, init in [("master", b_vals, init_b), ("PR", m_vals, init_m)]:
       top, bot = " " * pad, f"  {label}:".ljust(pad)
       for i, v in enumerate(vals):
-        pv = vals[i - 1] if i > 0 else False
+        pv = vals[i - 1] if i > 0 else init
         if v and not pv:
           top += "┌"
           bot += "┘"
