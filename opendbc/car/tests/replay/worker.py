@@ -6,9 +6,16 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 CARSTATE_FIELDS = [
-  "vEgo", "aEgo", "standstill", "steeringAngleDeg", "steeringTorque", "steeringPressed",
-  "gas", "gasPressed", "brake", "brakePressed", "gearShifter", "leftBlinker", "rightBlinker",
-  "cruiseState.enabled", "cruiseState.speed", "cruiseState.available", "doorOpen", "seatbeltUnlatched",
+  "vEgo", "aEgo", "vEgoRaw", "yawRate", "standstill",
+  "gasPressed", "brake", "brakePressed", "regenBraking", "parkingBrake", "brakeHoldActive",
+  "steeringAngleDeg", "steeringAngleOffsetDeg", "steeringRateDeg", "steeringTorque", "steeringTorqueEps",
+  "steeringPressed", "steerFaultTemporary", "steerFaultPermanent",
+  "stockAeb", "stockFcw", "stockLkas", "espDisabled", "espActive", "accFaulted",
+  "cruiseState.enabled", "cruiseState.available", "cruiseState.speed", "cruiseState.standstill",
+  "cruiseState.nonAdaptive", "cruiseState.speedCluster",
+  "gearShifter", "leftBlinker", "rightBlinker", "genericToggle",
+  "doorOpen", "seatbeltUnlatched", "leftBlindspot", "rightBlindspot",
+  "canValid", "canTimeout",
 ]
 
 
