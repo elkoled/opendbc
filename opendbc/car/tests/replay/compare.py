@@ -130,11 +130,10 @@ def get_database() -> dict:
   return requests.get("https://huggingface.co/datasets/commaai/commaCarSegments/raw/main/database.json").json()
 
 
-def run_worker(platforms: list, segments: dict, ref_path: str, update: bool, cwd: Path, workers: int = 8) -> list:
+def run_worker(platforms: list, segments: dict, ref_path: str, update: bool, cwd: Path, worker_path: str, workers: int = 8) -> list:
   """Run worker.py in subprocess to process segments with fresh imports"""
-  worker_path = Path(__file__).parent / "worker.py"
   cmd = [
-    sys.executable, str(worker_path),
+    sys.executable, worker_path,
     "--platforms", json.dumps(platforms),
     "--segments", json.dumps(segments),
     "--ref-path", ref_path,
@@ -158,6 +157,13 @@ def test_replay(platform: str | None = None, segments_per_platform: int = 10) ->
   cwd = Path(__file__).resolve().parents[2]  # opendbc/car
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
 
+  # Copy worker.py to temp location before switching to master
+  import shutil
+  worker_src = Path(__file__).parent / "worker.py"
+  worker_tmp = Path(ref_path) / "worker.py"
+  shutil.copy(worker_src, worker_tmp)
+  worker_path = str(worker_tmp)
+
   print(f"{'='*60}\nComparing HEAD vs origin/master\n{'='*60}\n")
 
   database = get_database()
@@ -179,11 +185,11 @@ def test_replay(platform: str | None = None, segments_per_platform: int = 10) ->
   try:
     print("Generating baseline on origin/master...")
     run_git(["checkout", "origin/master"], cwd=cwd)
-    run_worker(platforms, segments, ref_path, update=True, cwd=cwd)
+    run_worker(platforms, segments, ref_path, update=True, cwd=cwd, worker_path=worker_path)
 
     print("\nTesting HEAD...")
     run_git(["checkout", head], cwd=cwd)
-    results = run_worker(platforms, segments, ref_path, update=False, cwd=cwd)
+    results = run_worker(platforms, segments, ref_path, update=False, cwd=cwd, worker_path=worker_path)
 
     with_diffs = [(p, s, d) for p, s, d, e in results if d]
     errors = [(p, s, e) for p, s, d, e in results if e]
