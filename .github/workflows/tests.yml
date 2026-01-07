@@ -83,7 +83,7 @@ jobs:
     - name: Build
       run: ${{ env.RUN }} "scons -j$(nproc) selfdrive/pandad/ opendbc_repo/opendbc/car opendbc_repo/opendbc/dbc"
     - name: Test
-      run: ${{ env.RUN }} "git config --global --add safe.directory '*' && python opendbc_repo/opendbc/car/tests/replay/compare.py --segments-per-platform 10"
+      run: ${{ env.RUN }} "git config --global --add safe.directory '*' && python opendbc_repo/opendbc/car/tests/replay/compare.py"
 
   # TODO: this needs to move to opendbc
   test_models:
