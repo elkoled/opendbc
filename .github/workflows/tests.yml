@@ -81,7 +81,7 @@ jobs:
     - run: cd opendbc_repo && git fetch origin master
     - uses: ./.github/workflows/setup-with-retry
     - name: Build
-      run: ${{ env.RUN }} "scons -j$(nproc) opendbc_repo/"
+      run: ${{ env.RUN }} "scons -j$(nproc) opendbc_repo/opendbc/car opendbc_repo/opendbc/dbc"
     - name: Test
       run: ${{ env.RUN }} "python opendbc_repo/opendbc/car/tests/replay/compare.py --segments-per-platform 10"
 

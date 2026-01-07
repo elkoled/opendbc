@@ -89,13 +89,17 @@ def format_diff(diffs):
       for i, v in enumerate(vals):
         pv = vals[i - 1] if i > 0 else False
         if v and not pv:
-          top += "┌"; bot += "┘"
+          top += "┌"
+          bot += "┘"
         elif not v and pv:
-          top += "┐"; bot += "└"
+          top += "┐"
+          bot += "└"
         elif v:
-          top += "─"; bot += " "
+          top += "─"
+          bot += " "
         else:
-          top += " "; bot += "─"
+          top += " "
+          bot += "─"
       lines.extend([top, bot])
 
     m_rises = [i for i, v in enumerate(m_vals) if v and (i == 0 or not m_vals[i - 1])]
@@ -122,7 +126,7 @@ def format_diff(diffs):
 
 
 def main(platform=None, segments_per_platform=10):
-  cwd = Path(__file__).resolve().parents[2]
+  cwd = Path(__file__).resolve().parents[4]
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
 
   worker_src = Path(__file__).parent / "worker.py"
