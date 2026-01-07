@@ -127,6 +127,5 @@ if __name__ == "__main__":
   with ProcessPoolExecutor(max_workers=args.workers) as pool:
     for r in as_completed([pool.submit(process_segment, w) for w in work]):
       results.append(r.result())
-      print(f"Done: {r.result()[0]} {r.result()[1]}", flush=True)
 
   print("RESULTS:" + json.dumps(results))

@@ -43,16 +43,12 @@ def run_worker(platforms, segments, ref_path, update, cwd, worker_path, workers=
     cmd.append("--update")
 
   r = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
-  print(r.stdout)
-  if r.stderr:
-    print(r.stderr, file=sys.stderr)
-
   if "RESULTS:" in r.stdout:
     return json.loads(r.stdout.split("RESULTS:")[1].strip())
   return []
 
 
-def format_diff(diffs, total_frames=None):
+def format_diff(diffs):
   if not diffs:
     return []
   if not all(isinstance(d[2], bool) and isinstance(d[3], bool) for d in diffs):
@@ -131,7 +127,7 @@ def format_diff(diffs, total_frames=None):
         ms = int(abs(delta) * frame_ms)
         direction = "lags" if delta > 0 else "leads"
         pos = min(b_rises[0], m_rises[0])
-        arrows = "↑" * (abs(delta) + 1)
+        arrows = "↑" * abs(delta)
         ann_lines.append((" " * (pad + pos) + arrows, f"rise: PR {direction} by {abs(delta)} frames ({ms}ms)"))
     if b_falls and m_falls:
       delta = m_falls[0] - b_falls[0]
@@ -139,12 +135,12 @@ def format_diff(diffs, total_frames=None):
         ms = int(abs(delta) * frame_ms)
         direction = "lags" if delta > 0 else "leads"
         pos = min(b_falls[0], m_falls[0])
-        arrows = "↑" * (abs(delta) + 1)
+        arrows = "↑" * abs(delta)
         ann_lines.append((" " * (pad + pos) + arrows, f"fall: PR {direction} by {abs(delta)} frames ({ms}ms)"))
 
     for arrow, desc in ann_lines:
       lines.append(arrow)
-      lines.append(" " * pad + "^ " + desc)
+      lines.append(" " * pad + desc)
 
   return lines
 
@@ -157,26 +153,22 @@ def main(platform=None, segments_per_platform=10):
   worker_tmp = Path(ref_path) / "worker.py"
   shutil.copy(worker_src, worker_tmp)
 
-  print(f"{'=' * 60}\nComparing HEAD vs origin/master\n{'=' * 60}\n")
-
   database = get_database()
   platforms = [platform] if platform else get_changed_platforms(cwd, database)[:10]
   if not platforms:
     print("No platforms detected from changes")
     return 0
 
-  print(f"Platforms: {', '.join(platforms)}\n")
   segments = {p: database.get(p, [])[:segments_per_platform] for p in platforms}
-  print(f"Testing {sum(len(s) for s in segments.values())} segments...\n")
+  n_segments = sum(len(s) for s in segments.values())
+  print(f"Comparing {n_segments} segments for: {', '.join(platforms)}")
 
   head = run_git(["rev-parse", "HEAD"], cwd=cwd)
 
   try:
-    print("Generating baseline on origin/master...")
     run_git(["checkout", "origin/master"], cwd=cwd)
     run_worker(platforms, segments, ref_path, True, cwd, str(worker_tmp))
 
-    print("\nTesting HEAD...")
     run_git(["checkout", head], cwd=cwd)
     results = run_worker(platforms, segments, ref_path, False, cwd, str(worker_tmp))
 
@@ -184,17 +176,16 @@ def main(platform=None, segments_per_platform=10):
     with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
     errors = [(p, s, e) for p, s, d, e, n in results if e]
 
-    print(f"\n{'=' * 60}")
-    print(f"Results: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
+    print(f"\nResults: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
 
-    for plat, seg, diffs, total_frames in with_diffs:
+    for plat, seg, diffs, _ in with_diffs:
       print(f"\n{plat} - {seg}")
       by_field = defaultdict(list)
       for d in diffs:
         by_field[d[0]].append(d)
       for field, fd in sorted(by_field.items()):
         print(f"  {field}: {len(fd)} diffs")
-        for line in format_diff(fd, total_frames):
+        for line in format_diff(fd):
           print(line)
 
     return 0
