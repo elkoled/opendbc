@@ -83,7 +83,7 @@ jobs:
     - name: Build
       run: ${{ env.RUN }} "scons -j$(nproc) opendbc_repo/"
     - name: Test
-      run: ${{ env.RUN }} "python opendbc_repo/opendbc/car/tests/test_replay_compare.py --segments-per-platform 10"
+      run: ${{ env.RUN }} "python opendbc_repo/opendbc/car/tests/replay/compare.py --segments-per-platform 10"
 
   # TODO: this needs to move to opendbc
   test_models:
