@@ -2,8 +2,7 @@
 import argparse
 import json
 import pickle
-import tempfile
-import zstd
+import zstandard as zstd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -21,15 +20,10 @@ CARSTATE_FIELDS = [
 ]
 
 
-def get_attr(obj, path):
-  for p in path.split("."):
-    obj = getattr(obj, p, None)
-  return obj
-
-
 def get_value(obj, field):
-  v = get_attr(obj, field)
-  return v.raw if hasattr(v, "raw") else v
+  for p in field.split("."):
+    obj = getattr(obj, p, None)
+  return obj.raw if hasattr(obj, "raw") else obj
 
 
 def differs(v1, v2):
@@ -47,29 +41,18 @@ def load_ref(path):
   return pickle.loads(zstd.decompress(Path(path).read_bytes()))
 
 
-def download_segment(seg):
-  import requests
+def load_can_messages(seg):
+  from opendbc.car.can_definitions import CanData
+  from openpilot.selfdrive.pandad import can_capnp_to_list
+  from openpilot.tools.lib.logreader import _LogFileReader
   from openpilot.tools.lib.comma_car_segments import get_url
 
   seg = seg.rstrip("/s")
   parts = seg.split("/")
   url = get_url(f"{parts[0]}/{parts[1]}", parts[2])
 
-  resp = requests.get(url)
-  resp.raise_for_status()
-
-  with tempfile.NamedTemporaryFile(suffix=".zst", delete=False) as tmp:
-    tmp.write(resp.content)
-    return tmp.name
-
-
-def load_can_messages(path):
-  from opendbc.car.can_definitions import CanData
-  from openpilot.selfdrive.pandad import can_capnp_to_list
-  from openpilot.tools.lib.logreader import _LogFileReader
-
   can_msgs = []
-  for msg in _LogFileReader(path):
+  for msg in _LogFileReader(url):
     if msg.which() == "can":
       ts, data = can_capnp_to_list((msg.as_builder().to_bytes(),))[0]
       can_msgs.append((ts, [CanData(*x) for x in data]))
@@ -80,22 +63,22 @@ def replay_segment(platform, can_msgs):
   from opendbc.car import gen_empty_fingerprint, structs
   from opendbc.car.car_helpers import FRAME_FINGERPRINT, interfaces
 
-  fp = gen_empty_fingerprint()
+  fingerprint = gen_empty_fingerprint()
   for _, frames in can_msgs[:FRAME_FINGERPRINT]:
     for msg in frames:
       if msg.src < 64:
-        fp[msg.src][msg.address] = len(msg.dat)
+        fingerprint[msg.src][msg.address] = len(msg.dat)
 
-  CI = interfaces[platform]
-  ci = CI(CI.get_params(platform, fp, [], False, False, False))
-  CC = structs.CarControl().as_reader()
+  CarInterface = interfaces[platform]
+  car_interface = CarInterface(CarInterface.get_params(platform, fingerprint, [], False, False, False))
+  car_control = structs.CarControl().as_reader()
 
   states = []
   timestamps = []
   for ts, frames in can_msgs:
-    ci.update([(ts, frames)])
-    ci.apply(CC, ts)
-    states.append(ci.update([(ts, frames)]))
+    car_interface.update([(ts, frames)])
+    car_interface.apply(car_control, ts)
+    states.append(car_interface.update([(ts, frames)]))
     timestamps.append(ts)
   return states, timestamps
 
@@ -103,7 +86,7 @@ def replay_segment(platform, can_msgs):
 def process_segment(args):
   platform, seg, ref_path, update = args
   try:
-    can_msgs = load_can_messages(download_segment(seg))
+    can_msgs = load_can_messages(seg)
     states, timestamps = replay_segment(platform, can_msgs)
     ref_file = Path(ref_path) / f"{platform}_{seg.replace('/', '_')}.zst"
 
@@ -136,11 +119,13 @@ if __name__ == "__main__":
 
   platforms = json.loads(args.platforms)
   segments = json.loads(args.segments)
-  work = [(p, s, args.ref_path, args.update) for p in platforms for s in segments.get(p, [])]
+  work = [(platform, seg, args.ref_path, args.update)
+          for platform in platforms for seg in segments.get(platform, [])]
 
   results = []
   with ProcessPoolExecutor(max_workers=args.workers) as pool:
-    for r in as_completed([pool.submit(process_segment, w) for w in work]):
-      results.append(r.result())
+    futures = [pool.submit(process_segment, w) for w in work]
+    for future in as_completed(futures):
+      results.append(future.result())
 
   print("RESULTS:" + json.dumps(results))
