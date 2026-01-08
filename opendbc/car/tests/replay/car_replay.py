@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import re
 import requests
 import sys
@@ -11,7 +12,8 @@ from pathlib import Path
 
 def get_changed_platforms(cwd, database):
   from openpilot.common.utils import run_cmd
-  changed = run_cmd(["git", "diff", "--name-only", "origin/master...HEAD"], cwd=cwd)
+  git_ref = os.environ.get("GIT_REF", "origin/master")
+  changed = run_cmd(["git", "diff", "--name-only", f"{git_ref}...HEAD"], cwd=cwd)
   brands = set()
   for line in changed.splitlines():
     if m := re.search(r"opendbc/car/(\w+)/", line):
