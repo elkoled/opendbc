@@ -63,9 +63,13 @@ def run_worker(platforms, segments, ref_path, update, cwd, worker_path, workers=
 def format_diff(diffs):
   if not diffs:
     return []
-  lines = [f"    frame {d[1]}: {d[2]} -> {d[3]}" for d in diffs[:10]]
-  if len(diffs) > 10:
-    lines.append(f"    ... and {len(diffs) - 10} more")
+  lines = [
+    "    frame | time | master | PR",
+    "    ------|------|--------|------",
+  ]
+  for d in diffs[:10]:
+    sec = d[4] / 1e9 if len(d) > 4 else 0
+    lines.append(f"    {d[1]:<5} | {sec:>8.2f}s | {str(d[2]):<6} | {d[3]}")
   return lines
 
 
