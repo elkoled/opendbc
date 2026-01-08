@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import re
 import requests
-import shutil
-import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-BASE_URL = "https://commadataci.blob.core.windows.net/openpilotci/"
 REF_COMMIT_FN = Path(__file__).parent / "ref_commit"
 
 
@@ -27,6 +24,7 @@ def get_changed_platforms(cwd, database):
 
 
 def download_refs(ref_path, platforms, segments, commit):
+  from openpilot.tools.lib.openpilotci import BASE_URL
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
@@ -45,32 +43,26 @@ def upload_refs(ref_path, platforms, segments, commit):
         upload_file(str(local_path), f"car_replay/{commit}/{filename}")
 
 
-def run_worker(platforms, segments, ref_path, update, cwd, worker_path, workers=8):
-  cmd = [sys.executable, worker_path,
-         "--platforms", json.dumps(platforms),
-         "--segments", json.dumps(segments),
-         "--ref-path", ref_path,
-         "--workers", str(workers)]
-  if update:
-    cmd.append("--update")
-
-  result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
-  if "RESULTS:" in result.stdout:
-    return json.loads(result.stdout.split("RESULTS:")[1].strip())
-  return []
-
-
 def format_diff(diffs):
   if not diffs:
     return []
-  lines = [
-    "    frame | time | master | PR",
-    "    ------|------|--------|------",
-  ]
+  lines = ["    frame | time | master | PR",
+           "    ------|------|--------|------"]
   for d in diffs[:10]:
     sec = d[4] / 1e9 if len(d) > 4 else 0
     lines.append(f"    {d[1]:<5} | {sec:>8.2f}s | {str(d[2]):<6} | {d[3]}")
   return lines
+
+
+def run_replay(platforms, segments, ref_path, update, workers=8):
+  from opendbc.car.tests.replay.worker import process_segment
+  work = [(platform, seg, ref_path, update)
+          for platform in platforms for seg in segments.get(platform, [])]
+  results = []
+  with ProcessPoolExecutor(max_workers=workers) as pool:
+    for future in as_completed([pool.submit(process_segment, w) for w in work]):
+      results.append(future.result())
+  return results
 
 
 def main(platform=None, segments_per_platform=10, update_refs=False):
@@ -79,11 +71,6 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
 
   cwd = Path(__file__).resolve().parents[4]
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
-
-  worker_src = Path(__file__).parent / "worker.py"
-  worker_tmp = Path(ref_path) / "worker.py"
-  shutil.copy(worker_src, worker_tmp)
-
   database = get_comma_car_segments_database()
   platforms = [platform] if platform else get_changed_platforms(cwd, database)
 
@@ -95,9 +82,9 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   n_segments = sum(len(s) for s in segments.values())
   print(f"{'Generating' if update_refs else 'Testing'} {n_segments} segments for: {', '.join(platforms)}")
 
-  commit = get_commit(cwd=str(cwd))[:12]
+  commit = get_commit(cwd=str(cwd))
   if update_refs:
-    run_worker(platforms, segments, ref_path, True, cwd, str(worker_tmp))
+    run_replay(platforms, segments, ref_path, update=True)
     upload_refs(ref_path, platforms, segments, commit)
     REF_COMMIT_FN.write_text(commit + "\n")
     print(f"Uploaded refs for {commit}")
@@ -110,7 +97,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
 
   print(f"Comparing against ref {ref_commit}")
   download_refs(ref_path, platforms, segments, ref_commit)
-  results = run_worker(platforms, segments, ref_path, False, cwd, str(worker_tmp))
+  results = run_replay(platforms, segments, ref_path, update=False)
 
   passed = [(p, s) for p, s, d, e, n in results if not d and not e]
   with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]

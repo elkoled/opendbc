@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-import argparse
-import json
 import pickle
 import zstandard as zstd
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 CARSTATE_FIELDS = [
@@ -106,26 +103,3 @@ def process_segment(args):
     return (platform, seg, diffs, None, len(states))
   except Exception as e:
     return (platform, seg, [], str(e), 0)
-
-
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--platforms", required=True)
-  parser.add_argument("--segments", required=True)
-  parser.add_argument("--ref-path", required=True)
-  parser.add_argument("--update", action="store_true")
-  parser.add_argument("--workers", type=int, default=8)
-  args = parser.parse_args()
-
-  platforms = json.loads(args.platforms)
-  segments = json.loads(args.segments)
-  work = [(platform, seg, args.ref_path, args.update)
-          for platform in platforms for seg in segments.get(platform, [])]
-
-  results = []
-  with ProcessPoolExecutor(max_workers=args.workers) as pool:
-    futures = [pool.submit(process_segment, w) for w in work]
-    for future in as_completed(futures):
-      results.append(future.result())
-
-  print("RESULTS:" + json.dumps(results))
