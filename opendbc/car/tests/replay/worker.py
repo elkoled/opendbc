@@ -96,7 +96,7 @@ def process_segment(args):
       return (platform, seg, [], None, len(states))
 
     if not ref_file.exists():
-      return (platform, seg, [], "no ref", 0)
+      return (platform, seg, [], "no ref", len(states))
 
     ref = load_ref(ref_file)
     diffs = [(field, i, get_value(ref_state, field), get_value(state, field), ts)
