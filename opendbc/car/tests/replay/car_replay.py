@@ -41,7 +41,7 @@ def upload_refs(ref_path, platforms, segments):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
       local_path = Path(ref_path) / filename
       if local_path.exists():
-        container.upload_file(str(local_path), f"car_replay/{filename}")
+        container.upload_file(str(local_path), f"car_replay/{filename}", overwrite=True)
 
 
 def format_diff(diffs):
