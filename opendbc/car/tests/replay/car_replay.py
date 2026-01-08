@@ -8,8 +8,6 @@ from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-REF_COMMIT_FN = Path(__file__).parent / "ref_commit"
-
 
 def get_changed_platforms(cwd, database):
   from openpilot.common.utils import run_cmd
@@ -23,24 +21,24 @@ def get_changed_platforms(cwd, database):
   return [p for p in database if any(b.upper() in p for b in brands)]
 
 
-def download_refs(ref_path, platforms, segments, commit):
+def download_refs(ref_path, platforms, segments):
   from openpilot.tools.lib.openpilotci import BASE_URL
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
-      resp = requests.get(f"{BASE_URL}car_replay/{commit}/{filename}")
+      resp = requests.get(f"{BASE_URL}car_replay/{filename}")
       if resp.status_code == 200:
         (Path(ref_path) / filename).write_bytes(resp.content)
 
 
-def upload_refs(ref_path, platforms, segments, commit):
+def upload_refs(ref_path, platforms, segments):
   from openpilot.tools.lib.openpilotci import upload_file
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
       local_path = Path(ref_path) / filename
       if local_path.exists():
-        upload_file(str(local_path), f"car_replay/{commit}/{filename}")
+        upload_file(str(local_path), f"car_replay/{filename}")
 
 
 def format_diff(diffs):
@@ -62,7 +60,6 @@ def run_replay(platforms, segments, ref_path, update, workers=8):
 
 
 def main(platform=None, segments_per_platform=10, update_refs=False):
-  from openpilot.common.git import get_commit
   from openpilot.tools.lib.comma_car_segments import get_comma_car_segments_database
 
   cwd = Path(__file__).resolve().parents[4]
@@ -78,21 +75,12 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   n_segments = sum(len(s) for s in segments.values())
   print(f"{'Generating' if update_refs else 'Testing'} {n_segments} segments for: {', '.join(platforms)}")
 
-  commit = get_commit(cwd=str(cwd))
   if update_refs:
     run_replay(platforms, segments, ref_path, update=True)
-    upload_refs(ref_path, platforms, segments, commit)
-    REF_COMMIT_FN.write_text(commit + "\n")
-    print(f"Uploaded refs for {commit}")
+    upload_refs(ref_path, platforms, segments)
     return 0
 
-  ref_commit = REF_COMMIT_FN.read_text().strip() if REF_COMMIT_FN.exists() else None
-  if not ref_commit:
-    print("No ref_commit found")
-    return 1
-
-  print(f"Comparing against ref {ref_commit}")
-  download_refs(ref_path, platforms, segments, ref_commit)
+  download_refs(ref_path, platforms, segments)
   results = run_replay(platforms, segments, ref_path, update=False)
 
   with_diffs = [(p, s, d) for p, s, d, e in results if d]
