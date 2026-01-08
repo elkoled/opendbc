@@ -22,7 +22,7 @@ def get_changed_platforms(cwd, database):
 
 
 def download_refs(ref_path, platforms, segments):
-  from openpilot.tools.lib.openpilotci import BASE_URL
+  BASE_URL = "https://elkoled.blob.core.windows.net/openpilotci/"
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
@@ -32,13 +32,14 @@ def download_refs(ref_path, platforms, segments):
 
 
 def upload_refs(ref_path, platforms, segments):
-  from openpilot.tools.lib.openpilotci import upload_file
+  from openpilot.tools.lib.azure_container import AzureContainer
+  container = AzureContainer("elkoled", "openpilotci")
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
       local_path = Path(ref_path) / filename
       if local_path.exists():
-        upload_file(str(local_path), f"car_replay/{filename}")
+        container.upload_file(str(local_path), f"car_replay/{filename}")
 
 
 def format_diff(diffs):
