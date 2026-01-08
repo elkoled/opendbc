@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import pickle
 import zstandard as zstd
 from pathlib import Path
@@ -86,18 +85,17 @@ def process_segment(args):
     ref_file = Path(ref_path) / f"{platform}_{seg.replace('/', '_')}.zst"
 
     if update:
-      ref_file.parent.mkdir(parents=True, exist_ok=True)
       save_ref(ref_file, states, timestamps)
-      return (platform, seg, [], None, len(states))
+      return (platform, seg, [], None)
 
     if not ref_file.exists():
-      return (platform, seg, [], "no ref", len(states))
+      return (platform, seg, [], "no ref")
 
     ref = load_ref(ref_file)
     diffs = [(field, i, get_value(ref_state, field), get_value(state, field), ts)
              for i, ((ts, ref_state), state) in enumerate(zip(ref, states, strict=True))
              for field in CARSTATE_FIELDS
              if differs(get_value(state, field), get_value(ref_state, field))]
-    return (platform, seg, diffs, None, len(states))
+    return (platform, seg, diffs, None)
   except Exception as e:
-    return (platform, seg, [], str(e), 0)
+    return (platform, seg, [], str(e))

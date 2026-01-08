@@ -49,8 +49,7 @@ def format_diff(diffs):
   lines = ["    frame | time | master | PR",
            "    ------|------|--------|------"]
   for d in diffs[:10]:
-    sec = d[4] / 1e9 if len(d) > 4 else 0
-    lines.append(f"    {d[1]:<5} | {sec:>8.2f}s | {str(d[2]):<6} | {d[3]}")
+    lines.append(f"    {d[1]:<5} | {d[4] / 1e9:>8.2f}s | {str(d[2]):<6} | {d[3]}")
   return lines
 
 
@@ -96,8 +95,8 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   download_refs(ref_path, platforms, segments, ref_commit)
   results = run_replay(platforms, segments, ref_path, update=False)
 
-  with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
-  errors = [(p, s, e) for p, s, d, e, n in results if e]
+  with_diffs = [(p, s, d) for p, s, d, e in results if d]
+  errors = [(p, s, e) for p, s, d, e in results if e]
   n_passed = len(results) - len(with_diffs) - len(errors)
 
   print(f"\nResults: {n_passed} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
@@ -105,7 +104,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   for plat, seg, err in errors:
     print(f"\nERROR {plat} - {seg}: {err}")
 
-  for plat, seg, diffs, _ in with_diffs:
+  for plat, seg, diffs in with_diffs:
     print(f"\n{plat} - {seg}")
     by_field = defaultdict(list)
     for d in diffs:
