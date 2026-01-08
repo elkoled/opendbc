@@ -5,7 +5,7 @@ import requests
 import sys
 import tempfile
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 REF_COMMIT_FN = Path(__file__).parent / "ref_commit"
@@ -58,11 +58,8 @@ def run_replay(platforms, segments, ref_path, update, workers=8):
   from opendbc.car.tests.replay.worker import process_segment
   work = [(platform, seg, ref_path, update)
           for platform in platforms for seg in segments.get(platform, [])]
-  results = []
   with ProcessPoolExecutor(max_workers=workers) as pool:
-    for future in as_completed([pool.submit(process_segment, w) for w in work]):
-      results.append(future.result())
-  return results
+    return list(pool.map(process_segment, work))
 
 
 def main(platform=None, segments_per_platform=10, update_refs=False):
@@ -99,11 +96,11 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   download_refs(ref_path, platforms, segments, ref_commit)
   results = run_replay(platforms, segments, ref_path, update=False)
 
-  passed = [(p, s) for p, s, d, e, n in results if not d and not e]
   with_diffs = [(p, s, d, n) for p, s, d, e, n in results if d]
   errors = [(p, s, e) for p, s, d, e, n in results if e]
+  n_passed = len(results) - len(with_diffs) - len(errors)
 
-  print(f"\nResults: {len(passed)} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
+  print(f"\nResults: {n_passed} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
 
   for plat, seg, err in errors:
     print(f"\nERROR {plat} - {seg}: {err}")

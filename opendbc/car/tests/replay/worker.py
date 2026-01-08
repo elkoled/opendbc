@@ -44,7 +44,6 @@ def load_can_messages(seg):
   from openpilot.tools.lib.logreader import _LogFileReader
   from openpilot.tools.lib.comma_car_segments import get_url
 
-  seg = seg.rstrip("/s")
   parts = seg.split("/")
   url = get_url(f"{parts[0]}/{parts[1]}", parts[2])
 
@@ -73,9 +72,8 @@ def replay_segment(platform, can_msgs):
   states = []
   timestamps = []
   for ts, frames in can_msgs:
-    car_interface.update([(ts, frames)])
-    car_interface.apply(car_control, ts)
     states.append(car_interface.update([(ts, frames)]))
+    car_interface.apply(car_control, ts)
     timestamps.append(ts)
   return states, timestamps
 
