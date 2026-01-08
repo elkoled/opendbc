@@ -75,6 +75,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
   if update_refs:
     run_replay(platforms, segments, ref_path, update=True)
     upload_refs(ref_path, platforms, segments)
+    print(f"Uploaded {n_segments} refs")
     return 0
 
   download_refs(ref_path, platforms, segments)
