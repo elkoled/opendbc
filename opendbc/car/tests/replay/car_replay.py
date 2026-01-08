@@ -43,7 +43,7 @@ def upload_refs(ref_path, platforms, segments):
 
 
 def format_diff(diffs):
-  return [f"    {d[1]}: {d[2]} → {d[3]}" for d in diffs[:10]]
+  return [f"    {d[1]}: {d[2]} → {d[3]}" for d in diffs]
 
 
 def run_replay(platforms, segments, ref_path, update, workers=8):
