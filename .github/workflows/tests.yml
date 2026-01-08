@@ -91,7 +91,7 @@ jobs:
       if: github.ref == 'refs/heads/master'
       env:
         AZURE_TOKEN: ${{ secrets.AZURE_TOKEN }}
-      run: ${{ env.RUN }} "git config --global --add safe.directory '*' && python opendbc_repo/opendbc/car/tests/replay/car_replay.py --update-refs"
+      run: ${{ env.RUN }} "git config --global --add safe.directory '*' && python opendbc_repo/opendbc/car/tests/replay/car_replay.py --update-refs 2>/dev/null"
 
   # TODO: this needs to move to opendbc
   test_models:
