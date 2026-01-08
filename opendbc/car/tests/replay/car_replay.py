@@ -42,13 +42,7 @@ def upload_refs(ref_path, platforms, segments):
 
 
 def format_diff(diffs):
-  if not diffs:
-    return []
-  lines = ["    frame | time | master | PR",
-           "    ------|------|--------|------"]
-  for d in diffs[:10]:
-    lines.append(f"    {d[1]:<5} | {d[4] / 1e9:>8.2f}s | {str(d[2]):<6} | {d[3]}")
-  return lines
+  return [f"    {d[1]}: {d[2]} → {d[3]}" for d in diffs[:10]]
 
 
 def run_replay(platforms, segments, ref_path, update, workers=8):
@@ -98,7 +92,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False):
     for d in diffs:
       by_field[d[0]].append(d)
     for field, fd in sorted(by_field.items()):
-      print(f"  {field}: {len(fd)} diffs")
+      print(f"  {field} (frame: master → PR)")
       for line in format_diff(fd):
         print(line)
 
