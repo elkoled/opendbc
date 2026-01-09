@@ -19,7 +19,7 @@ class CarController(CarControllerBase):
     self.status = 2
     self.DT_CTRL = 0.01 # control step
     self.correction_max = 2.0 # max correction in deg
-    self.correction_rate = 0.1 # correct 1 deg over 10 sec (100Hz * 10s * 0.01 * 0.1 = 1.0)
+    self.correction_rate = 0.2 # correct 1 deg over 5 sec (100Hz * 5s * 0.01 * 0.2 = 1.0)
     self.angle_offset_correction = 0.0
 
   def update(self, CC, CC_SP, CS, now_nanos):
