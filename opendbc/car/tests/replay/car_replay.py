@@ -20,6 +20,8 @@ def get_changed_platforms(cwd, database):
       brands.add(m.group(1))
     if m := re.search(r"opendbc/dbc/(\w+?)_", line):
       brands.add(m.group(1).lower())
+    if m := re.search(r"opendbc/safety/modes/(\w+?)[_.]", line):
+      brands.add(m.group(1).lower())
   return [p for p in database if any(b.upper() in p for b in brands)]
 
 
