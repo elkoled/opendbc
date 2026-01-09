@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 def get_changed_platforms(cwd, database):
+  from opendbc.car.car_helpers import interfaces
   from openpilot.common.utils import run_cmd
   git_ref = os.environ.get("GIT_REF", "origin/master")
   changed = run_cmd(["git", "diff", "--name-only", f"{git_ref}...HEAD"], cwd=cwd)
@@ -22,7 +23,7 @@ def get_changed_platforms(cwd, database):
       brands.add(m.group(1).lower())
     if m := re.search(r"opendbc/safety/modes/(\w+?)[_.]", line):
       brands.add(m.group(1).lower())
-  return [p for p in database if any(b.upper() in p for b in brands)]
+  return [p for p in interfaces if any(b.upper() in p for b in brands) and p in database]
 
 
 def download_refs(ref_path, platforms, segments):
@@ -58,12 +59,13 @@ def run_replay(platforms, segments, ref_path, update, workers=8):
 
 
 def main(platform=None, segments_per_platform=10, update_refs=False):
+  from opendbc.car.car_helpers import interfaces
   from openpilot.tools.lib.comma_car_segments import get_comma_car_segments_database
 
   cwd = Path(__file__).resolve().parents[4]
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
   database = get_comma_car_segments_database()
-  platforms = [platform] if platform else get_changed_platforms(cwd, database)
+  platforms = [platform] if platform and platform in interfaces else get_changed_platforms(cwd, database)
 
   if not platforms:
     print("No platforms detected from changes")
