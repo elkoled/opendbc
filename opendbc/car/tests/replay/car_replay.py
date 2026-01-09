@@ -11,7 +11,6 @@ from pathlib import Path
 
 
 def get_changed_platforms(cwd, database):
-  from opendbc.car.car_helpers import interfaces
   from openpilot.common.utils import run_cmd
   git_ref = os.environ.get("GIT_REF", "origin/master")
   changed = run_cmd(["git", "diff", "--name-only", f"{git_ref}...HEAD"], cwd=cwd)
