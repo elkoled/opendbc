@@ -58,22 +58,13 @@ def run_replay(platforms, segments, ref_path, update, workers=8):
     return list(pool.map(process_segment, work))
 
 
-def main(platform=None, segments_per_platform=10, update_refs=False, database_path=None):
+def main(platform=None, segments_per_platform=10, update_refs=False):
   from opendbc.car.car_helpers import interfaces
-  from opendbc.car.fingerprints import MIGRATION
+  from openpilot.tools.lib.comma_car_segments import get_comma_car_segments_database
 
   cwd = Path(__file__).resolve().parents[4]
   ref_path = tempfile.mkdtemp(prefix="car_ref_")
-
-  if database_path:
-    import json
-    with open(Path(database_path) / "database.json") as f:
-      database = {MIGRATION.get(p, p): [s.rstrip("/s") for s in segs] for p, segs in json.load(f).items()}
-    os.environ["SEGMENTS_PATH"] = str(Path(database_path) / "segments")
-  else:
-    from openpilot.tools.lib.comma_car_segments import get_comma_car_segments_database
-    database = get_comma_car_segments_database()
-
+  database = get_comma_car_segments_database()
   platforms = [platform] if platform and platform in interfaces else get_changed_platforms(cwd, database)
 
   if not platforms:
@@ -122,6 +113,5 @@ if __name__ == "__main__":
   parser.add_argument("--platform")
   parser.add_argument("--segments-per-platform", type=int, default=10)
   parser.add_argument("--update-refs", action="store_true")
-  parser.add_argument("--database", help="local commaCarSegments path")
   args = parser.parse_args()
-  sys.exit(main(args.platform, args.segments_per_platform, args.update_refs, args.database))
+  sys.exit(main(args.platform, args.segments_per_platform, args.update_refs))
