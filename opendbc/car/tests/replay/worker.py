@@ -40,16 +40,19 @@ def load_ref(path):
 
 
 def load_can_messages(seg):
+  import os
   from opendbc.car.can_definitions import CanData
   from openpilot.selfdrive.pandad import can_capnp_to_list
   from openpilot.tools.lib.logreader import LogReader
-  from openpilot.tools.lib.comma_car_segments import get_url
 
-  parts = seg.split("/")
-  url = get_url(f"{parts[0]}/{parts[1]}", parts[2])
+  if segments_path := os.environ.get("SEGMENTS_PATH"):
+    source = f"{segments_path}/{seg}/rlog.zst"
+  else:
+    from openpilot.tools.lib.comma_car_segments import get_url
+    source = get_url(f"{seg.rsplit('/', 1)[0]}", seg.rsplit('/', 1)[1])
 
   can_msgs = []
-  for msg in LogReader(url):
+  for msg in LogReader(source):
     if msg.which() == "can":
       can = can_capnp_to_list((msg.as_builder().to_bytes(),))[0]
       can_msgs.append((can[0], [CanData(*c) for c in can[1]]))
