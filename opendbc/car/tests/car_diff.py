@@ -3,13 +3,15 @@ import os
 os.environ['LOGPRINT'] = 'CRITICAL'
 
 import argparse
+import json
 import pickle
 import re
-import requests
+import subprocess
 import sys
 import tempfile
-import zstandard as zstd
-import dictdiffer
+import http.client
+import time
+import urllib.parse
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -17,22 +19,188 @@ from pathlib import Path
 DIFF_BUCKET = "car_diff"
 TOLERANCE = 1e-2
 IGNORE_FIELDS = ["cumLagMs", "canErrorCounter"]
+RETRY_STATUS = (409, 429, 503, 504)
+
+COMMA_CAR_SEGMENTS_REPO = os.environ.get("COMMA_CAR_SEGMENTS_REPO", "https://huggingface.co/datasets/commaai/commaCarSegments")
+COMMA_CAR_SEGMENTS_BRANCH = os.environ.get("COMMA_CAR_SEGMENTS_BRANCH", "main")
+COMMA_CAR_SEGMENTS_LFS_INSTANCE = os.environ.get("COMMA_CAR_SEGMENTS_LFS_INSTANCE", COMMA_CAR_SEGMENTS_REPO)
+
+_connections = {}
+
+
+def _reset_connections():
+  global _connections
+  for conn in _connections.values():
+    conn.close()
+  _connections = {}
+
+
+def _get_connection(host, port=443):
+  key = (host, port)
+  if key not in _connections:
+    _connections[key] = http.client.HTTPSConnection(host, port)
+  return _connections[key]
+
+
+os.register_at_fork(after_in_child=_reset_connections)
+
+
+def _request(method, url, headers=None, body=None):
+  parsed = urllib.parse.urlparse(url)
+  path = parsed.path + ("?" + parsed.query if parsed.query else "")
+  key = (parsed.hostname, parsed.port or 443)
+
+  for attempt in range(5):
+    try:
+      conn = _get_connection(*key)
+      conn.request(method, path, body=body, headers=headers or {})
+      resp = conn.getresponse()
+      data = resp.read()
+      if resp.status not in RETRY_STATUS:
+        return data, resp.status, dict(resp.getheaders())
+      raise OSError(f"HTTP {resp.status}")
+    except (http.client.HTTPException, OSError) as e:
+      _connections.pop(key, None)
+      if attempt == 4:
+        raise OSError(f"{method} {url}: {e}") from None
+      time.sleep(1.0 * (2 ** attempt))
+
+
+def http_get(url, headers=None):
+  return _request("GET", url, headers)
+
+
+def http_post_json(url, data, headers=None):
+  hdrs = {"Content-Type": "application/json", **(headers or {})}
+  body = json.dumps(data).encode()
+  data, status, resp_headers = _request("POST", url, hdrs, body)
+  return json.loads(data), status
+
+
+def http_head(url):
+  _, status, headers = _request("HEAD", url)
+  return status, headers
+
+
+def zstd_decompress(data):
+  proc = subprocess.run(['zstd', '-d'], input=data, capture_output=True, check=True)
+  return proc.stdout
+
+
+def zstd_compress(data):
+  proc = subprocess.run(['zstd', '-c'], input=data, capture_output=True, check=True)
+  return proc.stdout
+
+
+def dict_diff(d1, d2, path="", ignore=None, tolerance=0):
+  ignore = ignore or []
+  diffs = []
+  for key in set(list(d1.keys()) + list(d2.keys())):
+    if key in ignore:
+      continue
+    full_path = f"{path}.{key}" if path else key
+    v1, v2 = d1.get(key), d2.get(key)
+    if isinstance(v1, dict) and isinstance(v2, dict):
+      diffs.extend(dict_diff(v1, v2, full_path, ignore, tolerance))
+    elif isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+      if abs(v1 - v2) > tolerance:
+        diffs.append(("change", full_path, (v1, v2)))
+    elif v1 != v2:
+      diffs.append(("change", full_path, (v1, v2)))
+  return diffs
+
+
+def get_repo_raw_url(path):
+  if "huggingface" in COMMA_CAR_SEGMENTS_REPO:
+    return f"{COMMA_CAR_SEGMENTS_REPO}/raw/{COMMA_CAR_SEGMENTS_BRANCH}/{path}"
+
+
+def parse_lfs_pointer(text):
+  header, lfs_version = text.splitlines()[0].split(" ")
+  assert header == "version"
+  assert lfs_version == "https://git-lfs.github.com/spec/v1"
+
+  header, oid_raw = text.splitlines()[1].split(" ")
+  assert header == "oid"
+  header, oid = oid_raw.split(":")
+  assert header == "sha256"
+
+  header, size = text.splitlines()[2].split(" ")
+  assert header == "size"
+
+  return oid, size
+
+
+def get_lfs_file_url(oid, size):
+  data = {
+    "operation": "download",
+    "transfers": ["basic"],
+    "objects": [{"oid": oid, "size": int(size)}],
+    "hash_algo": "sha256"
+  }
+  headers = {
+    "Accept": "application/vnd.git-lfs+json",
+    "Content-Type": "application/vnd.git-lfs+json"
+  }
+  resp, status = http_post_json(f"{COMMA_CAR_SEGMENTS_LFS_INSTANCE}.git/info/lfs/objects/batch", data, headers)
+  assert status == 200
+  obj = resp["objects"][0]
+  assert "error" not in obj, obj
+  return obj["actions"]["download"]["href"]
+
+
+def get_repo_url(path):
+  status, headers = http_head(get_repo_raw_url(path))
+  if "text/plain" in headers.get("Content-Type", ""):
+    content, status, _ = http_get(get_repo_raw_url(path))
+    assert status == 200
+    oid, size = parse_lfs_pointer(content.decode())
+    return get_lfs_file_url(oid, size)
+  else:
+    return get_repo_raw_url(path)
+
+
+def get_url(route, segment, file="rlog.zst"):
+  return get_repo_url(f"segments/{route.replace('|', '/')}/{segment}/{file}")
+
+
+def get_comma_car_segments_database():
+  from opendbc.car.fingerprints import MIGRATION
+  content, status, _ = http_get(get_repo_raw_url("database.json"))
+  assert status == 200
+  database = json.loads(content)
+  ret = {}
+  for platform in database:
+    ret[MIGRATION.get(platform, platform)] = [s.rstrip('/s') for s in database[platform]]
+  return ret
+
+
+def logreader_from_url(url):
+  import capnp
+
+  data, status, _ = http_get(url)
+  assert status == 200, f"Failed to download {url}: {status}"
+
+  if data.startswith(b'\x28\xB5\x2F\xFD'):  # zstd magic
+    data = zstd_decompress(data)
+
+  rlog = capnp.load(str(Path(__file__).parent / "rlog.capnp"))
+  return rlog.Event.read_multiple_bytes(data)
 
 
 def load_can_messages(seg):
   from opendbc.car.can_definitions import CanData
-  from openpilot.selfdrive.pandad import can_capnp_to_list
-  from openpilot.tools.lib.logreader import LogReader
-  from openpilot.tools.lib.comma_car_segments import get_url
 
   parts = seg.split("/")
   url = get_url(f"{parts[0]}/{parts[1]}", parts[2])
 
   can_msgs = []
-  for msg in LogReader(url):
-    if msg.which() == "can":
-      can = can_capnp_to_list((msg.as_builder().to_bytes(),))[0]
-      can_msgs.append((can[0], [CanData(*c) for c in can[1]]))
+  for evt in logreader_from_url(url):
+    try:
+      if evt.which() == "can":
+        can_msgs.append((evt.logMonoTime, [CanData(c.address, c.dat, c.src) for c in evt.can]))
+    except Exception:
+      pass
   return can_msgs
 
 
@@ -67,27 +235,25 @@ def process_segment(args):
 
     if update:
       data = list(zip(timestamps, states, strict=True))
-      ref_file.write_bytes(zstd.compress(pickle.dumps(data)))
+      ref_file.write_bytes(zstd_compress(pickle.dumps(data)))
       return (platform, seg, [], None)
 
     if not ref_file.exists():
       return (platform, seg, [], "no ref")
 
-    ref = pickle.loads(zstd.decompress(ref_file.read_bytes()))
+    ref = pickle.loads(zstd_decompress(ref_file.read_bytes()))
     diffs = []
     for i, ((ts, ref_state), state) in enumerate(zip(ref, states, strict=True)):
-      for diff in dictdiffer.diff(ref_state.to_dict(), state.to_dict(), ignore=IGNORE_FIELDS, tolerance=TOLERANCE):
-        if diff[0] == "change":  # ignore add/remove from schema changes
-          diffs.append((str(diff[1]), i, diff[2], ts))
+      for diff in dict_diff(ref_state.to_dict(), state.to_dict(), ignore=IGNORE_FIELDS, tolerance=TOLERANCE):
+        diffs.append((diff[1], i, diff[2], ts))
     return (platform, seg, diffs, None)
   except Exception as e:
     return (platform, seg, [], str(e))
 
 
 def get_changed_platforms(cwd, database, interfaces):
-  from openpilot.common.utils import run_cmd
   git_ref = os.environ.get("GIT_REF", "origin/master")
-  changed = run_cmd(["git", "diff", "--name-only", f"{git_ref}...HEAD"], cwd=cwd)
+  changed = subprocess.check_output(["git", "diff", "--name-only", f"{git_ref}...HEAD"], cwd=cwd, encoding='utf8').strip()
   brands = set()
   patterns = [r"opendbc/car/(\w+)/", r"opendbc/dbc/(\w+)_", r"opendbc/safety/modes/(\w+)[_.]"]
   for line in changed.splitlines():
@@ -99,42 +265,117 @@ def get_changed_platforms(cwd, database, interfaces):
 
 
 def download_refs(ref_path, platforms, segments):
-  from openpilot.tools.lib.github_utils import GithubUtils
-  base_url = GithubUtils(None, None, "elkoled").get_bucket_link(DIFF_BUCKET)
+  base_url = f"https://raw.githubusercontent.com/commaai/ci-artifacts/refs/heads/{DIFF_BUCKET}"
   for platform in platforms:
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
-      resp = requests.get(f"{base_url}/{filename}")
-      if resp.status_code == 200:
-        (Path(ref_path) / filename).write_bytes(resp.content)
+      try:
+        content, status, _ = http_get(f"{base_url}/{filename}")
+        if status == 200:
+          (Path(ref_path) / filename).write_bytes(content)
+      except Exception:
+        pass
 
 
-def upload_refs(ref_path, platforms, segments):
-  from openpilot.tools.lib.github_utils import GithubUtils
-  gh = GithubUtils(None, os.environ.get("GITHUB_TOKEN"), "elkoled")
-  files = []
-  for platform in platforms:
-    for seg in segments.get(platform, []):
-      filename = f"{platform}_{seg.replace('/', '_')}.zst"
-      local_path = Path(ref_path) / filename
-      if local_path.exists():
-        files.append((filename, str(local_path)))
-  gh.upload_files(DIFF_BUCKET, files)
-
-
-def run_replay(platforms, segments, ref_path, update, workers=8):
+def run_replay(platforms, segments, ref_path, update, workers=4):
   work = [(platform, seg, ref_path, update)
           for platform in platforms for seg in segments.get(platform, [])]
   with ProcessPoolExecutor(max_workers=workers) as pool:
     return list(pool.map(process_segment, work))
 
 
+def format_diff(diffs):
+  if not diffs:
+    return []
+  old, new = diffs[0][2]
+  if not (isinstance(old, bool) and isinstance(new, bool)):
+    return [f"    frame {d[1]}: {d[2][0]} -> {d[2][1]}" for d in diffs[:10]]
+
+  lines = []
+  ranges, cur = [], [diffs[0]]
+  for d in diffs[1:]:
+    if d[1] <= cur[-1][1] + 15:
+      cur.append(d)
+    else:
+      ranges.append(cur)
+      cur = [d]
+  ranges.append(cur)
+
+  for rdiffs in ranges:
+    t0, t1 = max(0, rdiffs[0][1] - 5), rdiffs[-1][1] + 6
+    diff_map = {d[1]: d for d in rdiffs}
+
+    b_vals, m_vals, ts_map = [], [], {}
+    last = rdiffs[-1]
+    converge_frame = last[1] + 1
+    converge_val = last[2][1]
+    b_st = m_st = not converge_val
+
+    for f in range(t0, t1):
+      if f in diff_map:
+        b_st, m_st = diff_map[f][2]
+        ts_map[f] = diff_map[f][3]
+      elif f >= converge_frame:
+        b_st = m_st = converge_val
+      b_vals.append(b_st)
+      m_vals.append(m_st)
+
+    # ms per frame from timestamps
+    if len(ts_map) >= 2:
+      ts_vals = sorted(ts_map.items())
+      frame_ms = (ts_vals[-1][1] - ts_vals[0][1]) / 1e6 / (ts_vals[-1][0] - ts_vals[0][0])
+    else:
+      frame_ms = 10
+
+    lines.append(f"\n  frames {t0}-{t1-1}")
+    pad = 12
+    max_width = 60
+    init_val = not converge_val
+    for label, vals, init in [("master", b_vals, init_val), ("PR", m_vals, init_val)]:
+      line = f"  {label}:".ljust(pad)
+      for i, v in enumerate(vals):
+        pv = vals[i - 1] if i > 0 else init
+        if v and not pv:
+          line += "/"
+        elif not v and pv:
+          line += "\\"
+        elif v:
+          line += "‾"
+        else:
+          line += "_"
+      if len(line) > pad + max_width:
+        line = line[:pad + max_width] + "..."
+      lines.append(line)
+
+    b_rises = [i for i, v in enumerate(b_vals) if v and (i == 0 or not b_vals[i - 1])]
+    m_rises = [i for i, v in enumerate(m_vals) if v and (i == 0 or not m_vals[i - 1])]
+    b_falls = [i for i, v in enumerate(b_vals) if not v and i > 0 and b_vals[i - 1]]
+    m_falls = [i for i, v in enumerate(m_vals) if not v and i > 0 and m_vals[i - 1]]
+
+    if b_rises and m_rises:
+      delta = m_rises[0] - b_rises[0]
+      if delta:
+        ms = int(abs(delta) * frame_ms)
+        direction = "lags" if delta > 0 else "leads"
+        lines.append(" " * pad + f"rise: PR {direction} by {abs(delta)} frames ({ms}ms)")
+    if b_falls and m_falls:
+      delta = m_falls[0] - b_falls[0]
+      if delta:
+        ms = int(abs(delta) * frame_ms)
+        direction = "lags" if delta > 0 else "leads"
+        lines.append(" " * pad + f"fall: PR {direction} by {abs(delta)} frames ({ms}ms)")
+
+  return lines
+
+
 def main(platform=None, segments_per_platform=10, update_refs=False, all_platforms=False):
   from opendbc.car.car_helpers import interfaces
-  from openpilot.tools.lib.comma_car_segments import get_comma_car_segments_database
 
   cwd = Path(__file__).resolve().parents[3]
-  ref_path = tempfile.mkdtemp(prefix="car_ref_")
+  ref_path = cwd / DIFF_BUCKET
+  if not update_refs:
+    ref_path = Path(tempfile.mkdtemp())
+  ref_path.mkdir(exist_ok=True)
   database = get_comma_car_segments_database()
 
   if all_platforms:
@@ -157,8 +398,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
     results = run_replay(platforms, segments, ref_path, update=True)
     errors = [e for _, _, _, e in results if e]
     assert len(errors) == 0, f"Segment failures: {errors}"
-    upload_refs(ref_path, platforms, segments)
-    print(f"Uploaded {n_segments} refs")
+    print(f"Generated {n_segments} refs to {ref_path}")
     return 0
 
   download_refs(ref_path, platforms, segments)
@@ -173,19 +413,20 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
   for plat, seg, err in errors:
     print(f"\nERROR {plat} - {seg}: {err}")
 
-  for plat, seg, diffs in with_diffs:
-    print(f"\n{plat} - {seg}")
-    by_field = defaultdict(list)
-    for d in diffs:
-      by_field[d[0]].append(d)
-    for field, fd in sorted(by_field.items()):
-      print(f"  {field} ({len(fd)} diffs)")
-      for d in fd[:10]:
-        print(f"    {d[1]}: {d[2][0]} -> {d[2][1]}")
-      if len(fd) > 10:
-        print(f"    ... ({len(fd) - 10} more)")
+  if with_diffs:
+    print("```")
+    for plat, seg, diffs in with_diffs:
+      print(f"\n{plat} - {seg}")
+      by_field = defaultdict(list)
+      for d in diffs:
+        by_field[d[0]].append(d)
+      for field, fd in sorted(by_field.items()):
+        print(f"  {field} ({len(fd)} diffs)")
+        for line in format_diff(fd):
+          print(line)
+    print("```")
 
-  return 0
+  return 1 if errors else 0
 
 
 if __name__ == "__main__":
