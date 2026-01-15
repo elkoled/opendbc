@@ -3,83 +3,20 @@ import os
 os.environ['LOGPRINT'] = 'CRITICAL'
 
 import argparse
-import json
 import pickle
 import re
 import subprocess
 import sys
 import tempfile
-import http.client
-import time
-import urllib.parse
+import requests
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from comma_car_segments import get_comma_car_segments_database, get_url
 
-DIFF_BUCKET = "car_diff"
 TOLERANCE = 1e-4
+DIFF_BUCKET = "car_diff"
 IGNORE_FIELDS = ["cumLagMs", "canErrorCounter"]
-RETRY_STATUS = (409, 429, 503, 504)
-
-COMMA_CAR_SEGMENTS_REPO = os.environ.get("COMMA_CAR_SEGMENTS_REPO", "https://huggingface.co/datasets/commaai/commaCarSegments")
-COMMA_CAR_SEGMENTS_BRANCH = os.environ.get("COMMA_CAR_SEGMENTS_BRANCH", "main")
-COMMA_CAR_SEGMENTS_LFS_INSTANCE = os.environ.get("COMMA_CAR_SEGMENTS_LFS_INSTANCE", COMMA_CAR_SEGMENTS_REPO)
-
-_connections = {}
-
-
-def _reset_connections():
-  global _connections
-  for conn in _connections.values():
-    conn.close()
-  _connections = {}
-
-
-def _get_connection(host, port=443):
-  key = (host, port)
-  if key not in _connections:
-    _connections[key] = http.client.HTTPSConnection(host, port)
-  return _connections[key]
-
-
-os.register_at_fork(after_in_child=_reset_connections)
-
-
-def _request(method, url, headers=None, body=None):
-  parsed = urllib.parse.urlparse(url)
-  path = parsed.path + ("?" + parsed.query if parsed.query else "")
-  key = (parsed.hostname, parsed.port or 443)
-
-  for attempt in range(5):
-    try:
-      conn = _get_connection(*key)
-      conn.request(method, path, body=body, headers=headers or {})
-      resp = conn.getresponse()
-      data = resp.read()
-      if resp.status not in RETRY_STATUS:
-        return data, resp.status, dict(resp.getheaders())
-      raise OSError(f"HTTP {resp.status}")
-    except (http.client.HTTPException, OSError) as e:
-      _connections.pop(key, None)
-      if attempt == 4:
-        raise OSError(f"{method} {url}: {e}") from None
-      time.sleep(1.0 * (2 ** attempt))
-
-
-def http_get(url, headers=None):
-  return _request("GET", url, headers)
-
-
-def http_post_json(url, data, headers=None):
-  hdrs = {"Content-Type": "application/json", **(headers or {})}
-  body = json.dumps(data).encode()
-  data, status, resp_headers = _request("POST", url, hdrs, body)
-  return json.loads(data), status
-
-
-def http_head(url):
-  _, status, headers = _request("HEAD", url)
-  return status, headers
 
 
 def zstd_decompress(data):
@@ -110,76 +47,12 @@ def dict_diff(d1, d2, path="", ignore=None, tolerance=0):
   return diffs
 
 
-def get_repo_raw_url(path):
-  if "huggingface" in COMMA_CAR_SEGMENTS_REPO:
-    return f"{COMMA_CAR_SEGMENTS_REPO}/raw/{COMMA_CAR_SEGMENTS_BRANCH}/{path}"
-
-
-def parse_lfs_pointer(text):
-  header, lfs_version = text.splitlines()[0].split(" ")
-  assert header == "version"
-  assert lfs_version == "https://git-lfs.github.com/spec/v1"
-
-  header, oid_raw = text.splitlines()[1].split(" ")
-  assert header == "oid"
-  header, oid = oid_raw.split(":")
-  assert header == "sha256"
-
-  header, size = text.splitlines()[2].split(" ")
-  assert header == "size"
-
-  return oid, size
-
-
-def get_lfs_file_url(oid, size):
-  data = {
-    "operation": "download",
-    "transfers": ["basic"],
-    "objects": [{"oid": oid, "size": int(size)}],
-    "hash_algo": "sha256"
-  }
-  headers = {
-    "Accept": "application/vnd.git-lfs+json",
-    "Content-Type": "application/vnd.git-lfs+json"
-  }
-  resp, status = http_post_json(f"{COMMA_CAR_SEGMENTS_LFS_INSTANCE}.git/info/lfs/objects/batch", data, headers)
-  assert status == 200
-  obj = resp["objects"][0]
-  assert "error" not in obj, obj
-  return obj["actions"]["download"]["href"]
-
-
-def get_repo_url(path):
-  status, headers = http_head(get_repo_raw_url(path))
-  if "text/plain" in headers.get("Content-Type", ""):
-    content, status, _ = http_get(get_repo_raw_url(path))
-    assert status == 200
-    oid, size = parse_lfs_pointer(content.decode())
-    return get_lfs_file_url(oid, size)
-  else:
-    return get_repo_raw_url(path)
-
-
-def get_url(route, segment, file="rlog.zst"):
-  return get_repo_url(f"segments/{route.replace('|', '/')}/{segment}/{file}")
-
-
-def get_comma_car_segments_database():
-  from opendbc.car.fingerprints import MIGRATION
-  content, status, _ = http_get(get_repo_raw_url("database.json"))
-  assert status == 200
-  database = json.loads(content)
-  ret = {}
-  for platform in database:
-    ret[MIGRATION.get(platform, platform)] = [s.rstrip('/s') for s in database[platform]]
-  return ret
-
-
 def logreader_from_url(url):
   import capnp
 
-  data, status, _ = http_get(url)
-  assert status == 200, f"Failed to download {url}: {status}"
+  resp = requests.get(url)
+  assert resp.status_code == 200, f"Failed to download {url}: {resp.status_code}"
+  data = resp.content
 
   if data.startswith(b'\x28\xB5\x2F\xFD'):  # zstd magic
     data = zstd_decompress(data)
@@ -270,9 +143,9 @@ def download_refs(ref_path, platforms, segments):
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
       try:
-        content, status, _ = http_get(f"{base_url}/{filename}")
-        if status == 200:
-          (Path(ref_path) / filename).write_bytes(content)
+        resp = requests.get(f"{base_url}/{filename}")
+        if resp.status_code == 200:
+          (Path(ref_path) / filename).write_bytes(resp.content)
       except Exception:
         pass
 
