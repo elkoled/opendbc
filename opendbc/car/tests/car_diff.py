@@ -9,15 +9,14 @@ import re
 import subprocess
 import sys
 import tempfile
-import http.client
-import time
-import urllib.parse
+import requests
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
+from comma_car_segments import get_comma_car_segments_database, get_url
 
+TOLERANCE = 1e-4
 DIFF_BUCKET = "car_diff"
-TOLERANCE = 1e-2
 IGNORE_FIELDS = ["cumLagMs", "canErrorCounter"]
 RETRY_STATUS = (409, 429, 503, 504)
 
@@ -188,6 +187,48 @@ def logreader_from_url(url):
   return rlog.Event.read_multiple_bytes(data)
 
 
+def zstd_decompress(data):
+  proc = subprocess.run(['zstd', '-d'], input=data, capture_output=True, check=True)
+  return proc.stdout
+
+
+def zstd_compress(data):
+  proc = subprocess.run(['zstd', '-c'], input=data, capture_output=True, check=True)
+  return proc.stdout
+
+
+def dict_diff(d1, d2, path="", ignore=None, tolerance=0):
+  ignore = ignore or []
+  diffs = []
+  for key in d1.keys() | d2.keys():
+    if key in ignore:
+      continue
+    full_path = f"{path}.{key}" if path else key
+    v1, v2 = d1.get(key), d2.get(key)
+    if isinstance(v1, dict) and isinstance(v2, dict):
+      diffs.extend(dict_diff(v1, v2, full_path, ignore, tolerance))
+    elif isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+      if abs(v1 - v2) > tolerance:
+        diffs.append(("change", full_path, (v1, v2)))
+    elif v1 != v2:
+      diffs.append(("change", full_path, (v1, v2)))
+  return diffs
+
+
+def logreader_from_url(url):
+  import capnp
+
+  resp = requests.get(url)
+  assert resp.status_code == 200, f"Failed to download {url}: {resp.status_code}"
+  data = resp.content
+
+  if data.startswith(b'\x28\xB5\x2F\xFD'):  # zstd magic
+    data = zstd_decompress(data)
+
+  rlog = capnp.load(str(Path(__file__).parent / "rlog.capnp"))
+  return rlog.Event.read_multiple_bytes(data)
+
+
 def load_can_messages(seg):
   from opendbc.car.can_definitions import CanData
 
@@ -270,9 +311,9 @@ def download_refs(ref_path, platforms, segments):
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
       try:
-        content, status, _ = http_get(f"{base_url}/{filename}")
-        if status == 200:
-          (Path(ref_path) / filename).write_bytes(content)
+        resp = requests.get(f"{base_url}/{filename}")
+        if resp.status_code == 200:
+          (Path(ref_path) / filename).write_bytes(resp.content)
       except Exception:
         pass
 
