@@ -129,8 +129,7 @@ class CarState(CarStateBase):
 
     ret.espDisabled = cp.vl["VSA_STATUS"]["ESP_DISABLED"] != 0
 
-
-    if self.CP.carFingerprint not in (CAR.HONDA_ODYSSEY_TWN):
+    if self.CP.carFingerprint != CAR.HONDA_ODYSSEY_TWN:
       self.dash_speed_seen = self.dash_speed_seen or cp.vl["CAR_SPEED"]["ROUGH_CAR_SPEED_2"] > 1e-3
       if self.dash_speed_seen:
         conversion = CV.KPH_TO_MS if self.is_metric else CV.MPH_TO_MS
