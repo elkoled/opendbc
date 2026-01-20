@@ -39,17 +39,17 @@ jobs:
         pr_number: ${{ github.event.number }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Update refs
-      if: github.repository == 'commaai/opendbc' && github.ref == 'refs/heads/master'
+      if: github.repository == 'commaai/opendbc' && github.event_name == 'push' && github.ref == 'refs/heads/master'
       run: source setup.sh && python opendbc/car/tests/car_diff.py --update-refs
     - name: Checkout ci-artifacts
-      if: github.repository == 'commaai/opendbc' && github.ref == 'refs/heads/master'
+      if: github.repository == 'commaai/opendbc' && github.event_name == 'push' && github.ref == 'refs/heads/master'
       uses: actions/checkout@v4
       with:
         repository: commaai/ci-artifacts
         ssh-key: ${{ secrets.CI_ARTIFACTS_DEPLOY_KEY }}
         path: ${{ github.workspace }}/ci-artifacts
     - name: Push refs
-      if: github.repository == 'commaai/opendbc' && github.ref == 'refs/heads/master'
+      if: github.repository == 'commaai/opendbc' && github.event_name == 'push' && github.ref == 'refs/heads/master'
       working-directory: ${{ github.workspace }}/ci-artifacts
       run: |
         ls ${{ github.workspace }}/car_diff/*.zst 2>/dev/null || exit 0
