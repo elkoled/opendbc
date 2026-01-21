@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - master
-  pull_request:
   pull_request_target:
 
 jobs:
   car_diff:
     name: car diff
-    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ${{ github.repository == 'commaai/opendbc' && 'namespace-profile-amd64-8x16' || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -28,10 +26,10 @@ jobs:
         source setup.sh
         scons -j8
     - name: Test car diff
-      if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+      if: github.event_name == 'pull_request_target'
       run: source setup.sh && python opendbc/car/tests/car_diff.py | tee diff.txt
     - name: Comment PR
-      if: always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+      if: always() && github.event_name == 'pull_request_target'
       uses: thollander/actions-comment-pull-request@v2
       with:
         filePath: diff.txt
