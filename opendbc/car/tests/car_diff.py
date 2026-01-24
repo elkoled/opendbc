@@ -25,6 +25,8 @@ from opendbc.car.logreader import LogReader, decompress_stream
 TOLERANCE = 1e-4
 DIFF_BUCKET = "car_diff"
 IGNORE_FIELDS = ["cumLagMs", "canErrorCounter"]
+GRAPH_WIDTH = 100
+LABEL_WIDTH = 12
 PADDING = 5
 
 
@@ -144,13 +146,13 @@ def find_edges(vals):
 
 def render_waveform(label, vals):
   wave = {(False, False): "_", (True, True): "‾", (False, True): "/", (True, False): "\\"}
-  line = f"  {label}:".ljust(12)
+  line = f"  {label}:".ljust(LABEL_WIDTH)
+  step = max(1, len(vals) // (GRAPH_WIDTH - LABEL_WIDTH))
   prev = vals[0]
-  for val in vals:
+  for i in range(0, min(len(vals), (GRAPH_WIDTH - LABEL_WIDTH) * step), step):
+    val = any(vals[i:i + step])
     line += wave[(prev, val)]
     prev = val
-  if len(line) > 80:
-    line = line[:80] + "..."
   return line
 
 
