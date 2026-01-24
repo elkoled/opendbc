@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import os
 import pickle
@@ -5,20 +6,28 @@ import re
 import subprocess
 import sys
 import tempfile
+import traceback
 import zstandard as zstd
+from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 from urllib.request import urlopen
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from comma_car_segments import get_comma_car_segments_database, get_url
 
+from opendbc.car import structs
+from opendbc.car.can_definitions import CanData
+from opendbc.car.car_helpers import can_fingerprint, interfaces
 from opendbc.car.logreader import LogReader, decompress_stream
 
 
 TOLERANCE = 1e-4
 DIFF_BUCKET = "car_diff"
 IGNORE_FIELDS = ["cumLagMs", "canErrorCounter"]
+GRAPH_WIDTH = 100
+LABEL_WIDTH = 12
+PADDING = 5
 
 
 def dict_diff(d1, d2, path="", ignore=None, tolerance=0):
@@ -42,20 +51,17 @@ def dict_diff(d1, d2, path="", ignore=None, tolerance=0):
 def load_can_messages(seg):
   parts = seg.split("/")
   url = get_url(f"{parts[0]}/{parts[1]}", parts[2])
-  msgs = LogReader(url, only_union_types=True)
+  msgs = LogReader(url, only_union_types=True, sort_by_time=True)
   return [m for m in msgs if m.which() == 'can']
 
 
 def replay_segment(platform, can_msgs):
-  from opendbc.car import gen_empty_fingerprint, structs
-  from opendbc.car.can_definitions import CanData
-  from opendbc.car.car_helpers import FRAME_FINGERPRINT, interfaces
+  _can_msgs = ([CanData(can.address, can.dat, can.src) for can in m.can] for m in can_msgs)
 
-  fingerprint = gen_empty_fingerprint()
-  for msg in can_msgs[:FRAME_FINGERPRINT]:
-    for m in msg.can:
-      if m.src < 64:
-        fingerprint[m.src][m.address] = len(m.dat)
+  def can_recv(wait_for_one: bool = False) -> list[list[CanData]]:
+    return [next(_can_msgs, [])]
+
+  _, fingerprint = can_fingerprint(can_recv)
 
   CarInterface = interfaces[platform]
   CP = CarInterface.get_params(platform, fingerprint, [], False, False, False)
@@ -81,19 +87,19 @@ def process_segment(args):
     if update:
       data = list(zip(timestamps, states, strict=True))
       ref_file.write_bytes(zstd.compress(pickle.dumps(data), 10))
-      return (platform, seg, [], None)
+      return (platform, seg, [], None, None)
 
     if not ref_file.exists():
-      return (platform, seg, [], "no ref")
+      return (platform, seg, [], None, "no ref")
 
     ref = pickle.loads(decompress_stream(ref_file.read_bytes()))
     diffs = []
     for i, ((ts, ref_state), state) in enumerate(zip(ref, states, strict=True)):
       for diff in dict_diff(ref_state.to_dict(), state.to_dict(), ignore=IGNORE_FIELDS, tolerance=TOLERANCE):
         diffs.append((diff[1], i, diff[2], ts))
-    return (platform, seg, diffs, None)
-  except Exception as e:
-    return (platform, seg, [], str(e))
+    return (platform, seg, diffs, ref, None)
+  except Exception:
+    return (platform, seg, [], None, traceback.format_exc())
 
 
 def get_changed_platforms(cwd, database, interfaces):
@@ -111,28 +117,24 @@ def get_changed_platforms(cwd, database, interfaces):
 
 def download_refs(ref_path, platforms, segments):
   base_url = f"https://raw.githubusercontent.com/commaai/ci-artifacts/refs/heads/{DIFF_BUCKET}"
-  for platform in platforms:
+  for platform in tqdm(platforms):
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
-      try:
-        with urlopen(f"{base_url}/{filename}") as resp:
-          (Path(ref_path) / filename).write_bytes(resp.read())
-      except Exception:
-        pass
+      with urlopen(f"{base_url}/{filename}") as resp:
+        (Path(ref_path) / filename).write_bytes(resp.read())
 
 
 def run_replay(platforms, segments, ref_path, update, workers=4):
   work = [(platform, seg, ref_path, update)
           for platform in platforms for seg in segments.get(platform, [])]
-  with ProcessPoolExecutor(max_workers=workers) as pool:
-    return list(pool.map(process_segment, work))
+  return process_map(process_segment, work, max_workers=workers)
 
 
 # ASCII waveforms helpers
-def find_edges(vals, init):
+def find_edges(vals):
   rises = []
   falls = []
-  prev = init
+  prev = vals[0]
   for i, val in enumerate(vals):
     if val and not prev:
       rises.append(i)
@@ -142,15 +144,15 @@ def find_edges(vals, init):
   return rises, falls
 
 
-def render_waveform(label, vals, init):
+def render_waveform(label, vals):
   wave = {(False, False): "_", (True, True): "‾", (False, True): "/", (True, False): "\\"}
-  line = f"  {label}:".ljust(12)
-  prev = init
-  for val in vals:
+  line = f"  {label}:".ljust(LABEL_WIDTH)
+  step = max(1, len(vals) // (GRAPH_WIDTH - LABEL_WIDTH))
+  prev = vals[0]
+  for i in range(0, min(len(vals), (GRAPH_WIDTH - LABEL_WIDTH) * step), step):
+    val = any(vals[i:i + step])
     line += wave[(prev, val)]
     prev = val
-  if len(line) > 80:
-    line = line[:80] + "..."
   return line
 
 
@@ -180,25 +182,25 @@ def group_frames(diffs, max_gap=15):
   return groups
 
 
-def build_signals(group):
+def build_signals(group, ref, field):
   _, first_frame, _, _ = group[0]
-  _, last_frame, (final_master, _), _ = group[-1]
-  start = max(0, first_frame - 5)
-  end = last_frame + 6
-  init = not final_master
+  _, last_frame, _, _ = group[-1]
+  start = max(0, first_frame - PADDING)
+  end = min(last_frame + PADDING + 1, len(ref))
   diff_at = {frame: (m, p) for _, frame, (m, p), _ in group}
   master_vals = []
   pr_vals = []
-  master = init
-  pr = init
   for frame in range(start, end):
     if frame in diff_at:
       master, pr = diff_at[frame]
-    elif frame > last_frame:
-      master = pr = final_master
+    else:
+      val = ref[frame][1].to_dict()
+      for k in field.split("."):
+        val = val.get(k) if isinstance(val, dict) else None
+      master = pr = val
     master_vals.append(master)
     pr_vals.append(pr)
-  return master_vals, pr_vals, init, start, end
+  return master_vals, pr_vals, start, end
 
 
 def format_numeric_diffs(diffs):
@@ -210,7 +212,7 @@ def format_numeric_diffs(diffs):
   return lines
 
 
-def format_boolean_diffs(diffs):
+def format_boolean_diffs(diffs, ref, field):
   _, first_frame, _, first_ts = diffs[0]
   _, last_frame, _, last_ts = diffs[-1]
   frame_time = last_frame - first_frame
@@ -218,14 +220,12 @@ def format_boolean_diffs(diffs):
   ms = time_ms / frame_time if frame_time else 10.0
   lines = []
   for group in group_frames(diffs):
-    master_vals, pr_vals, init, start, end = build_signals(group)
-    master_rises, master_falls = find_edges(master_vals, init)
-    pr_rises, pr_falls = find_edges(pr_vals, init)
-    if bool(master_rises) != bool(pr_rises) or bool(master_falls) != bool(pr_falls):
-      continue
+    master_vals, pr_vals, start, end = build_signals(group, ref, field)
+    master_rises, master_falls = find_edges(master_vals)
+    pr_rises, pr_falls = find_edges(pr_vals)
     lines.append(f"\n  frames {start}-{end - 1}")
-    lines.append(render_waveform("master", master_vals, init))
-    lines.append(render_waveform("PR", pr_vals, init))
+    lines.append(render_waveform("master", master_vals))
+    lines.append(render_waveform("PR", pr_vals))
     for edge_type, master_edges, pr_edges in [("rise", master_rises, pr_rises), ("fall", master_falls, pr_falls)]:
       msg = format_timing(edge_type, master_edges, pr_edges, ms)
       if msg:
@@ -233,19 +233,17 @@ def format_boolean_diffs(diffs):
   return lines
 
 
-def format_diff(diffs):
+def format_diff(diffs, ref, field):
   if not diffs:
     return []
   _, _, (old, new), _ = diffs[0]
   is_bool = isinstance(old, bool) and isinstance(new, bool)
   if is_bool:
-    return format_boolean_diffs(diffs)
+    return format_boolean_diffs(diffs, ref, field)
   return format_numeric_diffs(diffs)
 
 
 def main(platform=None, segments_per_platform=10, update_refs=False, all_platforms=False):
-  from opendbc.car.car_helpers import interfaces
-
   cwd = Path(__file__).resolve().parents[3]
   ref_path = cwd / DIFF_BUCKET
   if not update_refs:
@@ -262,7 +260,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
     platforms = get_changed_platforms(cwd, database, interfaces)
 
   if not platforms:
-    print("No car changes detected", file=sys.stderr)
+    print("No car changes detected")
     return 0
 
   segments = {p: database.get(p, [])[:segments_per_platform] for p in platforms}
@@ -271,7 +269,7 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
 
   if update_refs:
     results = run_replay(platforms, segments, ref_path, update=True)
-    errors = [e for _, _, _, e in results if e]
+    errors = [e for _, _, _, _, e in results if e]
     assert len(errors) == 0, f"Segment failures: {errors}"
     print(f"Generated {n_segments} refs to {ref_path}")
     return 0
@@ -279,8 +277,8 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
   download_refs(ref_path, platforms, segments)
   results = run_replay(platforms, segments, ref_path, update=False)
 
-  with_diffs = [(p, s, d) for p, s, d, e in results if d]
-  errors = [(p, s, e) for p, s, d, e in results if e]
+  with_diffs = [(p, s, d, r) for p, s, d, r, e in results if d]
+  errors = [(p, s, e) for p, s, d, r, e in results if e]
   n_passed = len(results) - len(with_diffs) - len(errors)
 
   print(f"\nResults: {n_passed} passed, {len(with_diffs)} with diffs, {len(errors)} errors")
@@ -290,14 +288,14 @@ def main(platform=None, segments_per_platform=10, update_refs=False, all_platfor
 
   if with_diffs:
     print("```")
-    for plat, seg, diffs in with_diffs:
+    for plat, seg, diffs, ref in with_diffs:
       print(f"\n{plat} - {seg}")
       by_field = defaultdict(list)
       for d in diffs:
         by_field[d[0]].append(d)
       for field, fd in sorted(by_field.items()):
         print(f"  {field} ({len(fd)} diffs)")
-        for line in format_diff(fd):
+        for line in format_diff(fd, ref, field):
           print(line)
     print("```")
 
