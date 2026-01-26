@@ -113,8 +113,8 @@ def get_changed_platforms(cwd, database, interfaces):
   return [p for p in interfaces if any(b in p.lower() for b in brands) and p in database]
 
 
-def download_refs(ref_path, platforms, segments):
-  base_url = f"https://raw.githubusercontent.com/commaai/ci-artifacts/refs/heads/{DIFF_BUCKET}"
+def download_refs(ref_path, platforms, segments, diff_bucket=DIFF_BUCKET):
+  base_url = f"https://raw.githubusercontent.com/commaai/ci-artifacts/refs/heads/{diff_bucket}"
   for platform in tqdm(platforms):
     for seg in segments.get(platform, []):
       filename = f"{platform}_{seg.replace('/', '_')}.zst"
@@ -122,10 +122,10 @@ def download_refs(ref_path, platforms, segments):
         (Path(ref_path) / filename).write_bytes(resp.read())
 
 
-def run_replay(platforms, segments, ref_path, update, workers=4):
+def run_replay(platforms, segments, ref_path, update, workers=4, process_fn=process_segment):
   work = [(platform, seg, ref_path, update)
           for platform in platforms for seg in segments.get(platform, [])]
-  return process_map(process_segment, work, max_workers=workers)
+  return process_map(process_fn, work, max_workers=workers)
 
 
 # ASCII waveforms helpers
