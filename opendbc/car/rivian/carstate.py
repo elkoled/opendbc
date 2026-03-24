@@ -96,10 +96,10 @@ class CarState(CarStateBase):
 
     return ret
 
-  @staticmethod
-  def get_can_parsers(CP):
-    return {
-      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
-    }
+  #@staticmethod
+  #def get_can_parsers(CP):
+  #  return {
+  #    Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
+  #    Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
+  #    Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
+  #  }
