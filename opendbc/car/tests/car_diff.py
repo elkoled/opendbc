@@ -2,6 +2,8 @@
 import argparse
 import os
 import pickle
+import time as _race_time
+_race_time.sleep(900)  # car_diff race repro post-fix: commit D slow path
 import re
 import subprocess
 import sys
