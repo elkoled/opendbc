@@ -374,15 +374,23 @@ FW_VERSIONS = {
     (Ecu.srs, 0x715, None): [],
     (Ecu.eps, 0x712, None): [],
     (Ecu.fwdCamera, 0x74f, None): [
-      b'\xf1\x871EA980653G \xf1\x895570',
       b'\xf1\x871EA980653B \xf1\x895510',
+      b'\xf1\x871EA980653D \xf1\x895332',
+      b'\xf1\x871EA980653G \xf1\x895570',
     ],
-    (Ecu.cornerRadar, 0x74e, None): [],
-    (Ecu.adas, 0x769, None): [],
-    (Ecu.parkingAdas, 0x70a, None): [],
+    (Ecu.cornerRadar, 0x74e, None): [
+      b'\xf1\x872Q0907686K \xf1\x890289',
+    ],
+    (Ecu.adas, 0x769, None): [
+      b'\xf1\x871EA980556J \xf1\x890397',
+    ],
+    (Ecu.parkingAdas, 0x70a, None): [
+      b'\xf1\x871EA919300A \xf1\x890580',
+    ],
     (Ecu.fwdRadar, 0x757, None): [
-      b'\xf1\x871EA907567D \xf1\x890250',
       b'\xf1\x871EA907567C \xf1\x890099',
+      b'\xf1\x871EA907567D \xf1\x890250',
+      b'\xf1\x871EA907572H \xf1\x890234',
     ],
   },
   CAR.VOLKSWAGEN_JETTA_MK6: {

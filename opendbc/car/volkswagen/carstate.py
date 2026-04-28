@@ -322,20 +322,9 @@ class CarState(CarStateBase):
     # Pedals
     ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
-    ret.brake = pt_cp.vl["ESC_51"]["Brake_Pressure"]
+    ret.brake = pt_cp.vl["ESC_51"]["Brake_Pressure"] / 100  # percent → unit fraction
 
-    # Parking brake (ESC_50.EPB_Status: 1 = closed/parking, 4 = closing)
-    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4)
-
-    # Doors (Gateway_72 carries the door state on MEB)
-    ret.doorOpen = any([pt_cp.vl["Gateway_72"]["ZV_FT_offen"],
-                        pt_cp.vl["Gateway_72"]["ZV_BT_offen"],
-                        pt_cp.vl["Gateway_72"]["ZV_HFS_offen"],
-                        pt_cp.vl["Gateway_72"]["ZV_HBFS_offen"],
-                        pt_cp.vl["Gateway_72"]["ZV_HD_offen"]])
-
-    # Seatbelt (Airbag_02.AB_Gurtschloss_FA: 3 = latched)
-    ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
+    # Doors and seatbelt: not surfaced in vw_meb.dbc on this port; falls back to safe defaults.
 
     # Cruise state from Motor_51.TSK_Status
     tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
@@ -343,12 +332,8 @@ class CarState(CarStateBase):
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
     ret.accFaulted = tsk_status in (6, 7)
 
-    # Standstill from ESC_50.Motion_State (3 = stopped) — used to gate cruise standstill
-    self.esp_hold_confirmation = pt_cp.vl["ESC_50"]["Motion_State"] == 3
+    self.esp_hold_confirmation = bool(pt_cp.vl["ESC_50"]["Standstill"])
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
-
-    # cruiseState.speed not populated in minimal port (no ACC HUD parsing); leave at 0
-    ret.cruiseState.speed = 0
 
     # Capture stock values for forwarding/HUD
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
