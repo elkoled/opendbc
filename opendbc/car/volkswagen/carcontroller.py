@@ -164,6 +164,16 @@ class CarController(CarControllerBase):
       can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature,
                                                        lat_active and power > 0, power))
 
+    # **** Acceleration Controls ******************************************** #
+
+    if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
+      acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+      accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0)
+      stopping = actuators.longControlState == LongCtrlState.stopping
+      starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
+      can_sends.append(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.longActive,
+                                                         accel, acc_control, stopping, starting, CS.esp_hold_confirmation))
+
     # **** HUD Controls ***************************************************** #
 
     if self.frame % self.CCP.LDW_STEP == 0:

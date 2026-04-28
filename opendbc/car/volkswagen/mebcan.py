@@ -38,6 +38,34 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
   return packer.make_can_msg("LDW_02", bus, values)
 
 
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold):
+  values = {
+    "ACC_Typ":                    acc_type,
+    "ACC_Status_ACC":             acc_control,
+    "ACC_StartStopp_Info":        acc_enabled,
+    "ACC_Sollbeschleunigung_02":  accel if acc_enabled else 3.01,
+    "ACC_zul_Regelabw_unten":     0.2,
+    "ACC_zul_Regelabw_oben":      0.2,
+    "ACC_neg_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
+    "ACC_pos_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
+    "ACC_Anfahren":               starting,
+    "ACC_Anhalten":               stopping,
+    "SET_ME_0XFE":                0xFE,
+    "SET_ME_0X1":                 0x1,
+    "SET_ME_0X9":                 0x9,
+  }
+  return packer.make_can_msg("ACC_18", bus, values)
+
+
+def acc_control_value(main_switch_on, acc_faulted, long_active):
+  # Mirrors mqbcan.acc_control_value: maps OP long state to ACC_Status_ACC for ACC_18.
+  if acc_faulted:
+    return 6
+  if long_active:
+    return 3
+  return 2 if main_switch_on else 0
+
+
 def create_acc_buttons_control(packer, bus, gra_stock_values, cancel=False, resume=False):
   # Pass-through of stock GRA_ACC_01 with cancel/resume injection (used to forward driver button presses).
   values = {s: gra_stock_values[s] for s in [

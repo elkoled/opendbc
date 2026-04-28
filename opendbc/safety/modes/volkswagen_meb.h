@@ -7,6 +7,7 @@
 #define MSG_ESC_51        0x0FCU   // RX, ABS wheel speeds + brake pressure (MEB)
 #define MSG_Motor_51      0x10BU   // RX, drivetrain coordinator: TSK_Status + accel pedal (MEB)
 #define MSG_QFK_01        0x13DU   // RX, EPS lateral controller status + measured curvature (MEB)
+#define MSG_ACC_18        0x14DU   // TX, ACC acceleration request to drivetrain coordinator (MEB OP-long)
 #define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command (MEB)
 
 
@@ -118,6 +119,14 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_LDW_02,      0, 8,  .check_relay = true},
   };
 
+  // OP-long TX set: stock-long messages + ACC_18 acceleration request. GRA_ACC_01 is bypassed
+  // by openpilot in long mode (cruise state is driven by carcontrol, not by stock cruise buttons).
+  static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {
+    {MSG_HCA_03,      0, 24, .check_relay = true},
+    {MSG_LDW_02,      0, 8,  .check_relay = true},
+    {MSG_ACC_18,      0, 32, .check_relay = true},
+  };
+
   static RxCheck volkswagen_meb_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
     VW_MEB_RX_CHECKS
@@ -141,7 +150,11 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   gen_crc_lookup_table_8(0x2F, volkswagen_crc8_lut_8h2f);
 
   safety_config ret;
-  SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
+  if (volkswagen_longitudinal) {
+    SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_TX_MSGS, ret);
+  } else {
+    SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
+  }
   if (volkswagen_alt_crc_variant_1) {
     SET_RX_CHECKS(volkswagen_meb_gen2_rx_checks, ret);
   } else {
@@ -215,6 +228,13 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
+  // ACC_18 acceleration request limits (m/s^2 * 1000 to avoid floating point math)
+  const LongitudinalLimits VOLKSWAGEN_MEB_LONG_LIMITS = {
+    .max_accel = 2000,
+    .min_accel = -3500,
+    .inactive_accel = 3010,  // VW sends one increment above the max range when inactive
+  };
+
   bool tx = true;
 
   // HCA_03 — steering curvature command
@@ -232,6 +252,14 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       tx = false;
     }
     if (steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+      tx = false;
+    }
+  }
+
+  // ACC_18 — acceleration request to drivetrain coordinator (matches MQB ACC_06.ACC_Sollbeschleunigung_02 layout)
+  if (msg->addr == MSG_ACC_18) {
+    int desired_accel = ((((msg->data[4] & 0x7U) << 8) | msg->data[3]) * 5U) - 7220U;
+    if (longitudinal_accel_checks(desired_accel, VOLKSWAGEN_MEB_LONG_LIMITS)) {
       tx = false;
     }
   }

@@ -102,11 +102,14 @@ class CarControllerParams:
     elif CP.flags & VolkswagenFlags.MEB:
       # HCA_03 curvature command, panda enforces lateral jerk limits in opendbc/safety.
       self.LDW_STEP = 10
+      self.ACC_CONTROL_STEP = 2     # ACC_18 acceleration request, 50 Hz
       self.STEER_DRIVER_ALLOWANCE = 60
       self.CURVATURE_MAX = 0.195   # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
       self.STEERING_POWER_MAX = 50
       self.STEERING_POWER_MIN = 4
       self.STEERING_POWER_STEP = 2
+      self.ACCEL_MAX = 2.0          # match panda VOLKSWAGEN_MEB_LONG_LIMITS
+      self.ACCEL_MIN = -3.5
 
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
       if CP.flags & VolkswagenFlags.ALT_GEAR:
