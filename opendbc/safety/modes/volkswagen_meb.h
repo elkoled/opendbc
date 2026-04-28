@@ -261,9 +261,18 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     if (steer_power_cmd_checks(steer_power, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
       tx = false;
     }
-    if (steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+    // id4-high: ISO lateral jerk + accel limits dropped, mechanical max-curvature clamp + inactive
+    // coherence retained. DO NOT MERGE.
+    if (controls_allowed && steer_req &&
+        safety_max_limit_check(desired_curvature_raw,
+                               VOLKSWAGEN_MEB_STEERING_LIMITS.max_curvature,
+                              -VOLKSWAGEN_MEB_STEERING_LIMITS.max_curvature)) {
       tx = false;
     }
+    if (!steer_req && desired_curvature_raw != 0) {
+      tx = false;
+    }
+    desired_curvature_last = desired_curvature_raw;
   }
 
   // ACC_18 — acceleration request to drivetrain coordinator (matches MQB ACC_06.ACC_Sollbeschleunigung_02 layout)
