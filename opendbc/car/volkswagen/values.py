@@ -472,11 +472,21 @@ class CAR(Platforms):
     chassis_codes={"A1"},
     wmis={WMI.VOLKSWAGEN_EUROPE_SUV},
   )
+  VOLKSWAGEN_ID4_MK1 = VolkswagenMEBPlatformConfig(
+    [
+      VWCarDocs("Volkswagen ID.4 2021-23"),
+      VWCarDocs("Volkswagen ID.5 2022-23"),
+    ],
+    VolkswagenCarSpecs(mass=2224, wheelbase=2.77),
+    chassis_codes={"E2"},
+    wmis={WMI.VOLKSWAGEN_USA_SUV, WMI.VOLKSWAGEN_EUROPE_CAR, WMI.VOLKSWAGEN_EUROPE_SUV},
+  )
   VOLKSWAGEN_ID4_MK2 = VolkswagenMEBPlatformConfig(
     [VWCarDocs("Volkswagen ID.4 2024-25")],
     VolkswagenCarSpecs(mass=2224, wheelbase=2.77),
     chassis_codes={"E8"},
     wmis={WMI.VOLKSWAGEN_USA_SUV, WMI.VOLKSWAGEN_EUROPE_CAR, WMI.VOLKSWAGEN_EUROPE_SUV},
+    flags=VolkswagenFlags.MEB_GEN2,
   )
   AUDI_A3_MK3 = VolkswagenMQBPlatformConfig(
     [
