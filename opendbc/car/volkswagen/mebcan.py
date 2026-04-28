@@ -39,17 +39,21 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
 
 
 def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold):
+  # Idle defaults are chosen to byte-match the stock radar's ACC_18 — the TSK faults to state 7
+  # if our message diverges from the stock layout while the radar is still authoritative
+  # (relay closed). Active fields populate only when acc_enabled.
   values = {
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
     "ACC_StartStopp_Info":        acc_enabled,
     "ACC_Sollbeschleunigung_02":  accel if acc_enabled else 3.01,
-    "ACC_zul_Regelabw_unten":     0.2,
-    "ACC_zul_Regelabw_oben":      0.2,
+    "ACC_zul_Regelabw_unten":     0.2 if acc_enabled else 0,
+    "ACC_zul_Regelabw_oben":      0.2 if acc_enabled else 0,
     "ACC_neg_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
     "ACC_pos_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
     "ACC_Anfahren":               starting,
     "ACC_Anhalten":               stopping,
+    "ACC_Anhalteweg":             0 if stopping else 20.46,  # max value, matches stock idle
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,

@@ -349,6 +349,10 @@ class CarState(CarStateBase):
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
     ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
 
+    # Universal ID4 ACC type — the stock radar always emits ACC_Typ=2 (adaptive cruise) on ACC_18.
+    # The TSK rejects an ACC_18 with ACC_Typ=0 as malformed and faults to state 7, so we mirror it.
+    self.acc_type = 2
+
     # MEB_GEN2 dropped the discrete Standstill bit in favor of a 2-bit Motion_State (3 = stopped).
     if self.CP.flags & VolkswagenFlags.MEB_GEN2:
       self.esp_hold_confirmation = pt_cp.vl["ESC_50"]["Motion_State"] == 3
