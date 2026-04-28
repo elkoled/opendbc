@@ -324,13 +324,24 @@ class CarState(CarStateBase):
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
     ret.brake = pt_cp.vl["ESC_51"]["Brake_Pressure"] / 100  # percent → unit fraction
 
-    # Doors and seatbelt: not surfaced in vw_meb.dbc on this port; falls back to safe defaults.
+    ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4)  # 1: closed, 4: closing
 
-    # Cruise state from Motor_51.TSK_Status
+    ret.doorOpen = any(pt_cp.vl["Gateway_72"][s] for s in
+                       ("ZV_FT_offen", "ZV_BT_offen", "ZV_HFS_offen", "ZV_HBFS_offen", "ZV_HD_offen"))
+
+    ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3  # 3: latched
+
+    ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(
+      40, bool(pt_cp.vl["Blinkmodi_02"]["BM_links"]), bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"]),
+    )
+
+    # Cruise state from Motor_51.TSK_Status. Suppress accFaulted while parked with the parking brake on:
+    # the EV briefly transitions TSK to a fault state when shifting through P with EPB engaged, which
+    # would otherwise trip the immediate-disable "Cruise Fault" alert.
     tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
     ret.cruiseState.available = tsk_status in (2, 3, 4, 5)
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
-    ret.accFaulted = tsk_status in (6, 7)
+    ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
 
     self.esp_hold_confirmation = bool(pt_cp.vl["ESC_50"]["Standstill"])
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
