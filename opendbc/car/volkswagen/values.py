@@ -99,6 +99,37 @@ class CarControllerParams:
         "laneAssistDeactivTrailer": 5,  # "Lane Assist: no function with trailer"
       }
 
+    elif CP.flags & VolkswagenFlags.MEB:
+      # MEB-specific lateral control: HCA_03 curvature command + power ramp.
+      # Lateral controller is curvature-based; STEER_DELTA_*/STEER_MAX (torque) limits
+      # are not used on this branch — safety enforces curvature/power limits in panda.
+      self.LDW_STEP = 10                   # LDW_02 message frequency 10Hz
+      self.STEER_DRIVER_ALLOWANCE = 60     # 0.6 Nm driver torque threshold for steeringPressed
+      self.STEERING_POWER_MAX = 50         # HCA_03 max steering power (%)
+      self.STEERING_POWER_MIN = 4          # HCA_03 min steering power while ramping
+      self.STEERING_POWER_STEP = 2         # HCA_03 power ramp step per send
+
+      self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
+      if CP.flags & VolkswagenFlags.ALT_GEAR:
+        self.shifter_values = can_define.dv["Gateway_73"]["GE_Fahrstufe"]
+      else:
+        self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
+
+      self.BUTTONS = [
+        Button(structs.CarState.ButtonEvent.Type.setCruise, "GRA_ACC_01", "GRA_Tip_Setzen", [1]),
+        Button(structs.CarState.ButtonEvent.Type.resumeCruise, "GRA_ACC_01", "GRA_Tip_Wiederaufnahme", [1]),
+        Button(structs.CarState.ButtonEvent.Type.accelCruise, "GRA_ACC_01", "GRA_Tip_Hoch", [1]),
+        Button(structs.CarState.ButtonEvent.Type.decelCruise, "GRA_ACC_01", "GRA_Tip_Runter", [1]),
+        Button(structs.CarState.ButtonEvent.Type.cancel, "GRA_ACC_01", "GRA_Abbrechen", [1]),
+        Button(structs.CarState.ButtonEvent.Type.gapAdjustCruise, "GRA_ACC_01", "GRA_Verstellung_Zeitluecke", [3]),
+      ]
+
+      self.LDW_MESSAGES = {
+        "none": 0,
+        "laneAssistTakeOverUrgent": 4,
+        "laneAssistTakeOver": 8,
+      }
+
     else:
       self.LDW_STEP = 10                  # LDW_02 message frequency 10Hz
       self.ACC_HUD_STEP = 6               # ACC_02 message frequency 16Hz
@@ -178,6 +209,7 @@ class WMI(StrEnum):
 
 class VolkswagenSafetyFlags(IntFlag):
   LONG_CONTROL = 1
+  ALT_CRC_VARIANT_1 = 2
 
 
 class VolkswagenFlags(IntFlag):
@@ -188,6 +220,9 @@ class VolkswagenFlags(IntFlag):
   # Static flags
   PQ = 2
   MLB = 8
+  MEB = 16
+  ALT_GEAR = 32       # detected: Gateway_73 used for shifter (some MEB trims) instead of Getriebe_11
+  MEB_GEN2 = 64       # MEB Gen2 uses vw_meb_2024 DBC + alternate CRC variant
 
 
 @dataclass
@@ -198,6 +233,18 @@ class VolkswagenMLBPlatformConfig(PlatformConfig):
 
   def init(self):
     self.flags |= VolkswagenFlags.MLB
+
+
+@dataclass
+class VolkswagenMEBPlatformConfig(PlatformConfig):
+  dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_meb'})
+  chassis_codes: set[str] = field(default_factory=set)
+  wmis: set[WMI] = field(default_factory=set)
+
+  def init(self):
+    self.flags |= VolkswagenFlags.MEB
+    if self.flags & VolkswagenFlags.MEB_GEN2:
+      self.dbc_dict = {Bus.pt: 'vw_meb_2024'}
 
 
 @dataclass
@@ -269,7 +316,7 @@ class VWCarDocs(CarDocs):
 # FW_VERSIONS for that existing CAR.
 
 class CAR(Platforms):
-  config: VolkswagenMQBPlatformConfig | VolkswagenPQPlatformConfig
+  config: VolkswagenMQBPlatformConfig | VolkswagenPQPlatformConfig | VolkswagenMEBPlatformConfig | VolkswagenMLBPlatformConfig
 
   VOLKSWAGEN_ARTEON_MK1 = VolkswagenMQBPlatformConfig(
     [
@@ -421,6 +468,13 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1413, wheelbase=2.63),
     chassis_codes={"A1"},
     wmis={WMI.VOLKSWAGEN_EUROPE_SUV},
+  )
+  VOLKSWAGEN_ID4_MK2 = VolkswagenMEBPlatformConfig(
+    [VWCarDocs("Volkswagen ID.4 2024-25")],
+    VolkswagenCarSpecs(mass=2224, wheelbase=2.77),
+    chassis_codes={"E8"},
+    wmis={WMI.VOLKSWAGEN_USA_SUV, WMI.VOLKSWAGEN_EUROPE_CAR, WMI.VOLKSWAGEN_EUROPE_SUV},
+    flags=VolkswagenFlags.MEB_GEN2,
   )
   AUDI_A3_MK3 = VolkswagenMQBPlatformConfig(
     [

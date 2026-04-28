@@ -40,6 +40,24 @@ class CarInterface(CarInterfaceBase):
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation, revised J533 harness
 
+    elif ret.flags & VolkswagenFlags.MEB:
+      # Set global MEB parameters (lateral-only minimal port)
+      safety_param = 0
+      if ret.flags & VolkswagenFlags.MEB_GEN2:
+        safety_param |= VolkswagenSafetyFlags.ALT_CRC_VARIANT_1.value
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb, safety_param)]
+
+      ret.enableBsm = False                                 # No BSM in minimal port
+      ret.transmissionType = TransmissionType.direct        # MEB is EV-only
+      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerAtStandstill = True                          # MEB EPS supports curvature commands at zero speed
+      ret.networkLocation = NetworkLocation.gateway         # ID4_MK2 is J533-gateway integrated
+      ret.radarUnavailable = True                           # No OP long in Phase 1
+      ret.dashcamOnly = is_release                          # Release-mode safety validation pending
+
+      if 0x3DC in fingerprint[0]:                           # Gateway_73 present → use it for shifter
+        ret.flags |= VolkswagenFlags.ALT_GEAR.value
+
     else:
       # Set global MQB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagen)]
@@ -68,6 +86,9 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    elif ret.flags & VolkswagenFlags.MEB:
+      # MEB curvature-based control — actuator delay measured empirically
+      ret.steerActuatorDelay = 0.3
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]

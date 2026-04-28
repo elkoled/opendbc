@@ -366,6 +366,28 @@ FW_VERSIONS = {
       b'\xf1\x875Q0907572S \xf1\x890780',
     ],
   },
+  CAR.VOLKSWAGEN_ID4_MK2: {
+    (Ecu.inverter, 0x17fc007c, None): [
+      b'\xf1\x870ET907121D \xf1\x897246\xf1\x82010',
+    ],
+    (Ecu.engine, 0x17fc0076, None): [
+      b'\xf1\x870EA906014DR\xf1\x893630',
+    ],
+    (Ecu.transmission, 0x7e1, None): [],
+    (Ecu.srs, 0x715, None): [],
+    (Ecu.eps, 0x712, None): [],
+    (Ecu.fwdCamera, 0x74f, None): [
+      b'\xf1\x871EA980653G \xf1\x895570',
+      b'\xf1\x871EA980653B \xf1\x895510',
+    ],
+    (Ecu.cornerRadar, 0x74e, None): [],
+    (Ecu.adas, 0x769, None): [],
+    (Ecu.parkingAdas, 0x70a, None): [],
+    (Ecu.fwdRadar, 0x757, None): [
+      b'\xf1\x871EA907567D \xf1\x890250',
+      b'\xf1\x871EA907567C \xf1\x890099',
+    ],
+  },
   CAR.VOLKSWAGEN_JETTA_MK6: {
     (Ecu.srs, 0x715, None): [
       b'\xf1\x875C0959655M \xf1\x890726\xf1\x82\t00NB1108--------24',

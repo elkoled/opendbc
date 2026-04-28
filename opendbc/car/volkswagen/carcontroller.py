@@ -4,7 +4,7 @@ from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.volkswagen import mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -45,14 +45,23 @@ class CarController(CarControllerBase):
       self.CCS = pqcan
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
     else:
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
     self.gra_acc_counter_last = None
-    self.hca_mitigation = HCAMitigation(self.CCP)
+    self.hca_mitigation = HCAMitigation(self.CCP) if not (CP.flags & VolkswagenFlags.MEB) else None
+
+    # MEB-specific state for HCA_03 power ramp
+    self.apply_curvature_last = 0.0
+    self.steer_power_last = 0
 
   def update(self, CC, CS, now_nanos):
+    if self.CP.flags & VolkswagenFlags.MEB:
+      return self.update_meb(CC, CS, now_nanos)
+
     actuators = CC.actuators
     hud_control = CC.hudControl
     can_sends = []
@@ -126,6 +135,54 @@ class CarController(CarControllerBase):
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque_last
+
+    self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
+    self.frame += 1
+    return new_actuators, can_sends
+
+  def update_meb(self, CC, CS, now_nanos):
+    actuators = CC.actuators
+    hud_control = CC.hudControl
+    can_sends = []
+
+    # **** Steering Controls (HCA_03 curvature) **************************** #
+    if self.frame % self.CCP.STEER_STEP == 0:
+      apply_curvature = 0.0
+      lat_active = CC.latActive and not CS.out.steerFaultPermanent
+
+      if lat_active:
+        # actuators.curvature is rad/m. The DBC stores Curvature as unsigned magnitude with
+        # a separate sign bit; mebcan.create_steering_control handles that. Panda enforces ISO limits.
+        apply_curvature = float(np.clip(actuators.curvature, -0.195, 0.195))
+
+      # Power ramp: ramp up to MAX while engaged, decay to 0 before disengaging
+      if lat_active:
+        power = min(self.steer_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+        power = max(power, self.CCP.STEERING_POWER_MIN)
+      else:
+        power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, 0)
+
+      self.steer_power_last = power
+      self.apply_curvature_last = apply_curvature
+
+      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, lat_active and power > 0, power))
+
+    # **** HUD (LDW_02) **************************************************** #
+    if self.frame % self.CCP.LDW_STEP == 0:
+      hud_alert = 0
+      if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
+        hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
+      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                       CS.out.steeringPressed, hud_alert, hud_control, sound_alert=0))
+
+    # **** Stock ACC button passthrough (cancel/resume) ******************** #
+    gra_send_ready = self.CP.pcmCruise and CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
+    if gra_send_ready and (CC.cruiseControl.cancel or CC.cruiseControl.resume):
+      can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, self.CAN.ext, CS.gra_stock_values,
+                                                           cancel=CC.cruiseControl.cancel, resume=CC.cruiseControl.resume))
+
+    new_actuators = actuators.as_builder()
+    new_actuators.curvature = float(self.apply_curvature_last)
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.frame += 1
