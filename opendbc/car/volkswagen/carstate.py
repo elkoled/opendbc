@@ -19,6 +19,7 @@ class CarState(CarStateBase):
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
     self.acc_type = 0
+    self.measured_curvature = 0.0
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -318,6 +319,11 @@ class CarState(CarStateBase):
     # HCA status from QFK_01 (LatCon_HCA_Status)
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, drive_mode)
+
+    # Measured curvature from QFK_01 (sign carried in separate VZ bit). Stashed on the CarState
+    # instance — master capnp doesn't expose steeringCurvature — so the carcontroller can close
+    # the loop on commanded vs measured curvature for accurate tracking.
+    self.measured_curvature = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
 
     # Pedals
     ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0

@@ -103,7 +103,8 @@ class CarControllerParams:
       # HCA_03 curvature command, panda enforces lateral jerk limits in opendbc/safety.
       self.LDW_STEP = 10
       self.ACC_CONTROL_STEP = 2     # ACC_18 acceleration request, 50 Hz
-      self.STEER_DRIVER_ALLOWANCE = 60
+      self.STEER_DRIVER_ALLOWANCE = 60   # 0.6 Nm — start ramping power down toward MIN
+      self.STEER_DRIVER_MAX = 300        # 3.0 Nm — power floor at MIN
       self.CURVATURE_MAX = 0.195   # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
       self.STEERING_POWER_MAX = 50
       self.STEERING_POWER_MIN = 4

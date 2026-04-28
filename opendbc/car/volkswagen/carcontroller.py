@@ -147,22 +147,40 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
-      lat_active = CC.latActive and not CS.out.steerFaultPermanent
-      apply_curvature = float(np.clip(actuators.curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX)) if lat_active else 0.0
+      if CC.latActive:
+        hca_enabled = True
+        # Closed-loop curvature command: command from controlsd (computed against the openpilot
+        # vehicle model) plus the EPS measurement error, so the EPS rack tracks the intended
+        # curvature instead of its own internal model's interpretation of the command.
+        apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
+        apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
 
-      # Ramp HCA_03 power up to MAX while engaged and back down to 0 before disengaging,
-      # so the EPS sees a smooth handoff in/out of openpilot control.
-      if lat_active:
-        power = min(self.steer_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
-        power = max(power, self.CCP.STEERING_POWER_MIN)
+        # Power envelope from previous frame: ramp up by STEERING_POWER_STEP toward MAX, never below MIN.
+        min_power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
+        max_power = min(self.steer_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+        # Driver-torque-aware target: full MAX while driver is below allowance, ramp down to MIN at full driver torque.
+        target_power_driver = int(np.interp(abs(CS.out.steeringTorque),
+                                            [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                            [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+        # Standstill cushion: bring up gently from MIN over the first 0.5 m/s.
+        target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
+        steering_power = min(max(target_power, min_power), max_power)
+      elif self.steer_power_last > 0:
+        # Disengage: keep HCA enabled while ramping power to 0; hold curvature at the last-measured value
+        # so the rack doesn't kick on the way out.
+        hca_enabled = True
+        apply_curvature = float(np.clip(CS.measured_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+        steering_power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, 0)
       else:
-        power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, 0)
+        hca_enabled = False
+        apply_curvature = 0.0
+        steering_power = 0
 
-      self.steer_power_last = power
       self.apply_curvature_last = apply_curvature
+      self.steer_power_last = steering_power
 
       can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature,
-                                                       lat_active and power > 0, power))
+                                                       hca_enabled, steering_power))
 
     # **** Acceleration Controls ******************************************** #
 
