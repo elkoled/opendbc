@@ -100,14 +100,13 @@ class CarControllerParams:
       }
 
     elif CP.flags & VolkswagenFlags.MEB:
-      # MEB-specific lateral control: HCA_03 curvature command + power ramp.
-      # Lateral controller is curvature-based; STEER_DELTA_*/STEER_MAX (torque) limits
-      # are not used on this branch — safety enforces curvature/power limits in panda.
-      self.LDW_STEP = 10                   # LDW_02 message frequency 10Hz
-      self.STEER_DRIVER_ALLOWANCE = 60     # 0.6 Nm driver torque threshold for steeringPressed
-      self.STEERING_POWER_MAX = 50         # HCA_03 max steering power (%)
-      self.STEERING_POWER_MIN = 4          # HCA_03 min steering power while ramping
-      self.STEERING_POWER_STEP = 2         # HCA_03 power ramp step per send
+      # HCA_03 curvature command, panda enforces lateral jerk limits in opendbc/safety.
+      self.LDW_STEP = 10
+      self.STEER_DRIVER_ALLOWANCE = 60
+      self.CURVATURE_MAX = 0.195   # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
+      self.STEERING_POWER_MAX = 50
+      self.STEERING_POWER_MIN = 4
+      self.STEERING_POWER_STEP = 2
 
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
       if CP.flags & VolkswagenFlags.ALT_GEAR:

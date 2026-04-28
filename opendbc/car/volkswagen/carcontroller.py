@@ -54,7 +54,6 @@ class CarController(CarControllerBase):
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP) if not (CP.flags & VolkswagenFlags.MEB) else None
 
-    # MEB-specific state for HCA_03 power ramp
     self.apply_curvature_last = 0.0
     self.steer_power_last = 0
 
@@ -145,17 +144,14 @@ class CarController(CarControllerBase):
     hud_control = CC.hudControl
     can_sends = []
 
-    # **** Steering Controls (HCA_03 curvature) **************************** #
+    # **** Steering Controls ************************************************ #
+
     if self.frame % self.CCP.STEER_STEP == 0:
-      apply_curvature = 0.0
       lat_active = CC.latActive and not CS.out.steerFaultPermanent
+      apply_curvature = float(np.clip(actuators.curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX)) if lat_active else 0.0
 
-      if lat_active:
-        # actuators.curvature is rad/m. The DBC stores Curvature as unsigned magnitude with
-        # a separate sign bit; mebcan.create_steering_control handles that. Panda enforces ISO limits.
-        apply_curvature = float(np.clip(actuators.curvature, -0.195, 0.195))
-
-      # Power ramp: ramp up to MAX while engaged, decay to 0 before disengaging
+      # Ramp HCA_03 power up to MAX while engaged and back down to 0 before disengaging,
+      # so the EPS sees a smooth handoff in/out of openpilot control.
       if lat_active:
         power = min(self.steer_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
         power = max(power, self.CCP.STEERING_POWER_MIN)
@@ -165,9 +161,11 @@ class CarController(CarControllerBase):
       self.steer_power_last = power
       self.apply_curvature_last = apply_curvature
 
-      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, lat_active and power > 0, power))
+      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature,
+                                                       lat_active and power > 0, power))
 
-    # **** HUD (LDW_02) **************************************************** #
+    # **** HUD Controls ***************************************************** #
+
     if self.frame % self.CCP.LDW_STEP == 0:
       hud_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
@@ -175,7 +173,8 @@ class CarController(CarControllerBase):
       can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
                                                        CS.out.steeringPressed, hud_alert, hud_control, sound_alert=0))
 
-    # **** Stock ACC button passthrough (cancel/resume) ******************** #
+    # **** Stock ACC Button Controls **************************************** #
+
     gra_send_ready = self.CP.pcmCruise and CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
     if gra_send_ready and (CC.cruiseControl.cancel or CC.cruiseControl.resume):
       can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, self.CAN.ext, CS.gra_stock_values,
