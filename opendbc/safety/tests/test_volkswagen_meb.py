@@ -39,9 +39,10 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest):
   def _user_brake_msg(self, brake):
     return self._motor_14_msg(brake)
 
-  # Driver throttle input lives on Motor_51 alongside ACC status
+  # Driver throttle input lives on Motor_51 alongside ACC status. We emit TSK_Status=3 (ACC active)
+  # so the cruise-engaged gating doesn't disengage between gas-only assertions.
   def _user_gas_msg(self, gas):
-    values = {"Accel_Pedal_Pressure": gas, "TSK_Status": 2}
+    values = {"Accel_Pedal_Pressure": gas, "TSK_Status": 3}
     return self.packer.make_can_msg_safety("Motor_51", 0, values)
 
   # ACC engagement status (Motor_51.TSK_Status: 0=off, 2=ready, 3-5=active, 6-7=fault)
