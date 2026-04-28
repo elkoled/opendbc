@@ -349,7 +349,11 @@ class CarState(CarStateBase):
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
     ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
 
-    self.esp_hold_confirmation = bool(pt_cp.vl["ESC_50"]["Standstill"])
+    # MEB_GEN2 dropped the discrete Standstill bit in favor of a 2-bit Motion_State (3 = stopped).
+    if self.CP.flags & VolkswagenFlags.MEB_GEN2:
+      self.esp_hold_confirmation = pt_cp.vl["ESC_50"]["Motion_State"] == 3
+    else:
+      self.esp_hold_confirmation = bool(pt_cp.vl["ESC_50"]["Standstill"])
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     # Capture stock values for forwarding/HUD
