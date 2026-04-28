@@ -213,8 +213,18 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
     gas_pressed = accel_pedal_value > 0;
   }
 
-  // Cancel button always disengages controls (also on stock-long, even if not enabling)
+  // Cruise buttons. With OP-long the falling edge of Set or Resume engages controls (only while
+  // ACC main is on). Cancel always disengages, regardless of long mode.
   if (msg->addr == MSG_GRA_ACC_01) {
+    if (volkswagen_longitudinal) {
+      bool set_button = GET_BIT(msg, 16U);
+      bool resume_button = GET_BIT(msg, 19U);
+      if ((volkswagen_set_button_prev && !set_button) || (volkswagen_resume_button_prev && !resume_button)) {
+        controls_allowed = acc_main_on;
+      }
+      volkswagen_set_button_prev = set_button;
+      volkswagen_resume_button_prev = resume_button;
+    }
     if (GET_BIT(msg, 13U)) {
       controls_allowed = false;
     }
