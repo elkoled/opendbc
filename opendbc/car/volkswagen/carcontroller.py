@@ -185,12 +185,15 @@ class CarController(CarControllerBase):
     # **** Acceleration Controls ******************************************** #
 
     if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
-      acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+      override = CC.cruiseControl.override or CS.out.gasPressed
+      acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive, override)
       accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0)
       stopping = actuators.longControlState == LongCtrlState.stopping
       starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
+      speed = CS.out.vEgoRaw * CV.MS_TO_KPH
       can_sends.append(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.longActive,
-                                                         accel, acc_control, stopping, starting, CS.esp_hold_confirmation))
+                                                         accel, acc_control, stopping, starting, CS.esp_hold_confirmation,
+                                                         override, speed))
 
     # **** HUD Controls ***************************************************** #
 

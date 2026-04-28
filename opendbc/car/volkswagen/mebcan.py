@@ -38,22 +38,64 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
   return packer.make_can_msg("LDW_02", bus, values)
 
 
-def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold):
-  # Idle defaults are chosen to byte-match the stock radar's ACC_18 — the TSK faults to state 7
-  # if our message diverges from the stock layout while the radar is still authoritative
-  # (relay closed). Active fields populate only when acc_enabled.
+ACCEL_INACTIVE = 3.01      # one increment above the active range — stock idle marker
+ACCEL_OVERRIDE = 0.0       # non-inactive accel that the car interprets as "driver overriding"
+ACC_CTRL_ERROR    = 6
+ACC_CTRL_OVERRIDE = 4
+ACC_CTRL_ACTIVE   = 3
+ACC_CTRL_ENABLED  = 2
+ACC_CTRL_DISABLED = 0
+ACC_HMS_RELEASE      = 4   # release stop-hold (drivetrain start moving from full stop)
+ACC_HMS_HOLD         = 1   # request stop-hold (EPB / brake-by-wire holds the car)
+ACC_HMS_NO_REQUEST   = 0
+
+
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control,
+                             stopping, starting, esp_hold, override, speed):
+  # The TSK is byte-sensitive: an active ACC_18 must follow the stock layout closely or it faults.
+  # In particular: ACC_Sollbeschleunigung_02 must be ACCEL_OVERRIDE (0.0) — not ACCEL_INACTIVE — while
+  # the driver is overriding (the stock radar keeps a "live" accel during gas-press), and must be
+  # ACCEL_INACTIVE while at full stop on newer-gen cars (a non-neutral accel at standstill faults).
+  full_stop          = stopping and esp_hold
+  actually_stopping  = stopping and not esp_hold
+  active             = acc_control == ACC_CTRL_ACTIVE
+  active_or_override = acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE)
+
+  if acc_enabled:
+    if override:
+      acceleration = ACCEL_OVERRIDE
+    elif full_stop:
+      acceleration = ACCEL_INACTIVE
+    else:
+      acceleration = accel
+  else:
+    acceleration = ACCEL_INACTIVE
+
+  # Hold mode signal: drives the car's stop-and-go state machine.
+  if not acc_enabled or override:
+    hold_mode = ACC_HMS_NO_REQUEST
+  elif starting:
+    hold_mode = ACC_HMS_RELEASE
+  elif stopping or esp_hold:
+    hold_mode = ACC_HMS_HOLD
+  else:
+    hold_mode = ACC_HMS_NO_REQUEST
+
   values = {
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
     "ACC_StartStopp_Info":        acc_enabled,
-    "ACC_Sollbeschleunigung_02":  accel if acc_enabled else 3.01,
-    "ACC_zul_Regelabw_unten":     0.2 if acc_enabled else 0,
-    "ACC_zul_Regelabw_oben":      0.2 if acc_enabled else 0,
-    "ACC_neg_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
-    "ACC_pos_Sollbeschl_Grad_02": 4.0 if acc_enabled else 0,
+    "ACC_Sollbeschleunigung_02":  acceleration,
+    "ACC_zul_Regelabw_unten":     0.2 if active_or_override else 0,
+    "ACC_zul_Regelabw_oben":      0.2 if active_or_override else 0,
+    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
+    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
     "ACC_Anfahren":               starting,
-    "ACC_Anhalten":               stopping,
-    "ACC_Anhalteweg":             0 if stopping else 20.46,  # max value, matches stock idle
+    "ACC_Anhalten":               1 if actually_stopping else 0,
+    "ACC_Anhalteweg":             0 if actually_stopping else 20.46,
+    "ACC_Anforderung_HMS":        hold_mode,
+    "ACC_AKTIV_regelt":           1 if active else 0,
+    "Speed":                      speed,
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,
@@ -61,13 +103,14 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
   return packer.make_can_msg("ACC_18", bus, values)
 
 
-def acc_control_value(main_switch_on, acc_faulted, long_active):
-  # Mirrors mqbcan.acc_control_value: maps OP long state to ACC_Status_ACC for ACC_18.
+def acc_control_value(main_switch_on, acc_faulted, long_active, override):
+  # ACC_Status_ACC for ACC_18. Override path keeps the cruise controller "alive" so the car
+  # doesn't reject our message stream while the driver is on the gas.
   if acc_faulted:
-    return 6
+    return ACC_CTRL_ERROR
   if long_active:
-    return 3
-  return 2 if main_switch_on else 0
+    return ACC_CTRL_OVERRIDE if override else ACC_CTRL_ACTIVE
+  return ACC_CTRL_ENABLED if main_switch_on else ACC_CTRL_DISABLED
 
 
 def create_acc_buttons_control(packer, bus, gra_stock_values, cancel=False, resume=False):
