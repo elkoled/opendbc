@@ -40,6 +40,14 @@ class CarInterface(CarInterfaceBase):
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation, revised J533 harness
 
+    elif ret.flags & VolkswagenFlags.MEB:
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
+      ret.steerAtStandstill = True
+      ret.networkLocation = NetworkLocation.gateway
+      ret.dashcamOnly = is_release
+
     else:
       # Set global MQB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagen)]
@@ -68,6 +76,8 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    elif ret.flags & VolkswagenFlags.MEB:
+      ret.steerActuatorDelay = 0.3
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]

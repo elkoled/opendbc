@@ -172,13 +172,14 @@ def create_aeb_hud(packer, aeb_supported, fcw_active):
   return packer.make_can_msg("ACC_15", 0, values)
 
 
-def volkswagen_mqb_meb_checksum(address: int, sig, d: bytearray) -> int:
+def volkswagen_mqb_meb_checksum(address: int, sig, d: bytearray, const: list[int] | None = None) -> int:
   crc = 0xFF
   for i in range(1, len(d)):
     crc ^= d[i]
     crc = CRC8H2F[crc]
   counter = d[1] & 0x0F
-  const = VOLKSWAGEN_MQB_MEB_CONSTANTS.get(address)
+  if const is None:
+    const = VOLKSWAGEN_MQB_MEB_CONSTANTS.get(address)
   if const:
     crc ^= const[counter]
     crc = CRC8H2F[crc]
