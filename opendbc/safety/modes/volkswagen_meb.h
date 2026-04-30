@@ -13,14 +13,14 @@
 
 
 #define VW_MEB_COMMON_RX_CHECKS                                                                     \
-  {.msg = {{MSG_LH_EPS_03, 0, 8, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
-  {.msg = {{MSG_MOTOR_14,  0, 8, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_GRA_ACC_01,0, 8, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_QFK_01,    0, 32,.max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+  {.msg = {{MSG_LH_EPS_03,  0, 8,  100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
+  {.msg = {{MSG_MOTOR_14,   0, 8,  10U,  .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
+  {.msg = {{MSG_GRA_ACC_01, 0, 8,  33U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
+  {.msg = {{MSG_QFK_01,     0, 32, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
 
 #define VW_MEB_RX_CHECKS                                                                            \
-  {.msg = {{MSG_Motor_51,  0, 32,.max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_ESC_51,    0, 48,.max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+  {.msg = {{MSG_Motor_51,   0, 32, 50U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
+  {.msg = {{MSG_ESC_51,     0, 48, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
 
 
 // MEB CRC computation (counter-XOR LUT variant)
