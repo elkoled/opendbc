@@ -4,11 +4,22 @@ from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.volkswagen import mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
+# Mirror of opendbc/safety/lateral.h ISO 11270 budget used by panda safety to gate
+# HCA_03 transmission. Clamping locally with current vEgo (always >= panda's
+# vehicle_speed.min) keeps our command strictly inside panda's allowance, so the
+# closed-loop curvature feedback can't push HCA_03 over the limit and trip
+# steerTempUnavailable on sustained high-speed curves.
+_ISO_LATERAL_ACCEL = 3.0   # m/s^2
+_ISO_LATERAL_JERK = 5.0    # m/s^3
+_AVERAGE_ROAD_ROLL = 0.06
+_EARTH_G = 9.81
+_MAX_LAT_ACCEL_AVG = _ISO_LATERAL_ACCEL + _EARTH_G * _AVERAGE_ROAD_ROLL  # ~3.589 m/s^2
 
 
 class HCAMitigation:
@@ -45,14 +56,27 @@ class CarController(CarControllerBase):
       self.CCS = pqcan
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
     else:
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
     self.gra_acc_counter_last = None
-    self.hca_mitigation = HCAMitigation(self.CCP)
+    self.hca_mitigation = HCAMitigation(self.CCP) if not (CP.flags & VolkswagenFlags.MEB) else None
+
+    self.apply_curvature_last = 0.0
+    self.steer_power_last = 0
+
+    # 5-frame counters for ACC_HMS_RAMP_RELEASE (EPB stability at override start / long disable).
+    self.long_override_counter = 0
+    self.long_disabled_counter = 0
+    self.long_stopping_counter = 0
 
   def update(self, CC, CS, now_nanos):
+    if self.CP.flags & VolkswagenFlags.MEB:
+      return self.update_meb(CC, CS, now_nanos)
+
     actuators = CC.actuators
     hud_control = CC.hudControl
     can_sends = []
@@ -126,6 +150,118 @@ class CarController(CarControllerBase):
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque_last
+
+    self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
+    self.frame += 1
+    return new_actuators, can_sends
+
+  def update_meb(self, CC, CS, now_nanos):
+    actuators = CC.actuators
+    hud_control = CC.hudControl
+    can_sends = []
+
+    # **** Steering ********************************************************* #
+
+    if self.frame % self.CCP.STEER_STEP == 0:
+      if CC.latActive:
+        hca_enabled = True
+        # Close the loop on commanded vs. measured curvature so the EPS rack tracks our intent
+        # instead of its own model's interpretation.
+        apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
+        apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+
+        # Stay strictly inside panda's ISO 11270 lateral-accel + jerk budgets so the
+        # closed-loop term above can never push HCA_03 over the safety limit at high speed.
+        v_safe_sq = max(CS.out.vEgo - 1.0, 1.0) ** 2
+        max_curv_safe = _MAX_LAT_ACCEL_AVG / v_safe_sq
+        max_curv_delta = _ISO_LATERAL_JERK / v_safe_sq * (DT_CTRL * self.CCP.STEER_STEP)
+        apply_curvature = float(np.clip(apply_curvature, -max_curv_safe, max_curv_safe))
+        apply_curvature = float(np.clip(apply_curvature,
+                                        self.apply_curvature_last - max_curv_delta,
+                                        self.apply_curvature_last + max_curv_delta))
+
+        min_power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
+        max_power = min(self.steer_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+        # Ramp power down toward MIN as driver torque rises past the allowance (ISO 11270 budget).
+        target_power_driver = int(np.interp(abs(CS.out.steeringTorque),
+                                            [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                            [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+        target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
+        steering_power = min(max(target_power, min_power), max_power)
+      elif self.steer_power_last > 0:
+        # Soft-disengage: ramp power to 0 holding last-measured curvature so the rack doesn't kick.
+        hca_enabled = True
+        apply_curvature = float(np.clip(CS.measured_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+        steering_power = max(self.steer_power_last - self.CCP.STEERING_POWER_STEP, 0)
+      else:
+        hca_enabled = False
+        apply_curvature = 0.0
+        steering_power = 0
+
+      self.apply_curvature_last = apply_curvature
+      self.steer_power_last = steering_power
+
+      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature,
+                                                       hca_enabled, steering_power))
+
+    # **** Acceleration ***************************************************** #
+
+    if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
+      # Gate on CC.enabled (not CC.longActive) so we stay in the override branch during gas-press;
+      # longActive flips False on override and would drop ACC_Status_ACC to 2 → TSK re-arms.
+      raw_stopping = actuators.longControlState == LongCtrlState.stopping
+      # Latch stopping for 500 ms (25 frames at 50 Hz) while wheels are still: absorbs the pid<->
+      # stopping oscillation in controlsd near v_ego = 0 that would otherwise flip HMS/Anhalten
+      # frame-by-frame and stutter the EPB. Exits immediately on real motion.
+      if raw_stopping:
+        self.long_stopping_counter = 25
+      elif CS.out.vEgoRaw > 0.1:
+        self.long_stopping_counter = 0
+      else:
+        self.long_stopping_counter = max(self.long_stopping_counter - 1, 0)
+      stopping = raw_stopping or self.long_stopping_counter > 0
+      starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping) and not stopping
+      accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
+
+      override = CC.cruiseControl.override or CS.out.gasPressed
+      self.long_override_counter = min(self.long_override_counter + 1, 5) if override else 0
+      override_begin = override and self.long_override_counter < 5
+
+      self.long_disabled_counter = min(self.long_disabled_counter + 1, 5) if not CC.enabled else 0
+      long_disabling = not CC.enabled and self.long_disabled_counter < 5
+
+      acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, override)
+      acc_hold = self.CCS.acc_hold_type(CS.out.accFaulted, CC.enabled, starting, stopping,
+                                        CS.esp_hold_confirmation, override, override_begin, long_disabling)
+      can_sends.append(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.enabled,
+                                                         accel, acc_control, acc_hold, stopping, starting,
+                                                         CS.esp_hold_confirmation, override,
+                                                         CS.out.vEgoRaw * CV.MS_TO_KPH))
+
+    # **** HUD ************************************************************** #
+
+    if self.frame % self.CCP.LDW_STEP == 0:
+      hud_alert = 0
+      if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
+        hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
+      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                       CS.out.steeringPressed, hud_alert, hud_control, sound_alert=0))
+
+    if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_HUD_STEP == 0:
+      override = CC.cruiseControl.override or CS.out.gasPressed
+      acc_hud_status = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, override)
+      set_speed = hud_control.setSpeed * CV.MS_TO_KPH
+      can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, set_speed))
+
+    # **** Stock ACC Button Controls **************************************** #
+
+    gra_send_ready = self.CP.pcmCruise and CS.gra_stock_values["COUNTER"] != self.gra_acc_counter_last
+    if gra_send_ready and (CC.cruiseControl.cancel or CC.cruiseControl.resume):
+      can_sends.append(self.CCS.create_acc_buttons_control(self.packer_pt, self.CAN.ext, CS.gra_stock_values,
+                                                           cancel=CC.cruiseControl.cancel, resume=CC.cruiseControl.resume))
+
+    new_actuators = actuators.as_builder()
+    new_actuators.curvature = float(self.apply_curvature_last)
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.frame += 1
