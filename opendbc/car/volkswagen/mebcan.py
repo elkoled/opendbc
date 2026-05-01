@@ -1,20 +1,38 @@
-ACCEL_INACTIVE = 3.01  # one increment above the active range, stock idle marker
+ACCEL_INACTIVE = 3.01  # one increment above the active range, marks ACC as idle to drivetrain
 ACC_CTRL_ERROR    = 6
 ACC_CTRL_OVERRIDE = 4
 ACC_CTRL_ACTIVE   = 3
 ACC_CTRL_ENABLED  = 2
 ACC_CTRL_DISABLED = 0
-ACC_HMS_HOLD       = 1
-ACC_HMS_RELEASE    = 4
-ACC_HMS_NO_REQUEST = 0
+ACC_HMS_RELEASE      = 4
+ACC_HMS_HOLD         = 1
+ACC_HMS_NO_REQUEST   = 0
+
+
+def acc_control_value(main_switch_on, acc_faulted, long_active, override):
+  if long_active:
+    if acc_faulted:
+      return ACC_CTRL_ERROR
+    return ACC_CTRL_OVERRIDE if override else ACC_CTRL_ACTIVE
+  return ACC_CTRL_ENABLED if main_switch_on else ACC_CTRL_DISABLED
+
+
+def acc_hold_type(acc_faulted, long_active, starting, stopping, esp_hold, override):
+  if acc_faulted or not long_active or override:
+    return ACC_HMS_NO_REQUEST
+  if starting:
+    return ACC_HMS_RELEASE
+  if stopping or esp_hold:
+    return ACC_HMS_HOLD
+  return ACC_HMS_NO_REQUEST
 
 
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
   values = {
     "Curvature":     abs(apply_curvature),
-    "Curvature_VZ":  1 if apply_curvature > 0 else 0,
+    "Curvature_VZ":  1 if apply_curvature > 0 and lkas_enabled else 0,
     "Power":         power if lkas_enabled else 0,
-    "RequestStatus": 4 if lkas_enabled else 2,  # 4: control active, 2: standby
+    "RequestStatus": 4 if lkas_enabled else 2,
     "HighSendRate":  lkas_enabled,
   }
   return packer.make_can_msg("HCA_03", bus, values)
@@ -25,8 +43,13 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
 
   values = {}
   if len(ldw_stock_values):
-    values = {s: ldw_stock_values[s] for s in ("LDW_SW_Warnung_links", "LDW_SW_Warnung_rechts",
-                                                "LDW_Seite_DLCTLC", "LDW_DLC", "LDW_TLC")}
+    values = {s: ldw_stock_values[s] for s in [
+      "LDW_SW_Warnung_links",
+      "LDW_SW_Warnung_rechts",
+      "LDW_Seite_DLCTLC",
+      "LDW_DLC",
+      "LDW_TLC",
+    ]}
 
   values.update({
     "LDW_Status_LED_gelb":  1 if lat_active and steering_pressed else 0,
@@ -38,46 +61,37 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
   return packer.make_can_msg("LDW_02", bus, values)
 
 
-def acc_control_value(main_switch_on, acc_faulted, long_active, override):
-  if long_active:
-    if acc_faulted:
-      return ACC_CTRL_ERROR
-    return ACC_CTRL_OVERRIDE if override else ACC_CTRL_ACTIVE
-  return ACC_CTRL_ENABLED if main_switch_on else ACC_CTRL_DISABLED
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold,
+                             stopping, starting, esp_hold, override, speed):
+  full_stop          = stopping and esp_hold
+  full_stop_no_start = esp_hold and not starting
+  actually_stopping  = stopping and not esp_hold
+  active             = acc_control == ACC_CTRL_ACTIVE
+  active_or_override = acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE)
+  active_sending     = active_or_override and not full_stop_no_start
 
-
-def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold, override):
-  active = acc_control == ACC_CTRL_ACTIVE
-  if not acc_enabled or (stopping and esp_hold and not starting):
-    accel_out = ACCEL_INACTIVE
+  if not acc_enabled or full_stop:
+    acceleration = ACCEL_INACTIVE
   elif override:
-    accel_out = 0.0
+    acceleration = 0.0  # TSK requires accel=0 during driver gas override
   else:
-    accel_out = accel
-
-  if not acc_enabled:
-    acc_hold = ACC_HMS_NO_REQUEST
-  elif starting:
-    acc_hold = ACC_HMS_RELEASE
-  elif stopping or esp_hold:
-    acc_hold = ACC_HMS_HOLD
-  else:
-    acc_hold = ACC_HMS_NO_REQUEST
+    acceleration = accel
 
   values = {
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
     "ACC_StartStopp_Info":        acc_enabled,
-    "ACC_Sollbeschleunigung_02":  accel_out,
-    "ACC_zul_Regelabw_unten":     0.2 if active else 0,
-    "ACC_zul_Regelabw_oben":      0.2 if active else 0,
-    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active else 0,
-    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active else 0,
+    "ACC_Sollbeschleunigung_02":  acceleration,
+    "ACC_zul_Regelabw_unten":     0.2 if active_sending else 0,
+    "ACC_zul_Regelabw_oben":      0.2 if active_sending else 0,
+    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active_sending else 0,
+    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active_sending else 0,
     "ACC_Anfahren":               starting,
-    "ACC_Anhalten":               stopping and not esp_hold,
-    "ACC_Anhalteweg":             0 if (stopping and not esp_hold) else 20.46,
+    "ACC_Anhalten":               1 if actually_stopping else 0,
+    "ACC_Anhalteweg":             0 if actually_stopping else 20.46,
     "ACC_Anforderung_HMS":        acc_hold,
     "ACC_AKTIV_regelt":           1 if active else 0,
+    "Speed":                      speed,
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,
@@ -95,8 +109,13 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed):
 
 
 def create_acc_buttons_control(packer, bus, gra_stock_values, cancel=False, resume=False):
-  values = {s: gra_stock_values[s] for s in ("GRA_Hauptschalter", "GRA_Typ_Hauptschalter", "GRA_Codierung",
-                                              "GRA_Tip_Stufe_2", "GRA_ButtonTypeInfo")}
+  values = {s: gra_stock_values[s] for s in [
+    "GRA_Hauptschalter",
+    "GRA_Typ_Hauptschalter",
+    "GRA_Codierung",
+    "GRA_Tip_Stufe_2",
+    "GRA_ButtonTypeInfo",
+  ]}
   values.update({
     "COUNTER":                (gra_stock_values["COUNTER"] + 1) % 16,
     "GRA_Abbrechen":          cancel,

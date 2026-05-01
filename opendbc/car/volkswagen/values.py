@@ -2,13 +2,16 @@ from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from enum import Enum, IntFlag, StrEnum
 
-from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
-from opendbc.car.lateral import AngleSteeringLimits
+from opendbc.car.lateral import AngleSteeringLimits, ISO_LATERAL_ACCEL
 from opendbc.car.vin import Vin
+
+# Add tolerance for average banked road since safety doesn't have the roll
+AVERAGE_ROAD_ROLL = 0.06
 
 Ecu = structs.CarParams.Ecu
 NetworkLocation = structs.CarParams.NetworkLocation
@@ -104,13 +107,18 @@ class CarControllerParams:
       self.LDW_STEP = 10
       self.ACC_HUD_STEP = 6              # MEB_ACC_01 HUD frequency 16Hz
       self.ACC_CONTROL_STEP = 2          # ACC_18 acceleration request, 50Hz
-      self.STEER_DRIVER_ALLOWANCE = 80   # 0.8 Nm
-      self.STEERING_POWER_MAX = 50
+      self.STEER_DRIVER_ALLOWANCE = 120  # 1.2 Nm, calibrated against ID.4 EPS curve forces (route 000000d9 p95 281 Nm)
+      self.STEERING_POWER_MAX = 50       # HCA_03 maximum steering power, percentage
+      self.STEERING_POWER_STEP = 2       # HCA_03 power ramp step
 
-      self.CURVATURE_LIMITS = AngleSteeringLimits(
-        STEER_ANGLE_MAX=0.195,                              # rad/m
-        ANGLE_RATE_LIMIT_UP=([0., 5., 25.], [0.04, 0.04, 0.005]),
-        ANGLE_RATE_LIMIT_DOWN=([0., 5., 25.], [0.04, 0.04, 0.005]),
+      # ID.4 EPS rack faults beyond ~600 deg, vehicle model converts curvature to wheel angle
+      self.ANGLE_LIMITS = AngleSteeringLimits(
+        600,
+        ([], []),
+        ([], []),
+        MAX_LATERAL_ACCEL=ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),  # ~3.6 m/s^2
+        MAX_LATERAL_JERK=3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),                 # ~3.6 m/s^3
+        MAX_ANGLE_RATE=8,                                                                         # deg/20ms frame
       )
 
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]

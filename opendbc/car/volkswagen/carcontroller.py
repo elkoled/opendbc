@@ -1,9 +1,11 @@
+import math
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_steer_angle_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_angle_limits_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.vehicle_model import VehicleModel
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
@@ -51,10 +53,11 @@ class CarController(CarControllerBase):
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
+    self.apply_angle_last = 0.0
+    self.steer_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP) if not (CP.flags & VolkswagenFlags.MEB) else None
-
-    self.apply_curvature_last = 0.0
+    self.VM = VehicleModel(CP) if CP.flags & VolkswagenFlags.MEB else None
 
   def update(self, CC, CS, now_nanos):
     if self.CP.flags & VolkswagenFlags.MEB:
@@ -149,13 +152,31 @@ class CarController(CarControllerBase):
     # **** Steering ********************************************************* #
 
     if self.frame % self.CCP.STEER_STEP == 0:
-      # closed loop EPS tracking so the rack follows our intent, not its own model
-      desired_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
-      apply_curvature = apply_std_steer_angle_limits(desired_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
-                                                     CS.measured_curvature, CC.latActive, self.CCP.CURVATURE_LIMITS)
-      self.apply_curvature_last = apply_curvature
-      can_sends.append(mebcan.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, CC.latActive,
-                                                      self.CCP.STEERING_POWER_MAX))
+      v_ego = max(CS.out.vEgoRaw, 1)
+      measured_angle = math.degrees(self.VM.get_steer_from_curvature(CS.measured_curvature, v_ego, 0))
+      if CC.latActive:
+        # Close the loop on commanded vs measured curvature, convert to steering wheel angle for VM-based limit
+        target_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
+        target_angle = math.degrees(self.VM.get_steer_from_curvature(target_curvature, v_ego, 0))
+      else:
+        target_angle = measured_angle
+
+      apply_angle = apply_steer_angle_limits_vm(target_angle, self.apply_angle_last, v_ego, measured_angle,
+                                                CC.latActive, self.CCP, self.VM)
+      apply_curvature = self.VM.calc_curvature(math.radians(apply_angle), v_ego, 0)
+
+      step = self.CCP.STEERING_POWER_STEP
+      if CC.latActive:
+        steering_power = min(self.steer_power_last + step, self.CCP.STEERING_POWER_MAX)
+      else:
+        steering_power = max(self.steer_power_last - step, 0)
+      hca_enabled = steering_power > 0
+
+      self.apply_angle_last = apply_angle
+      self.steer_power_last = steering_power
+
+      can_sends.append(mebcan.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature,
+                                                      hca_enabled, steering_power))
 
     # **** Acceleration ***************************************************** #
 
@@ -163,9 +184,12 @@ class CarController(CarControllerBase):
       stopping = actuators.longControlState == LongCtrlState.stopping
       starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
       accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
-      can_sends.append(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.enabled, accel,
-                                                       acc_control, stopping, starting, CS.esp_hold_confirmation,
-                                                       override))
+      acc_hold = mebcan.acc_hold_type(CS.out.accFaulted, CC.enabled, starting, stopping,
+                                      CS.esp_hold_confirmation, override)
+      can_sends.append(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.enabled,
+                                                       accel, acc_control, acc_hold, stopping, starting,
+                                                       CS.esp_hold_confirmation, override,
+                                                       CS.out.vEgoRaw * CV.MS_TO_KPH))
 
     # **** HUD ************************************************************** #
 
@@ -188,7 +212,7 @@ class CarController(CarControllerBase):
                                                          cancel=CC.cruiseControl.cancel, resume=CC.cruiseControl.resume))
 
     new_actuators = actuators.as_builder()
-    new_actuators.curvature = float(self.apply_curvature_last)
+    new_actuators.steeringAngleDeg = float(self.apply_angle_last)
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.frame += 1
