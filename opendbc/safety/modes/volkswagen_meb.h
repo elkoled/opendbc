@@ -8,6 +8,7 @@
 #define MSG_Motor_51      0x10BU   // RX, drivetrain coordinator: TSK_Status, accel pedal
 #define MSG_QFK_01        0x13DU   // RX, EPS lateral controller status, measured curvature
 #define MSG_ACC_18        0x14DU   // TX, ACC acceleration request to drivetrain coordinator
+#define MSG_TA_01         0x26BU   // TX, Travel Assist status to instrument cluster
 #define MSG_MEB_ACC_01    0x300U   // TX, ACC HUD to instrument cluster
 #define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command
 
@@ -101,6 +102,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_HCA_03,      0, 24, .check_relay = true},
     {MSG_LDW_02,      0, 8,  .check_relay = true},
     {MSG_ACC_18,      0, 32, .check_relay = true},
+    {MSG_TA_01,       0, 8,  .check_relay = true},
     {MSG_MEB_ACC_01,  0, 48, .check_relay = true},
   };
 

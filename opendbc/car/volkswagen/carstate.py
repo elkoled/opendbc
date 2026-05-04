@@ -20,6 +20,7 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.acc_type = 0
     self.measured_curvature = 0.0
+    self.travel_assist_available = False
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -344,6 +345,7 @@ class CarState(CarStateBase):
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.gateway else {}
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
+    self.travel_assist_available = bool(cam_cp.vl["TA_01"]["Travel_Assist_Available"])
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
@@ -406,9 +408,10 @@ class CarState(CarStateBase):
     # Blinkmodi_02: BCM sends 1 Hz when idle, 50 Hz when blinking. Pin to 1 Hz so auto rate
     # does not flags stale and drops canValid
     pt_messages = [("Blinkmodi_02", 1)]
+    cam_messages = [("TA_01", 0)]
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
       Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
     }
 

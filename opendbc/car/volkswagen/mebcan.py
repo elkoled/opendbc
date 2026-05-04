@@ -12,7 +12,7 @@ ACC_HMS_NO_REQUEST = 0
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
   values = {
     "Curvature":     abs(apply_curvature),
-    "Curvature_VZ":  1 if apply_curvature > 0 else 0,
+    "Curvature_VZ":  1 if apply_curvature > 0 and lkas_enabled else 0,
     "Power":         power if lkas_enabled else 0,
     "RequestStatus": 4 if lkas_enabled else 2,  # 4: control active, 2: standby
     "HighSendRate":  lkas_enabled,
@@ -46,7 +46,7 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, override):
   return ACC_CTRL_ENABLED if main_switch_on else ACC_CTRL_DISABLED
 
 
-def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold, override):
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold, override, travel_assist_available):
   active = acc_control == ACC_CTRL_ACTIVE
   if not acc_enabled or (stopping and esp_hold and not starting):
     accel_out = ACCEL_INACTIVE
@@ -64,6 +64,8 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
   else:
     acc_hold = ACC_HMS_NO_REQUEST
 
+  commands = []
+
   values = {
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
@@ -71,8 +73,8 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "ACC_Sollbeschleunigung_02":  accel_out,
     "ACC_zul_Regelabw_unten":     0.2 if active else 0,
     "ACC_zul_Regelabw_oben":      0.2 if active else 0,
-    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active else 0,
-    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active else 0,
+    "ACC_neg_Sollbeschl_Grad_02": 0.5 if acc_control == ACC_CTRL_OVERRIDE else (4.0 if active else 0),
+    "ACC_pos_Sollbeschl_Grad_02": 0.5 if acc_control == ACC_CTRL_OVERRIDE else (4.0 if active else 0),
     "ACC_Anfahren":               starting,
     "ACC_Anhalten":               stopping and not esp_hold,
     "ACC_Anhalteweg":             0 if (stopping and not esp_hold) else 20.46,
@@ -82,7 +84,17 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,
   }
-  return packer.make_can_msg("ACC_18", bus, values)
+  commands.append(packer.make_can_msg("ACC_18", bus, values))
+
+  if travel_assist_available:
+    values_ta = {
+      "Travel_Assist_Status":    4 if acc_enabled else 2,
+      "Travel_Assist_Request":   0,
+      "Travel_Assist_Available": 1,
+    }
+    commands.append(packer.make_can_msg("TA_01", bus, values_ta))
+
+  return commands
 
 
 def create_acc_hud_control(packer, bus, acc_control, set_speed):
