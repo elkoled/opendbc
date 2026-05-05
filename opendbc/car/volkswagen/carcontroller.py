@@ -70,6 +70,7 @@ class CarController(CarControllerBase):
     self.accel_last = 0.0
     self.long_override_counter = 0
     self.long_disabled_counter = 0
+    self.long_stopping_counter = 0
     self.klr_counter_last = None
     self.dm_red_start_frame: int | None = None
     self.VM = VehicleModel(CP) if CP.flags & VolkswagenFlags.MEB else None
@@ -234,10 +235,17 @@ class CarController(CarControllerBase):
     # **** Acceleration ***************************************************** #
 
     if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
-      stopping = actuators.longControlState == LongCtrlState.stopping
-      # startingState=True: longcontrol emits LongCtrlState.starting until vEgo > vEgoStarting,
-      # then transitions to pid. Hold "starting" through both phases to keep ACC_Anfahren asserted
-      starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
+      # Hold stopping for up to 0.5s after longcontrol exits, until wheels actually stop, to keep EPB closed on inclines
+      raw_stopping = actuators.longControlState == LongCtrlState.stopping
+      if raw_stopping:
+        self.long_stopping_counter = 25
+      elif CS.out.vEgoRaw > 0.1:
+        self.long_stopping_counter = 0
+      else:
+        self.long_stopping_counter = max(self.long_stopping_counter - 1, 0)
+      stopping = raw_stopping or self.long_stopping_counter > 0
+      starting = (actuators.longControlState == LongCtrlState.starting and
+                  CS.out.vEgo <= self.CP.vEgoStarting and not stopping)
       accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
       if dm_brake is not None:
         accel = min(accel, dm_brake)

@@ -101,7 +101,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
 
   if acc_enabled:
     if override:
-      acceleration = ACCEL_OVERRIDE
+      acceleration = accel
     elif full_stop:
       acceleration = ACCEL_INACTIVE  # newer-gen >2024 errors on non-neutral value while fully stopped
     else:
