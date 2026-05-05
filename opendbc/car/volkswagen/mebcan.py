@@ -4,9 +4,10 @@ ACC_CTRL_OVERRIDE = 4
 ACC_CTRL_ACTIVE   = 3
 ACC_CTRL_ENABLED  = 2
 ACC_CTRL_DISABLED = 0
-ACC_HMS_HOLD       = 1
-ACC_HMS_RELEASE    = 4
-ACC_HMS_NO_REQUEST = 0
+ACC_HMS_RAMP_RELEASE = 5
+ACC_HMS_RELEASE      = 4
+ACC_HMS_HOLD         = 1
+ACC_HMS_NO_REQUEST   = 0
 
 
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
@@ -38,6 +39,26 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
   return packer.make_can_msg("LDW_02", bus, values)
 
 
+def create_capacitive_wheel_touch(packer, bus, lat_active, klr_stock_values):
+  values = {s: klr_stock_values[s] for s in [
+    "COUNTER",
+    "KLR_Touchintensitaet_1",
+    "KLR_Touchintensitaet_2",
+    "KLR_Touchintensitaet_3",
+    "KLR_Touchauswertung",
+  ]}
+
+  if lat_active:
+    values.update({
+      "COUNTER": (klr_stock_values["COUNTER"] + 1) % 16,
+      "KLR_Touchintensitaet_1": 80,
+      "KLR_Touchintensitaet_2": 200,
+      "KLR_Touchintensitaet_3": 10,
+      "KLR_Touchauswertung": 10,
+    })
+  return packer.make_can_msg("KLR_01", bus, values)
+
+
 def acc_control_value(main_switch_on, acc_faulted, long_active, override):
   if long_active:
     if acc_faulted:
@@ -46,7 +67,33 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, override):
   return ACC_CTRL_ENABLED if main_switch_on else ACC_CTRL_DISABLED
 
 
-def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, stopping, starting, esp_hold, override, travel_assist_available):
+def acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, esp_hold, override, override_begin, long_disabling):
+  # warning: car is reacting to hold mechanic even with long control off
+
+  if acc_faulted:
+    acc_hold_type = ACC_HMS_NO_REQUEST # no hold request
+  elif not long_active:
+    if long_disabling:
+      acc_hold_type = ACC_HMS_RAMP_RELEASE # ramp release of requests right after disabling long control (prevents car error with EPB at low speed)
+    else:
+      acc_hold_type = ACC_HMS_NO_REQUEST # no hold request
+  elif override:
+    if override_begin:
+      acc_hold_type = ACC_HMS_RAMP_RELEASE # ramp release of requests at the beginning of override (prevents car error with EPB at low speed)
+    else:
+      acc_hold_type = ACC_HMS_NO_REQUEST # overriding / no request
+  elif starting:
+    acc_hold_type = ACC_HMS_RELEASE # release request and startup
+  elif stopping or esp_hold:
+    acc_hold_type = ACC_HMS_HOLD # hold or hold request
+  else:
+    acc_hold_type = ACC_HMS_NO_REQUEST # no hold request
+
+  return acc_hold_type
+
+
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold_type, stopping, starting,
+                             esp_hold, override, travel_assist_available):
   active = acc_control == ACC_CTRL_ACTIVE
   if not acc_enabled or (stopping and esp_hold and not starting):
     accel_out = ACCEL_INACTIVE
@@ -54,15 +101,6 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     accel_out = 0.0
   else:
     accel_out = accel
-
-  if not acc_enabled:
-    acc_hold = ACC_HMS_NO_REQUEST
-  elif starting:
-    acc_hold = ACC_HMS_RELEASE
-  elif stopping or esp_hold:
-    acc_hold = ACC_HMS_HOLD
-  else:
-    acc_hold = ACC_HMS_NO_REQUEST
 
   commands = []
 
@@ -78,7 +116,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "ACC_Anfahren":               starting,
     "ACC_Anhalten":               stopping and not esp_hold,
     "ACC_Anhalteweg":             0 if (stopping and not esp_hold) else 20.46,
-    "ACC_Anforderung_HMS":        acc_hold,
+    "ACC_Anforderung_HMS":        acc_hold_type,
     "ACC_AKTIV_regelt":           1 if active else 0,
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,

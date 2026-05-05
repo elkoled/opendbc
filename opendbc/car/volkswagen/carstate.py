@@ -343,9 +343,11 @@ class CarState(CarStateBase):
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
+    self.klr_stock_values = pt_cp.vl["KLR_01"] if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT else {}
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.gateway else {}
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
     self.travel_assist_available = bool(cam_cp.vl["TA_01"]["Travel_Assist_Available"])
+    ret.carFaultedNonCritical = cam_cp.vl["EA_01"]["EA_Funktionsstatus"] in (3, 4, 5, 6)
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
@@ -408,7 +410,9 @@ class CarState(CarStateBase):
     # Blinkmodi_02: BCM sends 1 Hz when idle, 50 Hz when blinking. Pin to 1 Hz so auto rate
     # does not flags stale and drops canValid
     pt_messages = [("Blinkmodi_02", 1)]
-    cam_messages = [("TA_01", 0)]
+    if CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
+      pt_messages.append(("KLR_01", 50))
+    cam_messages = [("TA_01", 0), ("EA_01", 10)]
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),

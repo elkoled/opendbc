@@ -46,6 +46,8 @@ class CarInterface(CarInterfaceBase):
       ret.steerControlType = structs.CarParams.SteerControlType.angle
       ret.steerAtStandstill = True
       ret.networkLocation = NetworkLocation.gateway
+      if 0x25D in fingerprint[0]:  # KLR_01
+        ret.flags |= VolkswagenFlags.STOCK_KLR_PRESENT.value
 
     else:
       # Set global MQB parameters

@@ -57,6 +57,9 @@ class CarController(CarControllerBase):
     self.apply_angle_last = 0.0
     self.steer_power_last = 0
     self.accel_last = 0.0
+    self.long_override_counter = 0
+    self.long_disabled_counter = 0
+    self.klr_counter_last = None
     self.VM = VehicleModel(CP) if CP.flags & VolkswagenFlags.MEB else None
 
   def update(self, CC, CS, now_nanos):
@@ -183,6 +186,17 @@ class CarController(CarControllerBase):
       self.steer_power_last = steering_power
       can_sends.append(mebcan.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
 
+    # Emergency Assist intervention
+    if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
+      # send capacitive steering wheel touched
+      # propably EA is stock activated only for cars equipped with capacitive steering wheel
+      # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
+      if klr_send_ready:
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
+      self.klr_counter_last = CS.klr_stock_values["COUNTER"]
+
     # **** Acceleration ***************************************************** #
 
     if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
@@ -192,8 +206,17 @@ class CarController(CarControllerBase):
       ts = DT_CTRL * self.CCP.ACC_CONTROL_STEP
       accel = float(np.clip(accel, self.accel_last - 2.0 * ts, self.accel_last + 2.0 * ts))
       self.accel_last = 0.0 if override else accel
+
+      self.long_override_counter = min(self.long_override_counter + 1, 5) if override else 0
+      override_begin = override and self.long_override_counter < 5
+
+      self.long_disabled_counter = min(self.long_disabled_counter + 1, 5) if not CC.enabled else 0
+      long_disabling = not CC.enabled and self.long_disabled_counter < 5
+
+      acc_hold_type = mebcan.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, starting, stopping,
+                                           CS.esp_hold_confirmation, override, override_begin, long_disabling)
       can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.enabled, accel,
-                                                       acc_control, stopping, starting, CS.esp_hold_confirmation,
+                                                       acc_control, acc_hold_type, stopping, starting, CS.esp_hold_confirmation,
                                                        override, CS.travel_assist_available))
 
     # **** HUD ************************************************************** #

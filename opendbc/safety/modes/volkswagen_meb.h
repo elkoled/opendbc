@@ -8,6 +8,7 @@
 #define MSG_Motor_51      0x10BU   // RX, drivetrain coordinator: TSK_Status, accel pedal
 #define MSG_QFK_01        0x13DU   // RX, EPS lateral controller status, measured curvature
 #define MSG_ACC_18        0x14DU   // TX, ACC acceleration request to drivetrain coordinator
+#define MSG_KLR_01        0x25DU   // TX, capacitive steering wheel touch spoof
 #define MSG_TA_01         0x26BU   // TX, Travel Assist status to instrument cluster
 #define MSG_MEB_ACC_01    0x300U   // TX, ACC HUD to instrument cluster
 #define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command
@@ -45,6 +46,8 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
     crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
   } else if (msg->addr == MSG_Motor_51) {
     crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
+  } else if (msg->addr == MSG_KLR_01) {
+    crc ^= (uint8_t[]){0xDA, 0x6B, 0x0E, 0xB2, 0x78, 0xBD, 0x5A, 0x81, 0x7B, 0xD6, 0x41, 0x39, 0x76, 0xB6, 0xD7, 0x35}[counter];
   } else {
   }
   crc = volkswagen_crc8_lut_8h2f[crc];
@@ -95,6 +98,8 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_GRA_ACC_01,  0, 8,  .check_relay = false},
     {MSG_GRA_ACC_01,  2, 8,  .check_relay = false},
     {MSG_LDW_02,      0, 8,  .check_relay = true},
+    {MSG_KLR_01,      0, 8,  .check_relay = false},
+    {MSG_KLR_01,      2, 8,  .check_relay = true},
   };
 
   // OP-long TX
@@ -104,6 +109,8 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_ACC_18,      0, 32, .check_relay = true},
     {MSG_TA_01,       0, 8,  .check_relay = true},
     {MSG_MEB_ACC_01,  0, 48, .check_relay = true},
+    {MSG_KLR_01,      0, 8,  .check_relay = false},
+    {MSG_KLR_01,      2, 8,  .check_relay = true},
   };
 
   static RxCheck volkswagen_meb_rx_checks[] = {
