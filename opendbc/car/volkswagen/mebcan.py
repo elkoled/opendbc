@@ -1,4 +1,5 @@
 ACCEL_INACTIVE = 3.01  # one increment above the active range, stock idle marker
+ACCEL_OVERRIDE = 0.0   # the car expects a non-inactive accel while overriding
 ACC_CTRL_ERROR    = 6
 ACC_CTRL_OVERRIDE = 4
 ACC_CTRL_ACTIVE   = 3
@@ -94,13 +95,21 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, 
 
 def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold_type, stopping, starting,
                              esp_hold, override, travel_assist_available):
-  active = acc_control == ACC_CTRL_ACTIVE
-  if not acc_enabled or (stopping and esp_hold and not starting):
-    accel_out = ACCEL_INACTIVE
-  elif override:
-    accel_out = 0.0
+  full_stop          = stopping and esp_hold
+  full_stop_no_start = esp_hold and not starting
+  actually_stopping  = stopping and not esp_hold
+
+  if acc_enabled:
+    if override:
+      acceleration = ACCEL_OVERRIDE
+    elif full_stop:
+      acceleration = ACCEL_INACTIVE  # newer-gen >2024 errors on non-neutral value while fully stopped
+    else:
+      acceleration = accel
   else:
-    accel_out = accel
+    acceleration = ACCEL_INACTIVE
+
+  active_or_override = acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE) and not full_stop_no_start
 
   commands = []
 
@@ -108,16 +117,16 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "ACC_Typ":                    acc_type,
     "ACC_Status_ACC":             acc_control,
     "ACC_StartStopp_Info":        acc_enabled,
-    "ACC_Sollbeschleunigung_02":  accel_out,
-    "ACC_zul_Regelabw_unten":     0.2 if active else 0,
-    "ACC_zul_Regelabw_oben":      0.2 if active else 0,
-    "ACC_neg_Sollbeschl_Grad_02": 0.5 if acc_control == ACC_CTRL_OVERRIDE else (4.0 if active else 0),
-    "ACC_pos_Sollbeschl_Grad_02": 0.5 if acc_control == ACC_CTRL_OVERRIDE else (4.0 if active else 0),
+    "ACC_Sollbeschleunigung_02":  acceleration,
+    "ACC_zul_Regelabw_unten":     0,
+    "ACC_zul_Regelabw_oben":      0,
+    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
+    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
     "ACC_Anfahren":               starting,
-    "ACC_Anhalten":               stopping and not esp_hold,
-    "ACC_Anhalteweg":             0 if (stopping and not esp_hold) else 20.46,
+    "ACC_Anhalten":               1 if actually_stopping else 0,
+    "ACC_Anhalteweg":             0 if actually_stopping else 20.46,
     "ACC_Anforderung_HMS":        acc_hold_type,
-    "ACC_AKTIV_regelt":           1 if active else 0,
+    "ACC_AKTIV_regelt":           1 if acc_control == ACC_CTRL_ACTIVE else 0,
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,

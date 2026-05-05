@@ -201,11 +201,13 @@ class CarController(CarControllerBase):
 
     if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_CONTROL_STEP == 0:
       stopping = actuators.longControlState == LongCtrlState.stopping
-      starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
+      # startingState=True: longcontrol emits LongCtrlState.starting until vEgo > vEgoStarting,
+      # then transitions to pid. Hold "starting" through both phases to keep ACC_Anfahren asserted
+      starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
       accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
       ts = DT_CTRL * self.CCP.ACC_CONTROL_STEP
       accel = float(np.clip(accel, self.accel_last - 2.0 * ts, self.accel_last + 2.0 * ts))
-      self.accel_last = 0.0 if override else accel
+      self.accel_last = accel
 
       self.long_override_counter = min(self.long_override_counter + 1, 5) if override else 0
       override_begin = override and self.long_override_counter < 5
