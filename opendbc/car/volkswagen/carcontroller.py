@@ -10,7 +10,18 @@ from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
+AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
+# Stock VW Emergency Assist replication for ID.4 (measured rlogs f3/f4)
+DM_PHASE2_INITIAL = -1.83  # m/s², PHASE2 entry (f3 peak)
+DM_PHASE2_HOLD    = -1.0   # m/s², PHASE2 settled (both routes)
+DM_PHASE3_ACCEL   = -2.0   # m/s², PHASE3 (exact in both)
+DM_JERK_ACCEL     = -3.5   # m/s², ESC wake-up spike (~30% Brake_Pressure, ACCEL_MIN floor)
+DM_JERK_ONSET     = 2.0    # s after red-alert rising edge
+DM_JERK_DURATION  = 0.2    # s
+DM_PHASE3_ONSET   = 5.0    # s after red-alert rising edge
+DM_JERK_GRAD      = 30.0   # m/s³ comfort-jerk bypass while DM brake active
 
 
 class HCAMitigation:
@@ -60,6 +71,7 @@ class CarController(CarControllerBase):
     self.long_override_counter = 0
     self.long_disabled_counter = 0
     self.klr_counter_last = None
+    self.dm_red_start_frame: int | None = None
     self.VM = VehicleModel(CP) if CP.flags & VolkswagenFlags.MEB else None
 
   def update(self, CC, CS, now_nanos):
@@ -152,6 +164,28 @@ class CarController(CarControllerBase):
     override = CC.cruiseControl.override or CS.out.gasPressed
     acc_control = mebcan.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, override)
 
+    # DM red alert (driverDistracted3 / driverUnresponsive3) — yellow stays UI-only.
+    # Stages anchored at rising edge: PHASE2 init -> jerk -> PHASE2 hold -> PHASE3.
+    dm_red = (CC.enabled and not override and
+              hud_control.visualAlert == VisualAlert.steerRequired and
+              hud_control.audibleAlert == AudibleAlert.warningImmediate)
+    if dm_red and self.dm_red_start_frame is None:
+      self.dm_red_start_frame = self.frame
+    elif not dm_red:
+      self.dm_red_start_frame = None
+    dm_t = (self.frame - self.dm_red_start_frame) * DT_CTRL if self.dm_red_start_frame is not None else None
+    dm_phase3 = dm_t is not None and dm_t >= DM_PHASE3_ONSET
+    if dm_t is None:
+      dm_brake = None
+    elif dm_phase3:
+      dm_brake = DM_PHASE3_ACCEL
+    elif DM_JERK_ONSET <= dm_t < DM_JERK_ONSET + DM_JERK_DURATION:
+      dm_brake = DM_JERK_ACCEL
+    elif dm_t < DM_JERK_ONSET:
+      dm_brake = DM_PHASE2_INITIAL
+    else:
+      dm_brake = DM_PHASE2_HOLD
+
     # **** Steering ********************************************************* #
 
     if self.frame % self.CCP.STEER_STEP == 0:
@@ -205,8 +239,11 @@ class CarController(CarControllerBase):
       # then transitions to pid. Hold "starting" through both phases to keep ACC_Anfahren asserted
       starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting
       accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
+      if dm_brake is not None:
+        accel = min(accel, dm_brake)
       ts = DT_CTRL * self.CCP.ACC_CONTROL_STEP
-      accel = float(np.clip(accel, self.accel_last - 2.0 * ts, self.accel_last + 2.0 * ts))
+      jerk_max = DM_JERK_GRAD if dm_brake is not None else 2.0
+      accel = float(np.clip(accel, self.accel_last - jerk_max * ts, self.accel_last + jerk_max * ts))
       self.accel_last = accel
 
       self.long_override_counter = min(self.long_override_counter + 1, 5) if override else 0
@@ -219,7 +256,7 @@ class CarController(CarControllerBase):
                                            CS.esp_hold_confirmation, override, override_begin, long_disabling)
       can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.enabled, accel,
                                                        acc_control, acc_hold_type, stopping, starting, CS.esp_hold_confirmation,
-                                                       override, CS.travel_assist_available))
+                                                       override, CS.travel_assist_available, dm_brake is not None))
 
     # **** HUD ************************************************************** #
 
@@ -233,6 +270,10 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl and self.frame % self.CCP.ACC_HUD_STEP == 0:
       set_speed = hud_control.setSpeed * CV.MS_TO_KPH
       can_sends.append(mebcan.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_control, set_speed))
+
+    # **** Emergency-stop auto-horn ***************************************** #
+    if self.frame % self.CCP.LDW_STEP == 0 and dm_phase3:
+      can_sends.append(mebcan.create_emergency_horn(self.packer_pt, self.CAN.pt))
 
     # **** Stock ACC Button Controls **************************************** #
 

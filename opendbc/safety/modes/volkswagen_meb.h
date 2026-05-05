@@ -12,6 +12,7 @@
 #define MSG_TA_01         0x26BU   // TX, Travel Assist status to instrument cluster
 #define MSG_MEB_ACC_01    0x300U   // TX, ACC HUD to instrument cluster
 #define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command
+#define MSG_TM_01         0x5A7U   // TX, Telematics auto-horn (TM_Nur_Hupen) for DM SOS standstill
 
 
 #define VW_MEB_COMMON_RX_CHECKS                                                                     \
@@ -100,6 +101,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_LDW_02,      0, 8,  .check_relay = true},
     {MSG_KLR_01,      0, 8,  .check_relay = false},
     {MSG_KLR_01,      2, 8,  .check_relay = true},
+    {MSG_TM_01,       0, 8,  .check_relay = false},
   };
 
   // OP-long TX
@@ -111,6 +113,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_MEB_ACC_01,  0, 48, .check_relay = true},
     {MSG_KLR_01,      0, 8,  .check_relay = false},
     {MSG_KLR_01,      2, 8,  .check_relay = true},
+    {MSG_TM_01,       0, 8,  .check_relay = false},
   };
 
   static RxCheck volkswagen_meb_rx_checks[] = {
@@ -270,6 +273,11 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     if ((msg->data[2] & 0x9U) != 0U) {
       tx = false;
     }
+  }
+
+  // TM_01 auto-horn: only allow while engaged (DM SOS standstill)
+  if ((msg->addr == MSG_TM_01) && !controls_allowed) {
+    tx = false;
   }
 
   return tx;

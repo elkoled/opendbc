@@ -29,6 +29,7 @@ MSG_TA_01     = 0x26B
 MSG_MEB_ACC_01 = 0x300
 MSG_HCA_03    = 0x303
 MSG_LDW_02    = 0x397
+MSG_TM_01     = 0x5A7
 MSG_MOTOR_14  = 0x3BE
 MSG_LH_EPS_03 = 0x9F
 
@@ -165,7 +166,7 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest):
 
 
 class TestVolkswagenMebStockSafety(TestVolkswagenMebSafetyBase):
-  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_GRA_ACC_01, 0], [MSG_GRA_ACC_01, 2], [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
+  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_GRA_ACC_01, 0], [MSG_GRA_ACC_01, 2], [MSG_KLR_01, 0], [MSG_KLR_01, 2], [MSG_TM_01, 0]]
   FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01], 2: [MSG_HCA_03, MSG_LDW_02]}
 
   def setUp(self):
@@ -184,7 +185,7 @@ class TestVolkswagenMebStockSafety(TestVolkswagenMebSafetyBase):
 
 
 class TestVolkswagenMebLongSafety(TestVolkswagenMebSafetyBase):
-  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_ACC_18, 0], [MSG_TA_01, 0], [MSG_MEB_ACC_01, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
+  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_ACC_18, 0], [MSG_TA_01, 0], [MSG_MEB_ACC_01, 0], [MSG_KLR_01, 0], [MSG_KLR_01, 2], [MSG_TM_01, 0]]
   FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01], 2: [MSG_HCA_03, MSG_LDW_02, MSG_ACC_18, MSG_TA_01, MSG_MEB_ACC_01]}
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02, MSG_ACC_18, MSG_TA_01, MSG_MEB_ACC_01), 2: (MSG_KLR_01,)}
   INACTIVE_ACCEL = INACTIVE_ACCEL

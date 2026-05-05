@@ -94,7 +94,7 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, 
 
 
 def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold_type, stopping, starting,
-                             esp_hold, override, travel_assist_available):
+                             esp_hold, override, travel_assist_available, dm_brake_active=False):
   full_stop          = stopping and esp_hold
   full_stop_no_start = esp_hold and not starting
   actually_stopping  = stopping and not esp_hold
@@ -111,6 +111,9 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
 
   active_or_override = acc_control in (ACC_CTRL_ACTIVE, ACC_CTRL_OVERRIDE) and not full_stop_no_start
 
+  # DM brake: raise jerk grad to DBC max so ESP delivers the wake-up jerk unsmoothed
+  grad = 12.75 if dm_brake_active else (4.0 if active_or_override else 0)
+
   commands = []
 
   values = {
@@ -120,8 +123,8 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "ACC_Sollbeschleunigung_02":  acceleration,
     "ACC_zul_Regelabw_unten":     0,
     "ACC_zul_Regelabw_oben":      0,
-    "ACC_neg_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
-    "ACC_pos_Sollbeschl_Grad_02": 4.0 if active_or_override else 0,
+    "ACC_neg_Sollbeschl_Grad_02": grad,
+    "ACC_pos_Sollbeschl_Grad_02": grad,
     "ACC_Anfahren":               starting,
     "ACC_Anhalten":               1 if actually_stopping else 0,
     "ACC_Anhalteweg":             0 if actually_stopping else 20.46,
@@ -151,6 +154,11 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed):
     "ACC_Display_Prio":    1,
   }
   return packer.make_can_msg("MEB_ACC_01", bus, values)
+
+
+def create_emergency_horn(packer, bus):
+  # TM_01.TM_Nur_Hupen is the telematics module auto-horn
+  return packer.make_can_msg("TM_01", bus, {"TM_Nur_Hupen": 1})
 
 
 def create_acc_buttons_control(packer, bus, gra_stock_values, cancel=False, resume=False):
