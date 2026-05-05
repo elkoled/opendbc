@@ -7,7 +7,7 @@ from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
-from opendbc.car.lateral import AngleSteeringLimits, ISO_LATERAL_ACCEL
+from opendbc.car.lateral import AngleSteeringLimits, CurvatureSteeringLimits, ISO_LATERAL_ACCEL
 from opendbc.car.vin import Vin
 
 # Add tolerance for average banked road since safety doesn't have the roll
@@ -110,6 +110,9 @@ class CarControllerParams:
       self.STEER_DRIVER_ALLOWANCE = 60   # Driver intervention threshold 0.6 Nm
       self.STEER_DRIVER_MAX = 300        # Driver torque ceiling 3.0 Nm
       self.CURVATURE_MAX = 0.195         # rad/m
+      self.CURVATURE_LIMITS = CurvatureSteeringLimits(
+        CURVATURE_MAX=0.195,             # rad/m
+      )
       self.STEERING_POWER_MAX = 50       # HCA_03 max steering power, percentage
       self.STEERING_POWER_MIN = 4        # HCA_03 min steering power, percentage
       self.STEERING_POWER_STEP = 2       # HCA_03 power slew per send
