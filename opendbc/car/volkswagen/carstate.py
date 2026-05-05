@@ -412,7 +412,7 @@ class CarState(CarStateBase):
     pt_messages = [("Blinkmodi_02", 1)]
     if CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
       pt_messages.append(("KLR_01", 50))
-    cam_messages = [("TA_01", 0), ("EA_01", 10)]
+    cam_messages = [("TA_01", 0), ("EA_01", 2)]
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
