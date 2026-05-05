@@ -1,3 +1,8 @@
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY
+from opendbc.car.lateral import ISO_LATERAL_ACCEL, ISO_LATERAL_JERK
+
+AVERAGE_ROAD_ROLL = 0.06  # 3.4 deg, AVERAGE_ROAD_ROLL in lateral.h
+
 ACCEL_INACTIVE = 3.01  # one increment above the active range, stock idle marker
 ACCEL_OVERRIDE = 0.0   # the car expects a non-inactive accel while overriding
 ACC_CTRL_ERROR    = 6
@@ -9,6 +14,17 @@ ACC_HMS_RAMP_RELEASE = 5
 ACC_HMS_RELEASE      = 4
 ACC_HMS_HOLD         = 1
 ACC_HMS_NO_REQUEST   = 0
+
+
+def apply_curvature_limits(curvature: float, curvature_last: float, v_ego: float,
+                           max_curvature_abs: float, send_rate: float = 0.02) -> float:
+  speed = max(v_ego - 1.0, 1.0)
+  max_iso_curvature = (ISO_LATERAL_ACCEL + ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL) / (speed * speed)
+  max_iso_curvature = min(max_iso_curvature, max_curvature_abs)
+  max_curvature_delta = ISO_LATERAL_JERK / (speed * speed) * send_rate
+  high = min(curvature_last + max_curvature_delta,  max_iso_curvature)
+  low  = max(curvature_last - max_curvature_delta, -max_iso_curvature)
+  return min(max(curvature, low), high)
 
 
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
