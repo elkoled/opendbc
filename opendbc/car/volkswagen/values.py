@@ -633,7 +633,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
     Request(
       [VOLKSWAGEN_VERSION_REQUEST_MULTI],
       [VOLKSWAGEN_VERSION_RESPONSE],
-      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera],
+      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera, Ecu.parkingAdas, Ecu.cornerRadar, Ecu.adas],
       rx_offset=VOLKSWAGEN_RX_OFFSET,
       bus=bus,
       obd_multiplexing=obd_multiplexing,
@@ -646,8 +646,8 @@ FW_QUERY_CONFIG = FwQueryConfig(
       obd_multiplexing=obd_multiplexing,
     ),
   ]],
-  non_essential_ecus={Ecu.eps: list(CAR)},
-  extra_ecus=[(Ecu.fwdCamera, 0x74f, None)],
+  non_essential_ecus={Ecu.eps: list(CAR), Ecu.fwdCamera: [CAR.VOLKSWAGEN_ID4_MK1]},
+  extra_ecus=[],
   match_fw_to_car_fuzzy=match_fw_to_car_fuzzy,
 )
 

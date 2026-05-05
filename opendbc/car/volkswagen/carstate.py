@@ -13,6 +13,7 @@ class CarState(CarStateBase):
     super().__init__(CP)
     self.frame = 0
     self.eps_init_complete = False
+    self.cruise_recovery_timer = 0
     self.CCP = CarControllerParams(CP)
     self.button_states = {button.event_type: False for button in self.CCP.BUTTONS}
     self.esp_hold_confirmation = False
@@ -334,7 +335,7 @@ class CarState(CarStateBase):
     tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
     ret.cruiseState.available = tsk_status in (2, 3, 4, 5)
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
-    ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
+    ret.accFaulted = self.update_acc_fault(tsk_status in (6, 7), parking_brake=ret.parkingBrake, drive_mode=drive_mode)
 
     # stock radar emits ACC_Typ=2 on ACC_18, TSK rejects ACC_Typ=0
     self.acc_type = 2
@@ -379,6 +380,17 @@ class CarState(CarStateBase):
     perm_fault = drive_mode and hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT")
     temp_fault = drive_mode and hca_status in ("REJECTED", "PREEMPTED") or not self.eps_init_complete
     return temp_fault, perm_fault
+
+  def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, recovery_frames_max=100):
+    # Suppress misleading ACC fault during ignition-in-park, and grant a short
+    # recovery window to clear transient faults from EPB transitions.
+    fault = acc_fault
+    if parking_brake and not drive_mode:
+      fault = False
+      self.cruise_recovery_timer = self.frame
+    elif self.frame - self.cruise_recovery_timer < recovery_frames_max:
+      fault = False
+    return fault
 
   @staticmethod
   def get_can_parsers(CP):
