@@ -152,17 +152,15 @@ static safety_config psa_init(uint16_t param) {
     {.msg = {{PSA_HS2_DYN_UCF_MDD_32D, PSA_ADAS_BUS, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, // standstill
     {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
-    // GAS_PEDAL - DRIVER -> 208: 6 Bytes, 508: 7 Bytes
-    {.msg = {                                                                                                                                         // gas_pedal
-      {PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
+    // GAS_PEDAL - DRIVER -> 208: 8 Bytes, 508: 7 Bytes
+    {.msg = {
+      {PSA_DRIVER, PSA_CAM_BUS, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
       { 0 },
     }},
-    {.msg = {                                                                                                                                         // steering angle
-      {PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
-      {PSA_STEERING_ALT, PSA_CAM_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},
-      { 0 },
-    }},
+    // steering angle: only bus 0; bus 2 is duplicated by the panda relay only briefly at startup,
+    // which would cause the rx_check to lock to bus 2 and lag once the relay closes.
+    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
   return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
