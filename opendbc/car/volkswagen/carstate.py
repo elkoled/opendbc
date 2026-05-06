@@ -320,12 +320,18 @@ class CarState(CarStateBase):
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
     ret.brake = pt_cp.vl["ESC_51"]["Brake_Pressure"] / 100
 
-    ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4)
+    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4) # EPB closing or closed (candidate for all plattforms)
 
     ret.doorOpen = any(pt_cp.vl["Gateway_72"][s] for s in
                        ("ZV_FT_offen", "ZV_BT_offen", "ZV_HFS_offen", "ZV_HBFS_offen", "ZV_HD_offen"))
 
     ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
+
+    # Consume blind-spot monitoring info/warning LED states, if available.
+    # Infostufe: BSM LED on, Warnung: BSM LED flashing
+    if self.CP.enableBsm:
+      ret.leftBlindspot  = bool(cam_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or bool(cam_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"])
+      ret.rightBlindspot = bool(cam_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or bool(cam_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"])
 
     ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(
       40, bool(pt_cp.vl["Blinkmodi_02"]["BM_links"]), bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"]),
@@ -340,7 +346,9 @@ class CarState(CarStateBase):
     # stock radar emits ACC_Typ=2 on ACC_18, TSK rejects ACC_Typ=0
     self.acc_type = 2
 
-    self.esp_hold_confirmation = bool(pt_cp.vl["ESC_50"]["Standstill"])
+    # for hold detection: VMM_02 ESP_Hold Signal is off timing and probably wrong
+    # use a motion state signal instead for now
+    self.esp_hold_confirmation = pt_cp.vl["ESC_50"]["Motion_State"] == 3 # full stop
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
@@ -425,6 +433,8 @@ class CarState(CarStateBase):
     if CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
       pt_messages.append(("KLR_01", 50))
     cam_messages = [("TA_01", 0), ("EA_01", 2)]
+    if CP.enableBsm:
+      cam_messages.append(("MEB_Side_Assist_01", 20))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
