@@ -7,11 +7,11 @@ from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
-from opendbc.car.lateral import AngleSteeringLimits, CurvatureSteeringLimits, ISO_LATERAL_ACCEL
+from opendbc.car.lateral import AngleSteeringLimits, ISO_LATERAL_ACCEL
 from opendbc.car.vin import Vin
 
 # Add tolerance for average banked road since safety doesn't have the roll
-AVERAGE_ROAD_ROLL = 0.06  # ~3.4 deg, 6% superelevation
+AVERAGE_ROAD_ROLL = 0.06
 
 Ecu = structs.CarParams.Ecu
 NetworkLocation = structs.CarParams.NetworkLocation
@@ -107,23 +107,18 @@ class CarControllerParams:
       self.LDW_STEP = 10
       self.ACC_HUD_STEP = 6              # MEB_ACC_01 HUD frequency 16Hz
       self.ACC_CONTROL_STEP = 2          # ACC_18 acceleration request, 50Hz
-      self.STEER_DRIVER_ALLOWANCE = 60   # Driver intervention threshold 0.6 Nm
-      self.STEER_DRIVER_MAX = 300        # Driver torque ceiling 3.0 Nm
-      self.CURVATURE_MAX = 0.195         # rad/m
-      self.CURVATURE_LIMITS = CurvatureSteeringLimits(
-        CURVATURE_MAX=0.195,             # rad/m
-      )
-      self.STEERING_POWER_MAX = 50       # HCA_03 max steering power, percentage
-      self.STEERING_POWER_MIN = 4        # HCA_03 min steering power, percentage
-      self.STEERING_POWER_STEP = 2       # HCA_03 power slew per send
+      self.STEER_DRIVER_ALLOWANCE = 120  # 1.2 Nm, calibrated against ID.4 EPS curve forces (route 000000d9 p95 281 Nm)
+      self.STEERING_POWER_MAX = 50       # HCA_03 maximum steering power, percentage
+      self.STEERING_POWER_STEP = 2       # HCA_03 power ramp step
 
+      # ID.4 EPS rack faults beyond ~600 deg, vehicle model converts curvature to wheel angle
       self.ANGLE_LIMITS = AngleSteeringLimits(
-        STEER_ANGLE_MAX=600,                              # 600 deg, EPS rack lock-to-lock ~480 deg
-        ANGLE_RATE_LIMIT_UP=([], []),
-        ANGLE_RATE_LIMIT_DOWN=([], []),
+        600,
+        ([], []),
+        ([], []),
         MAX_LATERAL_ACCEL=ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),  # ~3.6 m/s^2
-        MAX_LATERAL_JERK=3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),  # ~3.6 m/s^3
-        MAX_ANGLE_RATE=8,
+        MAX_LATERAL_JERK=3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),                 # ~3.6 m/s^3
+        MAX_ANGLE_RATE=8,                                                                         # deg/20ms frame
       )
 
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
@@ -227,7 +222,6 @@ class VolkswagenFlags(IntFlag):
   # Detected flags
   STOCK_HCA_PRESENT = 1
   KOMBI_PRESENT = 4
-  STOCK_KLR_PRESENT = 64
 
   # Static flags
   PQ = 2
@@ -247,7 +241,7 @@ class VolkswagenMLBPlatformConfig(PlatformConfig):
 
 @dataclass
 class VolkswagenMEBPlatformConfig(PlatformConfig):
-  dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_meb', Bus.radar: 'vw_meb'})
+  dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_meb'})
   chassis_codes: set[str] = field(default_factory=set)
   wmis: set[WMI] = field(default_factory=set)
 
@@ -637,7 +631,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
     Request(
       [VOLKSWAGEN_VERSION_REQUEST_MULTI],
       [VOLKSWAGEN_VERSION_RESPONSE],
-      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera, Ecu.parkingAdas, Ecu.cornerRadar, Ecu.adas],
+      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera],
       rx_offset=VOLKSWAGEN_RX_OFFSET,
       bus=bus,
       obd_multiplexing=obd_multiplexing,
@@ -650,8 +644,8 @@ FW_QUERY_CONFIG = FwQueryConfig(
       obd_multiplexing=obd_multiplexing,
     ),
   ]],
-  non_essential_ecus={Ecu.eps: list(CAR), Ecu.fwdCamera: [CAR.VOLKSWAGEN_ID4_MK1]},
-  extra_ecus=[],
+  non_essential_ecus={Ecu.eps: list(CAR)},
+  extra_ecus=[(Ecu.fwdCamera, 0x74f, None)],
   match_fw_to_car_fuzzy=match_fw_to_car_fuzzy,
 )
 

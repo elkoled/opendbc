@@ -3,71 +3,18 @@
 #include "opendbc/safety/declarations.h"
 #include "opendbc/safety/modes/volkswagen_common.h"
 
-// MEB-specific CAN message addresses
-#define MSG_ESC_51        0x0FCU   // RX, ABS wheel speeds, brake pressure
-#define MSG_Motor_51      0x10BU   // RX, drivetrain coordinator: TSK_Status, accel pedal
-#define MSG_QFK_01        0x13DU   // RX, EPS lateral controller status, measured curvature
-#define MSG_ACC_18        0x14DU   // TX, ACC acceleration request to drivetrain coordinator
-#define MSG_KLR_01        0x25DU   // TX, capacitive steering wheel touch spoof
-#define MSG_TA_01         0x26BU   // TX, Travel Assist status to instrument cluster
-#define MSG_MEB_ACC_01    0x300U   // TX, ACC HUD to instrument cluster
-#define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command
-#define MSG_TM_01         0x5A7U   // TX, Telematics auto-horn (TM_Nur_Hupen) for DM SOS standstill
-
-
-#define VW_MEB_COMMON_RX_CHECKS                                                                     \
-  {.msg = {{MSG_LH_EPS_03,  0, 8,  100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  \
-  {.msg = {{MSG_MOTOR_14,   0, 8,  10U,  .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_GRA_ACC_01, 0, 8,  33U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_QFK_01,     0, 32, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-
-#define VW_MEB_RX_CHECKS                                                                            \
-  {.msg = {{MSG_Motor_51,   0, 32, 50U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_ESC_51,     0, 48, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-
-
-// MEB CRC
-static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
-  int len = GET_LEN(msg);
-
-  uint8_t crc = 0xFFU;
-  for (int i = 1; i < len; i++) {
-    crc ^= (uint8_t)msg->data[i];
-    crc = volkswagen_crc8_lut_8h2f[crc];
-  }
-
-  uint8_t counter = volkswagen_mqb_meb_get_counter(msg);
-  if (msg->addr == MSG_LH_EPS_03) {
-    crc ^= (uint8_t[]){0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5, 0xF5}[counter];
-  } else if (msg->addr == MSG_GRA_ACC_01) {
-    crc ^= (uint8_t[]){0x6A, 0x38, 0xB4, 0x27, 0x22, 0xEF, 0xE1, 0xBB, 0xF8, 0x80, 0x84, 0x49, 0xC7, 0x9E, 0x1E, 0x2B}[counter];
-  } else if (msg->addr == MSG_QFK_01) {
-    crc ^= (uint8_t[]){0x20, 0xCA, 0x68, 0xD5, 0x1B, 0x31, 0xE2, 0xDA, 0x08, 0x0A, 0xD4, 0xDE, 0x9C, 0xE4, 0x35, 0x5B}[counter];
-  } else if (msg->addr == MSG_ESC_51) {
-    crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
-  } else if (msg->addr == MSG_Motor_51) {
-    crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
-  } else if (msg->addr == MSG_KLR_01) {
-    crc ^= (uint8_t[]){0xDA, 0x6B, 0x0E, 0xB2, 0x78, 0xBD, 0x5A, 0x81, 0x7B, 0xD6, 0x41, 0x39, 0x76, 0xB6, 0xD7, 0x35}[counter];
-  } else {
-  }
-  crc = volkswagen_crc8_lut_8h2f[crc];
-
-  return (uint8_t)(crc ^ 0xFFU);
-}
-
-// HCA_03 curvature CAN scale: 6.7e-6 rad/m per LSB
-#define VOLKSWAGEN_MEB_CURVATURE_SCALE 6.7e-6f
+#define VOLKSWAGEN_MEB_MAX_POWER 125U      // 50% duty cycle, EPS hard rate limits beyond this
+#define VOLKSWAGEN_MEB_CURVATURE_SCALE 6.7e-6f                          // rad/m per HCA_03/QFK_01 CAN unit
 #define VOLKSWAGEN_MEB_RAD_TO_DEG 57.295779513f
 
-// ID.4 MK1 bicycle model (matches openpilot VehicleModel calc_slip_factor)
+// ID.4 bicycle vehicle model parameters (from VolkswagenCarSpecs / calc_slip_factor)
 static const AngleSteeringParams VOLKSWAGEN_MEB_STEERING_PARAMS = {
   .slip_factor = -0.0006055171512345705f,
   .steer_ratio = 15.6f,
   .wheelbase = 2.77f,
 };
 
-// Convert HCA_03 curvature CAN units to steering wheel angle in 0.1 deg via bicycle model
+// Convert curvature in CAN units to steering wheel angle in 0.1 deg via the bicycle model
 static int volkswagen_meb_curvature_to_angle(int curvature_can) {
   float speed = SAFETY_MAX(vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR, 1.0f);
   float cf = 1.0f / (1.0f - (VOLKSWAGEN_MEB_STEERING_PARAMS.slip_factor * speed * speed)) / VOLKSWAGEN_MEB_STEERING_PARAMS.wheelbase;
@@ -75,122 +22,88 @@ static int volkswagen_meb_curvature_to_angle(int curvature_can) {
   return ROUND(curvature * VOLKSWAGEN_MEB_STEERING_PARAMS.steer_ratio / cf * VOLKSWAGEN_MEB_RAD_TO_DEG * 10.0f);
 }
 
-// Power signal in HCA_03 (MEB-specific)
-static int desired_steer_power_last;
-
-static bool steer_power_cmd_checks(int desired_steer_power, bool steer_control_enabled) {
-  const int VOLKSWAGEN_MEB_MAX_POWER = 125;  // 50% duty
-  bool violation = false;
-
-  violation |= safety_max_limit_check(desired_steer_power, VOLKSWAGEN_MEB_MAX_POWER, 0);
-  violation |= (desired_steer_power > 0) && !steer_control_enabled;
-  violation |= !controls_allowed && (desired_steer_power != 0) &&
-               (!steer_control_enabled || (desired_steer_power >= desired_steer_power_last));
-
-  desired_steer_power_last = desired_steer_power;
-
-  return violation;
-}
-
 static safety_config volkswagen_meb_init(uint16_t param) {
-  // stock-long, lateral-only TX
-  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {
-    {MSG_HCA_03,      0, 24, .check_relay = true},
-    {MSG_GRA_ACC_01,  0, 8,  .check_relay = false},
-    {MSG_GRA_ACC_01,  2, 8,  .check_relay = false},
-    {MSG_LDW_02,      0, 8,  .check_relay = true},
-    {MSG_KLR_01,      0, 8,  .check_relay = false},
-    {MSG_KLR_01,      2, 8,  .check_relay = true},
-    {MSG_TM_01,       0, 8,  .check_relay = false},
-  };
+  // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
+  static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true}, {MSG_GRA_ACC_01, 0, 8, .check_relay = false}, {MSG_GRA_ACC_01, 2, 8, .check_relay = false},
+                                                        {MSG_LDW_02, 0, 8, .check_relay = true}};
 
-  // OP-long TX
-  static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {
-    {MSG_HCA_03,      0, 24, .check_relay = true},
-    {MSG_LDW_02,      0, 8,  .check_relay = true},
-    {MSG_ACC_18,      0, 32, .check_relay = true},
-    {MSG_TA_01,       0, 8,  .check_relay = true},
-    {MSG_MEB_ACC_01,  0, 48, .check_relay = true},
-    {MSG_KLR_01,      0, 8,  .check_relay = false},
-    {MSG_KLR_01,      2, 8,  .check_relay = true},
-    {MSG_TM_01,       0, 8,  .check_relay = false},
-  };
+  static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true}, {MSG_LDW_02, 0, 8, .check_relay = true},
+                                                       {MSG_ACC_18, 0, 32, .check_relay = true}, {MSG_MEB_ACC_01, 0, 48, .check_relay = true}};
 
   static RxCheck volkswagen_meb_rx_checks[] = {
-    VW_MEB_COMMON_RX_CHECKS
-    VW_MEB_RX_CHECKS
+    {.msg = {{MSG_LH_EPS_03,  0, 8,  100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{MSG_QFK_01,     0, 32, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{MSG_MOTOR_51,   0, 32, 50U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{MSG_ESC_51,     0, 48, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{MSG_MOTOR_14,   0, 8,  10U,  .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{MSG_GRA_ACC_01, 0, 8,  33U,  .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
-  volkswagen_set_button_prev = false;
-  volkswagen_resume_button_prev = false;
-  desired_steer_power_last = 0;
+  volkswagen_common_init();
 
 #ifdef ALLOW_DEBUG
   volkswagen_longitudinal = GET_FLAG(param, FLAG_VOLKSWAGEN_LONG_CONTROL);
 #else
   SAFETY_UNUSED(param);
-  volkswagen_longitudinal = false;
 #endif
 
-  gen_crc_lookup_table_8(0x2F, volkswagen_crc8_lut_8h2f);
-
-  safety_config ret;
-  if (volkswagen_longitudinal) {
-    SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_TX_MSGS, ret);
-  } else {
-    SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
-  }
-  SET_RX_CHECKS(volkswagen_meb_rx_checks, ret);
-  return ret;
+  return volkswagen_longitudinal ? BUILD_SAFETY_CFG(volkswagen_meb_rx_checks, VOLKSWAGEN_MEB_LONG_TX_MSGS) : \
+                                   BUILD_SAFETY_CFG(volkswagen_meb_rx_checks, VOLKSWAGEN_MEB_STOCK_TX_MSGS);
 }
-
 
 static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == 0U) {
+    // Update in-motion state and vehicle speed by sampling all four wheel speeds
+    // Signals: ESC_51.[VL|VR|HL|HR]_Radgeschw
     if (msg->addr == MSG_ESC_51) {
       uint32_t fl = msg->data[8]  | (msg->data[9]  << 8);
       uint32_t fr = msg->data[10] | (msg->data[11] << 8);
       uint32_t rl = msg->data[12] | (msg->data[13] << 8);
       uint32_t rr = msg->data[14] | (msg->data[15] << 8);
-
-      vehicle_moving = (fl > 0U) || (fr > 0U) || (rl > 0U) || (rr > 0U);
+      vehicle_moving = (fl + fr + rl + rr) > 0U;
       UPDATE_VEHICLE_SPEED((fl + fr + rl + rr) * (0.0075 / 4.0 / 3.6));
     }
 
-    // Measured steering wheel angle in 0.1 deg via bicycle model, used by inactive-near-meas check
-    if (msg->addr == MSG_QFK_01) {
-      uint32_t raw_curvature = ((uint32_t)(msg->data[6] & 0x7FU) << 8) | (uint32_t)msg->data[5];
-      int current_curvature = (int)raw_curvature;
-      bool current_curvature_sign = GET_BIT(msg, 55U);
-      if (!current_curvature_sign) {
-        current_curvature *= -1;
-      }
-      update_sample(&angle_meas, volkswagen_meb_curvature_to_angle(current_curvature));
-    }
-
+    // Update driver input torque samples
     if (msg->addr == MSG_LH_EPS_03) {
       update_sample(&torque_driver, volkswagen_mlb_mqb_driver_input_torque(msg));
     }
 
-    // Motor_51.TSK_Status
-    if (msg->addr == MSG_Motor_51) {
-      int acc_status = ((msg->data[11] >> 0) & 0x07U);
+    // Update measured steering wheel angle samples (converted from curvature via bicycle model)
+    // Signal: QFK_01.Curvature, QFK_01.Curvature_VZ
+    if (msg->addr == MSG_QFK_01) {
+      int curvature_meas_new = msg->data[5] | ((msg->data[6] & 0x7FU) << 8);
+      if (!GET_BIT(msg, 55U)) {
+        curvature_meas_new *= -1;
+      }
+      update_sample(&angle_meas, volkswagen_meb_curvature_to_angle(curvature_meas_new));
+    }
+
+    // When using stock ACC, enter controls on rising edge of stock ACC engage, exit on disengage
+    // Always exit controls on main switch off
+    // Signal: Motor_51.TSK_Status
+    if (msg->addr == MSG_MOTOR_51) {
+      int acc_status = msg->data[11] & 0x7U;
       bool cruise_engaged = (acc_status == 3) || (acc_status == 4) || (acc_status == 5);
       acc_main_on = cruise_engaged || (acc_status == 2);
 
       if (!volkswagen_longitudinal) {
         pcm_cruise_check(cruise_engaged);
       }
+
       if (!acc_main_on) {
         controls_allowed = false;
       }
 
+      // Signal: Motor_51.Accel_Pedal_Pressure
       int accel_pedal_value = ((msg->data[1] >> 4) & 0x0FU) | ((msg->data[2] & 0x1FU) << 4);
       gas_pressed = accel_pedal_value > 0;
     }
 
-    // cruise buttons
     if (msg->addr == MSG_GRA_ACC_01) {
+      // If using openpilot longitudinal, enter controls on falling edge of Set or Resume with main switch on
+      // Signal: GRA_ACC_01.GRA_Tip_Setzen
+      // Signal: GRA_ACC_01.GRA_Tip_Wiederaufnahme
       if (volkswagen_longitudinal) {
         bool set_button = GET_BIT(msg, 16U);
         bool resume_button = GET_BIT(msg, 19U);
@@ -200,89 +113,85 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
         volkswagen_set_button_prev = set_button;
         volkswagen_resume_button_prev = resume_button;
       }
+      // Always exit controls on rising edge of Cancel
+      // Signal: GRA_ACC_01.GRA_Abbrechen
       if (GET_BIT(msg, 13U)) {
         controls_allowed = false;
       }
     }
 
+    // Signal: Motor_14.MO_Fahrer_bremst (ECU detected brake pedal switch F63)
     if (msg->addr == MSG_MOTOR_14) {
       brake_pressed = GET_BIT(msg, 28U);
     }
   }
 }
 
-
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
-  // ACC_18 acceleration request limits
+  // lateral limits
+  // ID.4 EPS rack lock-to-lock is ~480 deg, max_angle of 600 deg leaves headroom while
+  // bounds checking the converted-from-curvature command
+  static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+    .max_angle = 6000,        // 600 deg, in 0.1 deg
+    .angle_deg_to_can = 10,
+    .frequency = 50U,
+  };
+
+  // longitudinal limits
+  // acceleration in m/s2 * 1000 to avoid floating point math
   const LongitudinalLimits VOLKSWAGEN_MEB_LONG_LIMITS = {
     .max_accel = 2000,
     .min_accel = -3500,
     .inactive_accel = 3010,  // VW sends one increment above the max range when inactive
   };
 
-  // Steering wheel angle limits in 0.1 deg, ID.4 EPS rack lock-to-lock ~480 deg, 600 deg leaves headroom
-  static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-    .max_angle = 6000,
-    .angle_deg_to_can = 10,
-    .frequency = 50U,
-  };
-
-  // HCA_03 absolute curvature ceiling, applied directly on the CAN payload
-  const int VOLKSWAGEN_MEB_MAX_CURVATURE_CAN = 29105;  // 0.195 rad/m / 6.7e-6
-
   bool tx = true;
 
-  // HCA_03: steering curvature command
+  // Safety check for HCA_03 Heading Control Assist curvature
   if (msg->addr == MSG_HCA_03) {
-    int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
-    bool desired_curvature_sign = GET_BIT(msg, 39U);
-    if (!desired_curvature_sign) {
-      desired_curvature_raw *= -1;
+    int desired_curvature_can = msg->data[3] | ((msg->data[4] & 0x7FU) << 8);
+    if (!GET_BIT(msg, 39U)) {
+      desired_curvature_can *= -1;
     }
+    bool steer_req = ((msg->data[1] >> 4) & 0xFU) == 4U;
+    int desired_power = msg->data[2];
 
-    bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
-    int steer_power = msg->data[2];
-
-    if (steer_power_cmd_checks(steer_power, steer_req)) {
+    int desired_angle = volkswagen_meb_curvature_to_angle(desired_curvature_can);
+    if (steer_angle_cmd_checks_vm(desired_angle, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS, VOLKSWAGEN_MEB_STEERING_PARAMS)) {
       tx = false;
     }
-    // absolute curvature ceiling: vm-derived bounds collapse near zero speed
-    if (safety_max_limit_check(desired_curvature_raw, VOLKSWAGEN_MEB_MAX_CURVATURE_CAN,
-                               -VOLKSWAGEN_MEB_MAX_CURVATURE_CAN)) {
+
+    // EPS power must be within cap and zero when not actuating
+    if (desired_power > (int)VOLKSWAGEN_MEB_MAX_POWER) {
       tx = false;
     }
-    int desired_angle = volkswagen_meb_curvature_to_angle(desired_curvature_raw);
-    if (steer_angle_cmd_checks_vm(desired_angle, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS,
-                                  VOLKSWAGEN_MEB_STEERING_PARAMS)) {
+    if (!steer_req && (desired_power != 0)) {
       tx = false;
     }
   }
 
-  // ACC_18: acceleration request to drivetrain
+  // Safety check for ACC_18 acceleration request
   if (msg->addr == MSG_ACC_18) {
+    // Signal: ACC_18.ACC_Sollbeschleunigung_02 (acceleration in m/s2, scale 0.005, offset -7.22)
     int desired_accel = ((((msg->data[4] & 0x7U) << 8) | msg->data[3]) * 5U) - 7220U;
-    // MEB override: the TSK expects accel=0
+
+    // Allow accel == 0 while controls are allowed: TSK requires this during driver gas override
     bool accel_override = controls_allowed && (desired_accel == 0);
     if (!accel_override && longitudinal_accel_checks(desired_accel, VOLKSWAGEN_MEB_LONG_LIMITS)) {
       tx = false;
     }
   }
 
-  // only allow GRA_ACC_01 cancel bit when controls are not allowed
+  // FORCE CANCEL: ensuring that only the cancel button press is sent when controls are off.
+  // This avoids unintended engagements while still allowing resume spam
   if ((msg->addr == MSG_GRA_ACC_01) && !controls_allowed) {
     if ((msg->data[2] & 0x9U) != 0U) {
       tx = false;
     }
   }
 
-  // TM_01 auto-horn: only allow while engaged (DM SOS standstill)
-  if ((msg->addr == MSG_TM_01) && !controls_allowed) {
-    tx = false;
-  }
-
   return tx;
 }
-
 
 const safety_hooks volkswagen_meb_hooks = {
   .init = volkswagen_meb_init,
@@ -290,5 +199,5 @@ const safety_hooks volkswagen_meb_hooks = {
   .tx = volkswagen_meb_tx_hook,
   .get_counter = volkswagen_mqb_meb_get_counter,
   .get_checksum = volkswagen_mqb_meb_get_checksum,
-  .compute_checksum = volkswagen_meb_compute_crc,
+  .compute_checksum = volkswagen_mqb_meb_compute_crc,
 };

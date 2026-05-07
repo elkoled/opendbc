@@ -13,7 +13,6 @@ class CarState(CarStateBase):
     super().__init__(CP)
     self.frame = 0
     self.eps_init_complete = False
-    self.cruise_recovery_timer = 0
     self.CCP = CarControllerParams(CP)
     self.button_states = {button.event_type: False for button in self.CCP.BUTTONS}
     self.esp_hold_confirmation = False
@@ -21,7 +20,6 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.acc_type = 0
     self.measured_curvature = 0.0
-    self.travel_assist_available = False
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -305,15 +303,19 @@ class CarState(CarStateBase):
     ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
     ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
     ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
+    # MEB EPS reports significant column torque from road forces; debounce to avoid torque bar flicker
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE, 5)
 
     ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Gateway_73"]["GE_Fahrstufe"], None))
     drive_mode = ret.gearShifter == GearShifter.drive
 
+    # MEB DISABLED is a normal idle state, not a permanent fault
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
-    ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, drive_mode=drive_mode)
+    self.eps_init_complete = self.eps_init_complete or hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600
+    ret.steerFaultPermanent = self.eps_init_complete and hca_status == "FAULT"
+    ret.steerFaultTemporary = (drive_mode and hca_status == "REJECTED") or not self.eps_init_complete
 
-    ret.yawRate = -pt_cp.vl["ESC_50"]["Yaw_Rate"] * (1, -1)[int(pt_cp.vl["ESC_50"]["Yaw_Rate_Sign"])] * CV.DEG_TO_RAD
+    # Carcontroller falls back to this when latActive is False to satisfy safety inactive-near-meas check
     self.measured_curvature = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
 
     ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
@@ -335,7 +337,7 @@ class CarState(CarStateBase):
     tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
     ret.cruiseState.available = tsk_status in (2, 3, 4, 5)
     ret.cruiseState.enabled = tsk_status in (3, 4, 5)
-    ret.accFaulted = self.update_acc_fault(tsk_status in (6, 7), parking_brake=ret.parkingBrake, drive_mode=drive_mode)
+    ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
 
     # stock radar emits ACC_Typ=2 on ACC_18, TSK rejects ACC_Typ=0
     self.acc_type = 2
@@ -344,11 +346,8 @@ class CarState(CarStateBase):
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
-    self.klr_stock_values = pt_cp.vl["KLR_01"] if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT else {}
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.gateway else {}
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
-    self.travel_assist_available = bool(cam_cp.vl["TA_01"]["Travel_Assist_Available"])
-    ret.carFaultedNonCritical = cam_cp.vl["EA_01"]["EA_Funktionsstatus"] in (3, 4, 5, 6)
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
@@ -381,17 +380,6 @@ class CarState(CarStateBase):
     temp_fault = drive_mode and hca_status in ("REJECTED", "PREEMPTED") or not self.eps_init_complete
     return temp_fault, perm_fault
 
-  def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, recovery_frames_max=100):
-    # Suppress misleading ACC fault during ignition-in-park, and grant a short
-    # recovery window to clear transient faults from EPB transitions.
-    fault = acc_fault
-    if parking_brake and not drive_mode:
-      fault = False
-      self.cruise_recovery_timer = self.frame
-    elif self.frame - self.cruise_recovery_timer < recovery_frames_max:
-      fault = False
-    return fault
-
   @staticmethod
   def get_can_parsers(CP):
     if CP.flags & VolkswagenFlags.PQ:
@@ -422,12 +410,9 @@ class CarState(CarStateBase):
     # Blinkmodi_02: BCM sends 1 Hz when idle, 50 Hz when blinking. Pin to 1 Hz so auto rate
     # does not flags stale and drops canValid
     pt_messages = [("Blinkmodi_02", 1)]
-    if CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
-      pt_messages.append(("KLR_01", 50))
-    cam_messages = [("TA_01", 0), ("EA_01", 2)]
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
       Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
     }
 

@@ -11,23 +11,6 @@ uint32_t microsecond_timer_get(void) {
 
 #include "opendbc/safety/can.h"
 #include "opendbc/safety/safety.h"
-#include "opendbc/safety/ignition.h"
-
-static bool test_ignition_can = false;
-static uint32_t test_ignition_can_cnt = 0U;
-
-void ignition_can_hook_test(const CANPacket_t *msg) {
-  ignition_can_hook(msg, &test_ignition_can, &test_ignition_can_cnt);
-}
-
-bool get_ignition_can(void) {
-  return test_ignition_can;
-}
-
-void reset_ignition_can(void) {
-  test_ignition_can = false;
-  test_ignition_can_cnt = 0U;
-}
 
 void safety_tick_current_safety_config() {
   safety_tick(&current_safety_config);
