@@ -38,14 +38,6 @@ bool volkswagen_brake_pressure_detected = false;
 #define MSG_MOTOR_03    0x105U   // RX from ECU, for driver throttle input and brake switch status
 #define MSG_TSK_04      0x10EU   // RX from ECU, for ACC status from drivetrain coordinator
 
-// MEB only messages
-#define MSG_ESC_51      0x0FCU   // RX from ABS, for wheel speeds and brake pressure
-#define MSG_MOTOR_51    0x10BU   // RX from ECU, for ACC status and driver throttle input
-#define MSG_QFK_01      0x13DU   // RX from EPS, for measured curvature
-#define MSG_ACC_18      0x14DU   // TX by OP, ACC control instructions to the drivetrain coordinator
-#define MSG_MEB_ACC_01  0x300U   // TX by OP, ACC HUD data to the instrument cluster
-#define MSG_HCA_03      0x303U   // TX by OP, Heading Control Assist curvature command
-
 static void volkswagen_common_init(void) {
   volkswagen_set_button_prev = false;
   volkswagen_resume_button_prev = false;
@@ -87,10 +79,6 @@ static uint32_t volkswagen_mqb_meb_compute_crc(const CANPacket_t *msg) {
     crc ^= (uint8_t[]){0xE9, 0x65, 0xAE, 0x6B, 0x7B, 0x35, 0xE5, 0x5F, 0x4E, 0xC7, 0x86, 0xA2, 0xBB, 0xDD, 0xEB, 0xB4}[counter];
   } else if (msg->addr == MSG_GRA_ACC_01) {
     crc ^= (uint8_t[]){0x6A, 0x38, 0xB4, 0x27, 0x22, 0xEF, 0xE1, 0xBB, 0xF8, 0x80, 0x84, 0x49, 0xC7, 0x9E, 0x1E, 0x2B}[counter];
-  } else if (msg->addr == MSG_QFK_01) {
-    crc ^= (uint8_t[]){0x20, 0xCA, 0x68, 0xD5, 0x1B, 0x31, 0xE2, 0xDA, 0x08, 0x0A, 0xD4, 0xDE, 0x9C, 0xE4, 0x35, 0x5B}[counter];
-  } else if ((msg->addr == MSG_ESC_51) || (msg->addr == MSG_MOTOR_51)) {
-    crc ^= (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
   } else {
     // Undefined CAN message, CRC check expected to fail
   }
