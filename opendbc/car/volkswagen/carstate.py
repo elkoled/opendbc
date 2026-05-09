@@ -30,6 +30,7 @@ class CarState(CarStateBase, MadsCarState):
     self.speed_limit_predicative_type = 0
     self.force_rhd_for_bsm = False
     self.acc_type = 0
+    self.ea_escalation_latched = False
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -403,6 +404,19 @@ class CarState(CarStateBase, MadsCarState):
 
     self.ea_hud_stock_values = cam_cp.vl["EA_02"]
     self.ea_control_stock_values = cam_cp.vl["EA_01"]
+
+    # Latch off our hands-on spoofs (LH_EPS_03 EPS_Lenkmoment pacification and
+    # KLR_01 capacitive touch override) once the stock camera/EA controller has
+    # decided to start its driver-inattention cascade. The camera's own
+    # LDW_Texte switches 0→8 (silent yellow) → 4 (red+chime) before PHASE2
+    # entry; EA_Funktionsstatus then steps to 5/6 for PHASE2/PHASE3. The latch
+    # holds until both clear so a brake-induced openpilot disengagement during
+    # escalation doesn't restart the spoofs.
+    stock_ldw_texte = self.ldw_stock_values.get("LDW_Texte", 0) if self.ldw_stock_values else 0
+    stock_ea_funktionsstatus = cam_cp.vl["EA_01"]["EA_Funktionsstatus"]
+    ea_warning_now = stock_ldw_texte in (4, 8) or stock_ea_funktionsstatus in (3, 4, 5, 6)
+    ea_clear = stock_ldw_texte == 0 and stock_ea_funktionsstatus in (0, 1, 2)
+    self.ea_escalation_latched = ea_warning_now or (self.ea_escalation_latched and not ea_clear)
 
     if self.CP.flags & VolkswagenFlags.MEB:
       ret.fuelGauge = pt_cp.vl["Motor_16"]["MO_Energieinhalt_BMS"]
