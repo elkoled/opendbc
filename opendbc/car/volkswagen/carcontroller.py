@@ -12,7 +12,13 @@ from opendbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit, m
 from opendbc.sunnypilot.car.volkswagen.icbm import IntelligentCruiseButtonManagementInterface
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
+AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
+# openpilot DM levels that should hand control back to stock VW Emergency Assist:
+# promptDistracted ("Pay Attention" / "Touch Steering Wheel" — yellow)
+# warningImmediate ("DISENGAGE IMMEDIATELY" — red)
+DM_HANDOFF_ALERTS = (AudibleAlert.promptDistracted, AudibleAlert.warningImmediate)
 
 
 class HCAMitigation:
@@ -150,19 +156,25 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
         self.apply_torque_last = apply_torque
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_torque, hca_enabled))
 
-      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT and not CS.ea_escalation_latched:
+      # Hand off to stock VW Emergency Assist whenever openpilot's driver monitoring
+      # is at promptDistracted/warningImmediate (yellow/red), or while the stock EA
+      # cascade is already running. Latched in carstate so a brake-induced
+      # disengagement during PHASE2/3 doesn't restart the spoofs.
+      hand_off_to_ea = hud_control.audibleAlert in DM_HANDOFF_ALERTS or CS.ea_escalation_latched
+
+      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT and not hand_off_to_ea:
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        # Suspended once the camera starts its own driver-inattention cascade so the stock EA timer counts down.
         ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
         if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
     # Emergency Assist intervention
+    hand_off_to_ea = hud_control.audibleAlert in DM_HANDOFF_ALERTS or CS.ea_escalation_latched
     if (self.CP.flags & (VolkswagenFlags.MEB | VolkswagenFlags.MQB_EVO) and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT
-        and not CS.ea_escalation_latched):
+        and not hand_off_to_ea):
       # send capacitive steering wheel touched
       # propably EA is stock activated only for cars equipped with capacitive steering wheel
       # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
