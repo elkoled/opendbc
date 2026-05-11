@@ -40,6 +40,15 @@ class CarInterface(CarInterfaceBase):
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation, revised J533 harness
 
+    elif ret.flags & VolkswagenFlags.MEB:
+      # Set global MEB parameters
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerAtStandstill = True
+      ret.networkLocation = NetworkLocation.gateway
+      ret.dashcamOnly = is_release
+
     else:
       # Set global MQB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagen)]
