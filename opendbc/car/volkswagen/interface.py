@@ -40,6 +40,21 @@ class CarInterface(CarInterfaceBase):
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation, revised J533 harness
 
+    elif ret.flags & VolkswagenFlags.MEB:
+      # Set global MEB parameters
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerAtStandstill = True
+      ret.enableBsm = 0x24C in fingerprint[2]  # MEB_Side_Assist_01
+
+      if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, QFK_01
+        ret.networkLocation = NetworkLocation.gateway
+      else:
+        ret.networkLocation = NetworkLocation.fwdCamera
+
+      ret.dashcamOnly = is_release
+
     else:
       # Set global MQB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagen)]
@@ -65,7 +80,15 @@ class CarInterface(CarInterfaceBase):
     # Global lateral tuning defaults, can be overridden per-vehicle
 
     ret.steerLimitTimer = 0.4
-    if ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
+    if ret.flags & VolkswagenFlags.MEB:
+      ret.steerActuatorDelay = 0.2
+      # MEB uses curvatureDEPRECATED steer control, lateral PID tune is unused
+      ret.lateralTuning.pid.kpBP = [0.]
+      ret.lateralTuning.pid.kiBP = [0.]
+      ret.lateralTuning.pid.kf = 1.
+      ret.lateralTuning.pid.kpV = [0.]
+      ret.lateralTuning.pid.kiV = [0.]
+    elif ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     else:

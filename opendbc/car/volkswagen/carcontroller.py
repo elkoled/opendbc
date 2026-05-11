@@ -1,10 +1,10 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.volkswagen import mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -45,10 +45,14 @@ class CarController(CarControllerBase):
       self.CCS = pqcan
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
     else:
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
+    self.apply_curvature_last = 0
+    self.steering_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
 
@@ -56,6 +60,47 @@ class CarController(CarControllerBase):
     actuators = CC.actuators
     hud_control = CC.hudControl
     can_sends = []
+
+    # **** MEB Steering (curvature-based) *********************************** #
+
+    if self.CP.flags & VolkswagenFlags.MEB:
+      if self.frame % self.CCP.STEER_STEP == 0:
+        # MEB rack can be used continously without time limits.
+        # Steering power as counter and near zero before OP lane assist deactivation.
+        if CC.latActive:
+          hca_enabled = True
+          apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
+          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
+                                                      CS.measured_curvature, self.CCP.STEER_STEP, CC.latActive,
+                                                      self.CCP.CURVATURE_LIMITS)
+
+          min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
+          max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+          target_power_driver = int(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                                                     [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+          target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
+          steering_power = min(max(target_power, min_power), max_power)
+        else:
+          if self.steering_power_last > 0:
+            # keep HCA alive until steering power has reduced to zero
+            hca_enabled = True
+            apply_curvature = float(np.clip(CS.measured_curvature,
+                                            -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX,
+                                            self.CCP.CURVATURE_LIMITS.CURVATURE_MAX))
+            steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
+          else:
+            hca_enabled = False
+            apply_curvature = 0.
+            steering_power = 0
+
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        self.apply_curvature_last = apply_curvature
+        self.steering_power_last = steering_power
+
+      new_actuators = actuators.as_builder()
+      new_actuators.curvature = self.apply_curvature_last
+      self.frame += 1
+      return new_actuators, can_sends
 
     # **** Steering Controls ************************************************ #
 

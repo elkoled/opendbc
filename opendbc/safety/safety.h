@@ -23,6 +23,7 @@
 #include "opendbc/safety/modes/nissan.h"
 #include "opendbc/safety/modes/volkswagen_mlb.h"
 #include "opendbc/safety/modes/volkswagen_mqb.h"
+#include "opendbc/safety/modes/volkswagen_meb.h"
 #include "opendbc/safety/modes/volkswagen_pq.h"
 #include "opendbc/safety/modes/elm327.h"
 #include "opendbc/safety/modes/body.h"
@@ -77,6 +78,11 @@ uint32_t rt_angle_msgs = 0;
 uint32_t ts_angle_check_last = 0;
 int desired_angle_last = 0;
 struct sample_t angle_meas;         // last 6 steer angles/curvatures
+
+// for safety modes with curvature steering control
+struct sample_t curvature_meas;     // last 6 curvatures
+int desired_curvature_last = 0;
+int desired_steer_power_last = 0;
 
 
 int alternative_experience = 0;
@@ -409,6 +415,7 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
     {SAFETY_PSA, &psa_hooks},
     {SAFETY_SUBARU_PREGLOBAL, &subaru_preglobal_hooks},
     {SAFETY_VOLKSWAGEN_MLB, &volkswagen_mlb_hooks},
+    {SAFETY_VOLKSWAGEN_MEB, &volkswagen_meb_hooks},
     {SAFETY_VOLKSWAGEN_PQ, &volkswagen_pq_hooks},
     {SAFETY_ALLOUTPUT, &alloutput_hooks},
 #endif
