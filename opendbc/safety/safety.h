@@ -23,6 +23,7 @@
 #include "opendbc/safety/modes/nissan.h"
 #include "opendbc/safety/modes/volkswagen_mlb.h"
 #include "opendbc/safety/modes/volkswagen_mqb.h"
+#include "opendbc/safety/modes/volkswagen_meb.h"
 #include "opendbc/safety/modes/volkswagen_pq.h"
 #include "opendbc/safety/modes/elm327.h"
 #include "opendbc/safety/modes/body.h"
@@ -42,6 +43,7 @@ const int MAX_WRONG_COUNTERS = 5;
 
 // This can be set by the safety hooks
 bool controls_allowed = false;
+bool controls_allowed_lateral = false;
 bool relay_malfunction = false;
 bool gas_pressed = false;
 bool gas_pressed_prev = false;
@@ -77,6 +79,9 @@ uint32_t rt_angle_msgs = 0;
 uint32_t ts_angle_check_last = 0;
 int desired_angle_last = 0;
 struct sample_t angle_meas;         // last 6 steer angles/curvatures
+struct sample_t curvature_meas;         // last 6 steer curvatures
+int desired_curvature_last = 0;
+int desired_steer_power_last = 0;
 
 
 int alternative_experience = 0;
@@ -395,6 +400,7 @@ int set_safety_hooks(uint16_t mode, uint16_t param) {
     {SAFETY_CHRYSLER, &chrysler_hooks},
     {SAFETY_SUBARU, &subaru_hooks},
     {SAFETY_VOLKSWAGEN_MQB, &volkswagen_mqb_hooks},
+    {SAFETY_VOLKSWAGEN_MEB, &volkswagen_meb_hooks},
     {SAFETY_NISSAN, &nissan_hooks},
     {SAFETY_NOOUTPUT, &nooutput_hooks},
     {SAFETY_HYUNDAI_LEGACY, &hyundai_legacy_hooks},
