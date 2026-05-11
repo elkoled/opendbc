@@ -323,6 +323,28 @@ class CarState(CarStateBase):
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
     ret.brake        = pt_cp.vl["ESC_51"]["Brake_Pressure"]
 
+    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4)
+
+    # Update door and trunk/hatch lid open status.
+    doors = pt_cp.vl["ZV_02"] if bool(pt_cp.vl["Gateway_72"]["ZV_02_alt"]) else pt_cp.vl["Gateway_72"]
+    ret.doorOpen = any([doors["ZV_FT_offen"],
+                        doors["ZV_BT_offen"],
+                        doors["ZV_HFS_offen"],
+                        doors["ZV_HBFS_offen"],
+                        doors["ZV_HD_offen"]])
+
+    # Update seatbelt fastened status.
+    ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
+
+    # Consume blind-spot monitoring info/warning LED states, if available.
+    # Infostufe: BSM LED on, Warnung: BSM LED flashing
+    if self.CP.enableBsm:
+      ret.leftBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"])
+      ret.rightBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"])
+
+    ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
+    ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
+
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
 
@@ -389,11 +411,20 @@ class CarState(CarStateBase):
       ("LH_EPS_03", 100),
       ("QFK_01", 50),
       ("ESC_51", 50),
+      ("ESC_50", 50),
       ("Motor_14", 10),
       ("Motor_51", 50),
       ("Getriebe_11", 100),
+      ("Gateway_72", 10),
+      ("ZV_02", 10),
+      ("Airbag_02", 5),
+      ("Blinkmodi_02", 1),
       ("GRA_ACC_01", 33),
     ]
+
+    if CP.enableBsm:
+      pt_messages.append(("MEB_Side_Assist_01", 20))
+
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),

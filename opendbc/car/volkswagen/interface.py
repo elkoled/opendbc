@@ -43,6 +43,7 @@ class CarInterface(CarInterfaceBase):
     elif ret.flags & VolkswagenFlags.MEB:
       # Set global MEB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
       ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
       ret.steerAtStandstill = True

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "opendbc/safety/declarations.h"
+#include "opendbc/safety/lateral.h"
 #include "opendbc/safety/modes/volkswagen_common.h"
 
 #define MSG_ESC_51           0xFCU    // RX, for wheel speeds
@@ -9,6 +10,33 @@
 #define MSG_GRA_ACC_01       0x12BU   // TX by OP, ACC control buttons for cancel/resume
 #define MSG_MOTOR_14         0x3BEU   // RX from ECU, for brake switch status
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
+
+// HCA_03 carries curvature (rad/m, scale 6.7e-6) and a sign bit.
+// Lateral safety reuses the AngleSteeringLimits machinery with angle_is_curvature=false,
+// because openpilot's apply_std_curvature_limits clips to MAX_LATERAL_ACCEL with +g*roll
+// margin while the safety helper uses -g*roll; enabling angle_is_curvature would block
+// openpilot's legitimate commands. enforce_angle_error is also false since the controller
+// deliberately adds (CS.steering_curvature - CC.currentCurvature) as a correction term.
+// Rate lookup is set well above ISO_LATERAL_JERK/v^2 at every speed so openpilot's
+// per-step clip (ISO_LATERAL_JERK * DT_CTRL * STEER_STEP / v^2) always fits.
+static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+  .max_angle = 29105,             // 0.195 rad/m / 6.7e-6
+  .angle_deg_to_can = 149253.7313,// 1 / 6.7e-6 rad/m to can
+  .angle_rate_up_lookup = {
+    {0., 10., 30.},
+    {0.15, 0.005, 0.0005}
+  },
+  .angle_rate_down_lookup = {
+    {0., 10., 30.},
+    {0.15, 0.005, 0.0005}
+  },
+  .max_angle_error = 0,
+  .angle_error_min_speed = 0.,
+  .frequency = 50,
+  .angle_is_curvature = false,
+  .enforce_angle_error = false,
+  .inactive_angle_is_zero = true,
+};
 
 
 static uint8_t volkswagen_crc8_lut_8h2f[256]; // Static lookup table for CRC8 poly 0x2F, aka 8H2F/AUTOSAR
@@ -147,6 +175,22 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
+
+  // Safety check for HCA_03 Heading Control Assist curvature
+  if (msg->addr == MSG_HCA_03) {
+    int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
+
+    bool desired_curvature_sign = GET_BIT(msg, 39U);
+    if (!desired_curvature_sign) {
+      desired_curvature_raw *= -1;
+    }
+
+    bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
+
+    if (steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+      tx = false;
+    }
+  }
 
   // FORCE CANCEL: ensuring that only the cancel button press is sent when controls are off.
   // This avoids unintended engagements while still allowing resume spam
