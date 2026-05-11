@@ -19,6 +19,7 @@ class CarState(CarStateBase):
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
     self.acc_type = 0
+    self.measured_curvature = 0.0
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -52,6 +53,8 @@ class CarState(CarStateBase):
       return self.update_pq(pt_cp, cam_cp, ext_cp)
     elif self.CP.flags & VolkswagenFlags.MLB:
       return self.update_mlb(pt_cp, cam_cp, ext_cp, alt_cp)
+    elif self.CP.flags & VolkswagenFlags.MEB:
+      return self.update_meb(pt_cp, cam_cp, ext_cp)
 
     ret = structs.CarState()
 
@@ -286,6 +289,73 @@ class CarState(CarStateBase):
     self.frame += 1
     return ret
 
+  def update_meb(self, pt_cp, cam_cp, ext_cp) -> structs.CarState:
+    ret = structs.CarState()
+
+    # Wheel speeds (ESC_51) -> vEgo
+    self.parse_wheel_speeds(ret,
+      pt_cp.vl["ESC_51"]["VL_Radgeschw"],
+      pt_cp.vl["ESC_51"]["VR_Radgeschw"],
+      pt_cp.vl["ESC_51"]["HL_Radgeschw"],
+      pt_cp.vl["ESC_51"]["HR_Radgeschw"],
+    )
+    ret.standstill = ret.vEgoRaw == 0
+
+    # Steering angle/rate (LWI_01) — sign carried in separate VZ bit
+    ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
+    ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
+
+    # Driver torque (LH_EPS_03)
+    ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
+    ret.steeringPressed = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
+
+    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Gateway_73"]["GE_Fahrstufe"], None))
+    drive_mode = ret.gearShifter == GearShifter.drive
+
+    # HCA status from QFK_01 (LatCon_HCA_Status)
+    hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
+    ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, drive_mode)
+
+    # Measured curvature from QFK_01 (sign carried in separate VZ bit). Stashed on the CarState
+    # instance — master capnp doesn't expose steeringCurvature — so the carcontroller can close
+    # the loop on commanded vs measured curvature for accurate tracking.
+    self.measured_curvature = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
+
+    # Pedals
+    ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
+    ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
+    ret.brake = pt_cp.vl["ESC_51"]["Brake_Pressure"] / 100  # percent → unit fraction
+
+    ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4)  # 1: closed, 4: closing
+
+    ret.doorOpen = any(pt_cp.vl["Gateway_72"][s] for s in
+                       ("ZV_FT_offen", "ZV_BT_offen", "ZV_HFS_offen", "ZV_HBFS_offen", "ZV_HD_offen"))
+
+    ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3  # 3: latched
+
+    ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(
+      40, bool(pt_cp.vl["Blinkmodi_02"]["BM_links"]), bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"]),
+    )
+
+    # Cruise state from Motor_51.TSK_Status. Suppress accFaulted while parked with the parking brake on:
+    # the EV briefly transitions TSK to a fault state when shifting through P with EPB engaged, which
+    # would otherwise trip the immediate-disable "Cruise Fault" alert.
+    tsk_status = pt_cp.vl["Motor_51"]["TSK_Status"]
+    ret.cruiseState.available = tsk_status in (2, 3, 4, 5)
+    ret.cruiseState.enabled = tsk_status in (3, 4, 5)
+    ret.accFaulted = tsk_status in (6, 7) and not (ret.parkingBrake and not drive_mode)
+
+    # Capture stock values for forwarding/HUD
+    self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
+    self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.gateway else {}
+    self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
+
+    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
+    ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
+
+    self.frame += 1
+    return ret
+
   def update_low_speed_alert(self, v_ego: float) -> bool:
     # Low speed steer alert hysteresis logic
     if (self.CP.minSteerSpeed - 1e-3) > CarControllerParams.DEFAULT_MIN_STEER_SPEED and v_ego < (self.CP.minSteerSpeed + 1.):
@@ -316,6 +386,8 @@ class CarState(CarStateBase):
   def get_can_parsers(CP):
     if CP.flags & VolkswagenFlags.PQ:
       return CarState.get_can_parsers_pq(CP)
+    if CP.flags & VolkswagenFlags.MEB:
+      return CarState.get_can_parsers_meb(CP)
 
     # manually configure some optional and variable-rate/edge-triggered messages
     pt_messages, cam_messages, alt_messages = [], [], []
@@ -333,6 +405,18 @@ class CarState(CarStateBase):
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
       Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], alt_messages, CanBus(CP).alt),
+    }
+
+  @staticmethod
+  def get_can_parsers_meb(CP):
+    # MEB carstate uses VLDict auto-subscription (CANParser subscribes the first time a message
+    # is accessed). Blinkmodi_02 must be listed explicitly at 1 Hz: the BCM throttles it to
+    # ~1 Hz when no blinker is active (50 Hz only while blinking), so auto-subscribe (which infers
+    # rate from observed traffic) flags it stale every second and drops canValid → canError.
+    pt_messages = [("Blinkmodi_02", 1)]
+    return {
+      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
     }
 
   @staticmethod
