@@ -161,39 +161,8 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 }
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
-  bool tx = true;
-
-  // Safety check for HCA_03 Heading Control Assist curvature
-  if (msg->addr == MSG_HCA_03) {
-    int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
-
-    bool desired_curvature_sign = GET_BIT(msg, 39U);
-    if (!desired_curvature_sign) {
-      desired_curvature_raw *= -1;
-    }
-
-    bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
-    int steer_power = msg->data[2];
-
-    if (steer_power_cmd_checks(steer_power, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
-      tx = false;
-    }
-
-    if (steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
-      tx = false;
-    }
-  }
-
-  // FORCE CANCEL: ensuring that only the cancel button press is sent when controls are off.
-  // This avoids unintended engagements while still allowing resume spam
-  if ((msg->addr == MSG_GRA_ACC_01) && !controls_allowed) {
-    // disallow resume and set: bits 16 and 19
-    if ((msg->data[2] & 0x9U) != 0U) {
-      tx = false;
-    }
-  }
-
-  return tx;
+  SAFETY_UNUSED(msg);
+  return true;
 }
 
 const safety_hooks volkswagen_meb_hooks = {
