@@ -19,6 +19,7 @@ class CarState(CarStateBase):
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
     self.acc_type = 0
+    self.steering_curvature_measured = 0.
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -50,6 +51,8 @@ class CarState(CarStateBase):
 
     if self.CP.flags & VolkswagenFlags.PQ:
       return self.update_pq(pt_cp, cam_cp, ext_cp)
+    elif self.CP.flags & VolkswagenFlags.MEB:
+      return self.update_meb(pt_cp, cam_cp, ext_cp)
     elif self.CP.flags & VolkswagenFlags.MLB:
       return self.update_mlb(pt_cp, cam_cp, ext_cp, alt_cp)
 
@@ -231,6 +234,74 @@ class CarState(CarStateBase):
     self.frame += 1
     return ret
 
+  def update_meb(self, pt_cp, cam_cp, ext_cp) -> structs.CarState:
+    ret = structs.CarState()
+
+    # Update vehicle speed and acceleration from ABS wheel speeds.
+    self.parse_wheel_speeds(ret,
+      pt_cp.vl["ESC_51"]["VL_Radgeschw"],
+      pt_cp.vl["ESC_51"]["VR_Radgeschw"],
+      pt_cp.vl["ESC_51"]["HL_Radgeschw"],
+      pt_cp.vl["ESC_51"]["HR_Radgeschw"],
+    )
+    ret.standstill = ret.vEgoRaw == 0
+
+    # Update EPS position and state info. For signed values, VW sends the sign in a separate signal.
+    ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
+    ret.steeringRateDeg  = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
+    ret.steeringTorque   = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
+    ret.steeringPressed  = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
+    self.steering_curvature_measured = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
+
+    # Update gear position
+    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Getriebe_11"]["GE_Fahrstufe"], None))
+    drive_mode = ret.gearShifter == GearShifter.drive
+
+    hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
+    ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, drive_mode)
+    self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
+
+    # Update gas, brakes
+    ret.gasPressed   = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
+    ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
+    ret.brake        = pt_cp.vl["ESC_51"]["Brake_Pressure"]
+    ret.parkingBrake = pt_cp.vl["ESC_50"]["EPB_Status"] in (1, 4)
+
+    # Update door and trunk/hatch lid open status.
+    ret.doorOpen = any([pt_cp.vl["Gateway_72"]["ZV_FT_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_BT_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HFS_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HBFS_offen"],
+                        pt_cp.vl["Gateway_72"]["ZV_HD_offen"]])
+
+    # Update seatbelt fastened status.
+    ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
+
+    # Cruise state from TSK
+    ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
+    ret.cruiseState.enabled   = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
+    ret.accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
+
+    # ESP hold detection from motion state
+    self.esp_hold_confirmation = pt_cp.vl["ESC_50"]["Motion_State"] == 3  # full stop
+    ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
+
+    # Update button states for turn signals and ACC controls, capture all ACC button state/config for passthrough
+    ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_stalk(240, pt_cp.vl["SMLS_01"]["BH_Blinker_li"],
+                                                                            pt_cp.vl["SMLS_01"]["BH_Blinker_re"])
+
+    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
+    self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
+
+    # Additional safety checks performed in CarInterface.
+    ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
+    ret.espActive   = bool(pt_cp.vl["ESP_21"]["ESP_Eingriff"])
+
+    ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
+
+    self.frame += 1
+    return ret
+
   def update_mlb(self, pt_cp, cam_cp, ext_cp, alt_cp) -> structs.CarState:
     ret = structs.CarState()
 
@@ -316,6 +387,8 @@ class CarState(CarStateBase):
   def get_can_parsers(CP):
     if CP.flags & VolkswagenFlags.PQ:
       return CarState.get_can_parsers_pq(CP)
+    elif CP.flags & VolkswagenFlags.MEB:
+      return CarState.get_can_parsers_meb(CP)
 
     # manually configure some optional and variable-rate/edge-triggered messages
     pt_messages, cam_messages, alt_messages = [], [], []
@@ -339,6 +412,20 @@ class CarState(CarStateBase):
   def get_can_parsers_pq(CP):
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).pt),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
+      Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
+    }
+
+  @staticmethod
+  def get_can_parsers_meb(CP):
+    pt_messages = [
+      # frequency changes too much for the CANParser to figure out
+      ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
+      ("SMLS_01", 1),       # From Stalk Controls
+    ]
+
+    return {
+      Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
       Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
     }
