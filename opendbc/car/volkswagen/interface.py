@@ -44,8 +44,10 @@ class CarInterface(CarInterfaceBase):
       # Set global MEB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
 
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
-      ret.steerControlType = structs.CarParams.SteerControlType.angle
+      # Route aebd8f1d4ea16066/00000009--b31e222338 reports curvatureDEPRECATED
+      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
       ret.steerAtStandstill = True
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release
@@ -80,6 +82,13 @@ class CarInterface(CarInterfaceBase):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     elif ret.flags & VolkswagenFlags.MEB:
       ret.steerActuatorDelay = 0.3
+      # MEB lateral is closed-loop curvature feedback in carcontroller, not PID;
+      # placeholder kf > 0 satisfies the standard car-interface sanity check.
+      ret.lateralTuning.pid.kpBP = [0.]
+      ret.lateralTuning.pid.kiBP = [0.]
+      ret.lateralTuning.pid.kf = 1.0
+      ret.lateralTuning.pid.kpV = [0.]
+      ret.lateralTuning.pid.kiV = [0.]
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
