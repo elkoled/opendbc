@@ -55,7 +55,9 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
       vehicle_moving = (fl > 0U) || (fr > 0U) || (rl > 0U) || (rr > 0U);
 
-      UPDATE_VEHICLE_SPEED(((fl + fr + rl + rr) / 4) * 0.0075 / 3.6);
+      // Match openpilot's parse_wheel_speeds: average kph, then convert to m/s.
+      // Use float multiply first to avoid integer truncation on the /4.
+      UPDATE_VEHICLE_SPEED((fl + fr + rl + rr) * 0.0075 / 4.0 / 3.6);
     }
 
     // Update measured curvature (same scaling as HCA_03 curvature)

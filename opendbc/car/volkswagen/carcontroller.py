@@ -99,6 +99,9 @@ class CarController(CarControllerBase):
 
       new_actuators = actuators.as_builder()
       new_actuators.curvature = self.apply_curvature_last
+      # Surface steering effort to the UI torque bar: normalized 0..1 from EPS power
+      new_actuators.torque = float(self.steering_power_last) / float(self.CCP.STEERING_POWER_MAX)
+      new_actuators.torqueOutputCan = int(self.steering_power_last)
       self.frame += 1
       return new_actuators, can_sends
 
