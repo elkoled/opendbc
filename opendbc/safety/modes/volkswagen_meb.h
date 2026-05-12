@@ -20,12 +20,9 @@ typedef struct {
 } CurvatureSteeringLimits;
 
 static struct sample_t volkswagen_meb_curvature_meas;
-static int volkswagen_meb_desired_curvature_last;
-static int volkswagen_meb_desired_steer_power_last;
-
-static const float ISO_LATERAL_JERK = 5.0;  // m/s^3, ISO 11270
 
 static bool volkswagen_meb_steer_power_cmd_checks(int desired_steer_power, bool steer_control_enabled, const CurvatureSteeringLimits limits) {
+  static int volkswagen_meb_desired_steer_power_last;
   bool violation = false;
 
   violation |= safety_max_limit_check(desired_steer_power, limits.max_power, 0);
@@ -39,6 +36,8 @@ static bool volkswagen_meb_steer_power_cmd_checks(int desired_steer_power, bool 
 }
 
 static bool volkswagen_meb_steer_curvature_cmd_checks_average(int desired_curvature, bool steer_control_enabled, const CurvatureSteeringLimits limits) {
+  static int volkswagen_meb_desired_curvature_last;
+  const float ISO_LATERAL_JERK = 5.0;  // m/s^3, ISO 11270
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
@@ -102,17 +101,6 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   return BUILD_SAFETY_CFG(volkswagen_meb_rx_checks, VOLKSWAGEN_MEB_STOCK_TX_MSGS);
 }
 
-// Lateral limits for curvature. Tuned to be permissive: matches the Python-side
-// np.clip + carcontroller bounds plus a small +1 CAN-unit padding so no openpilot
-// command is ever rejected by the panda firmware.
-static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105,                  // 0.195 rad/m, matches CarControllerParams.CURVATURE_MAX
-  .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m to CAN, matches HCA_03/QFK_01 DBC scale
-  .send_rate = 0.02,                       // STEER_STEP * DT_CTRL = 2 * 0.01s
-  .inactive_curvature_is_zero = true,      // carcontroller sends 0 curvature when fully disengaged
-  .max_power = 125,                        // 50%, matches CarControllerParams.STEERING_POWER_MAX upper bound
-};
-
 static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == 0U) {
 
@@ -132,7 +120,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
     // Update measured curvature (same scaling as HCA_03 curvature)
     if (msg->addr == MSG_QFK_01) {
-      int current_curvature = ((msg->data[6] & 0x7F) << 8) | msg->data[5];
+      int current_curvature = GET_BYTES(msg, 5, 2) & 0x7FFFU;
       bool sign = GET_BIT(msg, 55U);
       if (!sign) {
         current_curvature *= -1;
@@ -173,6 +161,16 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 }
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
+  // Lateral limits for curvature. Tuned to be permissive: matches the Python-side
+  // np.clip + carcontroller bounds plus a small +1 CAN-unit padding so no openpilot
+  // command is ever rejected by the panda firmware.
+  static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+    .max_curvature = 29105,                  // 0.195 rad/m, matches CarControllerParams.CURVATURE_MAX
+    .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m to CAN, matches HCA_03/QFK_01 DBC scale
+    .send_rate = 0.02,                       // STEER_STEP * DT_CTRL = 2 * 0.01s
+    .inactive_curvature_is_zero = true,      // carcontroller sends 0 curvature when fully disengaged
+    .max_power = 125,                        // 50%, matches CarControllerParams.STEERING_POWER_MAX upper bound
+  };
   bool tx = true;
 
   // Safety check for HCA_03 Heading Control Assist curvature. The limits and
