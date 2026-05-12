@@ -192,6 +192,95 @@ class TestId4CurvatureLimits(unittest.TestCase):
                     "lateral-accel cap should reduce max curvature as speed grows")
 
 
+class TestId4Blindspot(unittest.TestCase):
+  """The blind-spot LEDs/warnings should reflect MEB_Side_Assist_01 info+warn bits
+  on whichever side of the gateway relay the side-radar publishes (ext_cp)."""
+
+  def setUp(self):
+    self.CP = _build_cp()
+    # Force enableBsm and gateway network location so ext_cp == cam bus
+    self.CP.enableBsm = True
+    self.CP.networkLocation = structs.CarParams.NetworkLocation.gateway
+    self.CS = CarState(self.CP)
+    self.parsers = CarState.get_can_parsers(self.CP)
+    self.packer = CANPacker(DBC[self.CP.carFingerprint][Bus.pt])
+    self.CAN = CanBus(self.CP)
+
+  def _tick(self, info_left=0, warn_left=0, info_right=0, warn_right=0):
+    pt_msgs = [
+      _msg(self.packer, "LH_EPS_03", self.CAN.pt, {"EPS_Lenkmoment": 0, "EPS_VZ_Lenkmoment": 0}),
+      _msg(self.packer, "QFK_01", self.CAN.pt, {"LatCon_HCA_Status": 2}),
+      _msg(self.packer, "Motor_51", self.CAN.pt, {"TSK_Status": 2, "Accel_Pedal_Pressure": 0}),
+      _msg(self.packer, "Motor_14", self.CAN.pt, {"MO_Fahrer_bremst": 0}),
+      _msg(self.packer, "ESC_51", self.CAN.pt, {
+        "VL_Radgeschw": 0, "VR_Radgeschw": 0, "HL_Radgeschw": 0, "HR_Radgeschw": 0,
+        "Brake_Pressure": 0,
+      }),
+      _msg(self.packer, "ESC_50", self.CAN.pt, {"Yaw_Rate": 0, "Yaw_Rate_Sign": 0}),
+      _msg(self.packer, "Getriebe_11", self.CAN.pt, {"GE_Fahrstufe": 8}),
+      _msg(self.packer, "Airbag_02", self.CAN.pt, {"AB_Gurtschloss_FA": 3}),
+      _msg(self.packer, "Gateway_72", self.CAN.pt, {}),
+      _msg(self.packer, "Gateway_73", self.CAN.pt, {"EPB_Status": 0, "GE_Fahrstufe": 8}),
+      _msg(self.packer, "ESP_21", self.CAN.pt, {}),
+      _msg(self.packer, "Blinkmodi_02", self.CAN.pt, {}),
+      _msg(self.packer, "SMLS_01", self.CAN.pt, {}),
+      _msg(self.packer, "GRA_ACC_01", self.CAN.pt, {"GRA_Typ_Hauptschalter": 1}),
+    ]
+    # BSM message lives on ext_cp; for gateway-harness ID.4 that's the cam bus
+    cam_msgs = [
+      _msg(self.packer, "LDW_02", self.CAN.cam, {}),
+      _msg(self.packer, "MEB_Side_Assist_01", self.CAN.cam, {
+        "Blind_Spot_Info_Left": info_left,
+        "Blind_Spot_Warn_Left": warn_left,
+        "Blind_Spot_Info_Right": info_right,
+        "Blind_Spot_Warn_Right": warn_right,
+      }),
+    ]
+    self.CS.update(self.parsers)  # prime lazy subscription
+    self.parsers[Bus.pt].update([0, pt_msgs])
+    self.parsers[Bus.cam].update([0, cam_msgs])
+    return self.CS.update(self.parsers)
+
+  def test_no_blindspot(self):
+    ret = self._tick()
+    self.assertFalse(ret.leftBlindspot)
+    self.assertFalse(ret.rightBlindspot)
+
+  def test_left_info_only(self):
+    ret = self._tick(info_left=1)
+    self.assertTrue(ret.leftBlindspot)
+    self.assertFalse(ret.rightBlindspot)
+
+  def test_left_warn_only(self):
+    ret = self._tick(warn_left=1)
+    self.assertTrue(ret.leftBlindspot)
+    self.assertFalse(ret.rightBlindspot)
+
+  def test_right_info_only(self):
+    ret = self._tick(info_right=1)
+    self.assertFalse(ret.leftBlindspot)
+    self.assertTrue(ret.rightBlindspot)
+
+  def test_right_warn_only(self):
+    ret = self._tick(warn_right=1)
+    self.assertFalse(ret.leftBlindspot)
+    self.assertTrue(ret.rightBlindspot)
+
+  def test_both_sides(self):
+    ret = self._tick(info_left=1, warn_right=1)
+    self.assertTrue(ret.leftBlindspot)
+    self.assertTrue(ret.rightBlindspot)
+
+  def test_bsm_disabled(self):
+    # When enableBsm=False, the carstate should not touch the blindspot fields
+    self.CP.enableBsm = False
+    self.CS = CarState(self.CP)
+    self.parsers = CarState.get_can_parsers(self.CP)
+    ret = self._tick(info_left=1, info_right=1)
+    self.assertFalse(ret.leftBlindspot)
+    self.assertFalse(ret.rightBlindspot)
+
+
 class TestId4HCAMessage(unittest.TestCase):
   """The HCA_03 message that hits the wire must encode the right curvature, sign,
   power, and request status. Critical for the EPS to accept the command."""
