@@ -255,7 +255,8 @@ class TestMEBBlindspot(unittest.TestCase):
         self.assertEqual(bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]),
                          bool(vals["Blind_Spot_Info_Left"]))
         cam_cp = parsers[Bus.cam]
-        ext_cp = parsers[Bus.alt]
+        # update() picks ext_cp = pt_cp when networkLocation is fwdCamera (ID.4 MK1 test fingerprint)
+        ext_cp = pt_cp
         ret = inst.CS.update_meb(pt_cp, cam_cp, ext_cp)
         self.assertEqual(ret.leftBlindspot, exp_left)
         self.assertEqual(ret.rightBlindspot, exp_right)

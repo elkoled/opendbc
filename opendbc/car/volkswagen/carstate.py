@@ -327,10 +327,10 @@ class CarState(CarStateBase):
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
 
     if self.CP.enableBsm:
-      ret.leftBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
-                           bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
-      ret.rightBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
-                            bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"]))
+      ret.leftBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
+                           bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
+      ret.rightBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
+                            bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"]))
 
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
@@ -406,12 +406,14 @@ class CarState(CarStateBase):
   @staticmethod
   def get_can_parsers_meb(CP):
     pt_messages = [
-      ("Blinkmodi_02", 1),
+      ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
     ]
+    cam_messages = []
     if CP.enableBsm:
-      pt_messages.append(("MEB_Side_Assist_01", float('nan')))
+      bsm_target = cam_messages if CP.networkLocation == NetworkLocation.gateway else pt_messages
+      bsm_target.append(("MEB_Side_Assist_01", float('nan')))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
       Bus.alt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).alt),
     }
