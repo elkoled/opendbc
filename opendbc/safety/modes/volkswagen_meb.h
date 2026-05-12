@@ -3,10 +3,80 @@
 #include "opendbc/safety/declarations.h"
 #include "opendbc/safety/modes/volkswagen_common.h"
 
-#define MSG_ESC_51           0xFCU    // RX, for wheel speeds
-#define MSG_Motor_51         0x10BU   // RX, for TSK state and accel pedal
-#define MSG_QFK_01           0x13DU   // RX, for measured curvature
-#define MSG_HCA_03           0x303U   // TX, Heading Control Assist curvature
+#define MSG_ESC_51        0xFCU    // RX, for wheel speeds
+#define MSG_Motor_51      0x10BU   // RX, for TSK state and accel pedal
+#define MSG_QFK_01        0x13DU   // RX, for measured curvature
+#define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature
+
+// Curvature steering control: mode-local types + state. Kept out of shared safety/lateral.h
+// because VW MEB is currently the only consumer.
+
+typedef struct {
+  const int max_curvature;
+  const float curvature_to_can;
+  const float send_rate;
+  const bool inactive_curvature_is_zero;
+  const int max_power;
+} CurvatureSteeringLimits;
+
+static struct sample_t volkswagen_meb_curvature_meas;
+static int volkswagen_meb_desired_curvature_last;
+static int volkswagen_meb_desired_steer_power_last;
+
+static const float ISO_LATERAL_JERK = 5.0;  // m/s^3, ISO 11270
+
+static bool volkswagen_meb_steer_power_cmd_checks(int desired_steer_power, bool steer_control_enabled, const CurvatureSteeringLimits limits) {
+  bool violation = false;
+
+  violation |= safety_max_limit_check(desired_steer_power, limits.max_power, 0);
+  violation |= (desired_steer_power > 0) && !steer_control_enabled;
+  violation |= !controls_allowed && steer_control_enabled && (desired_steer_power != 0) && (desired_steer_power >= volkswagen_meb_desired_steer_power_last);
+  violation |= !controls_allowed && !steer_control_enabled && (desired_steer_power != 0);
+
+  volkswagen_meb_desired_steer_power_last = desired_steer_power;
+
+  return violation;
+}
+
+static bool volkswagen_meb_steer_curvature_cmd_checks_average(int desired_curvature, bool steer_control_enabled, const CurvatureSteeringLimits limits) {
+  bool violation = false;
+
+  if (controls_allowed && steer_control_enabled) {
+    violation |= safety_max_limit_check(desired_curvature, limits.max_curvature, -limits.max_curvature);
+
+    // ISO jerk limit
+    float fudged_speed = SAFETY_MAX((vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1., 1.0);
+    float max_curvature_rate_sec = ISO_LATERAL_JERK / (fudged_speed * fudged_speed);
+
+    float max_curvature_delta     = max_curvature_rate_sec * (float)limits.send_rate;
+    float max_curvature_delta_can = (max_curvature_delta * limits.curvature_to_can) + 1.;
+
+    int highest_desired_curvature = volkswagen_meb_desired_curvature_last + (int)max_curvature_delta_can;
+    int lowest_desired_curvature  = volkswagen_meb_desired_curvature_last - (int)max_curvature_delta_can;
+
+    // ISO lateral acceleration limit (with average road roll padding)
+    const float MAX_LATERAL_ACCEL_AVG = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^2
+    float max_curvature = MAX_LATERAL_ACCEL_AVG / (fudged_speed * fudged_speed);
+    max_curvature = (max_curvature * limits.curvature_to_can) + 1.;
+
+    highest_desired_curvature = SAFETY_CLAMP(highest_desired_curvature, -max_curvature, max_curvature) + 1;
+    lowest_desired_curvature  = SAFETY_CLAMP(lowest_desired_curvature,  -max_curvature, max_curvature) - 1;
+
+    violation |= safety_max_limit_check(desired_curvature, highest_desired_curvature, lowest_desired_curvature);
+  }
+
+  // When not steering, curvature must be 0 (inactive_curvature_is_zero) or stay near measured.
+  if (!steer_control_enabled) {
+    const int max_inactive_curvature = SAFETY_CLAMP(volkswagen_meb_curvature_meas.max, -limits.max_curvature, limits.max_curvature) + 1;
+    const int min_inactive_curvature = SAFETY_CLAMP(volkswagen_meb_curvature_meas.min, -limits.max_curvature, limits.max_curvature) - 1;
+    violation |= (limits.inactive_curvature_is_zero ? (desired_curvature != 0) :
+                  safety_max_limit_check(desired_curvature, max_inactive_curvature, min_inactive_curvature));
+  }
+
+  volkswagen_meb_desired_curvature_last = desired_curvature;
+
+  return violation;
+}
 
 static safety_config volkswagen_meb_init(uint16_t param) {
   // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
@@ -32,13 +102,13 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   return BUILD_SAFETY_CFG(volkswagen_meb_rx_checks, VOLKSWAGEN_MEB_STOCK_TX_MSGS);
 }
 
-// lateral limits for curvature. Tuned to be permissive: matches the Python-side
-// apply_std_curvature_limits bounds plus a small +1 CAN-unit padding so no
-// openpilot command is ever rejected by the panda firmware.
+// Lateral limits for curvature. Tuned to be permissive: matches the Python-side
+// np.clip + carcontroller bounds plus a small +1 CAN-unit padding so no openpilot
+// command is ever rejected by the panda firmware.
 static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105,                  // 0.195 rad/m, matches CarControllerParams.CURVATURE_LIMITS
-  .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m to CAN, matches DBC scale of HCA_03 / QFK_01
-  .send_rate = 0.02,                       // STEER_STEP * DT_CTRL = 2 * 0.01s, matches the Python jerk formula
+  .max_curvature = 29105,                  // 0.195 rad/m, matches CarControllerParams.CURVATURE_MAX
+  .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m to CAN, matches HCA_03/QFK_01 DBC scale
+  .send_rate = 0.02,                       // STEER_STEP * DT_CTRL = 2 * 0.01s
   .inactive_curvature_is_zero = true,      // carcontroller sends 0 curvature when fully disengaged
   .max_power = 125,                        // 50%, matches CarControllerParams.STEERING_POWER_MAX upper bound
 };
@@ -67,7 +137,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       if (!sign) {
         current_curvature *= -1;
       }
-      update_sample(&curvature_meas, current_curvature);
+      update_sample(&volkswagen_meb_curvature_meas, current_curvature);
     }
 
     // Update driver input torque
@@ -106,8 +176,8 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
 
   // Safety check for HCA_03 Heading Control Assist curvature. The limits and
-  // padding here match the Python-side apply_std_curvature_limits in
-  // opendbc/car/lateral.py exactly so well-formed openpilot commands always pass.
+  // padding here match the Python-side clip in carcontroller exactly so
+  // well-formed openpilot commands always pass.
   if (msg->addr == MSG_HCA_03) {
     int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
     bool desired_curvature_sign = GET_BIT(msg, 39U);
@@ -118,11 +188,11 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
     int steer_power = msg->data[2];
 
-    if (steer_power_cmd_checks(steer_power, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+    if (volkswagen_meb_steer_power_cmd_checks(steer_power, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
       tx = false;
     }
 
-    if (steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+    if (volkswagen_meb_steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
       tx = false;
     }
   }

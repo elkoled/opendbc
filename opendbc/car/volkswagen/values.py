@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from enum import Enum, IntFlag, StrEnum
 
 from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
-from opendbc.car.lateral import CurvatureSteeringLimits
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
@@ -102,16 +101,14 @@ class CarControllerParams:
 
     elif CP.flags & VolkswagenFlags.MEB:
       self.LDW_STEP = 10                  # LDW_02 message frequency 10Hz
+      self.STEER_THRESHOLD = 60           # Driver torque threshold for steeringPressed (0.6 Nm)
       self.STEER_DRIVER_ALLOWANCE = 60    # Driver torque 0.6 Nm, begin steering reduction from MAX
       self.STEER_DRIVER_SLIGHT_PRESS = 15 # Driver torque 0.15 Nm for slight steering override detection
       self.STEER_DRIVER_MAX = 300         # Driver torque 3.0 Nm, stop steering reduction at MIN
       self.STEERING_POWER_MAX = 50        # HCA_03 maximum steering power, percentage
       self.STEERING_POWER_MIN = 4         # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP = 2        # HCA_03 steering power counter steps
-
-      self.CURVATURE_LIMITS = CurvatureSteeringLimits(
-        0.195,  # Max curvature for steering command, m^-1
-      )
+      self.CURVATURE_MAX = 0.195          # rad/m, matches VOLKSWAGEN_MEB_STEERING_LIMITS in volkswagen_meb.h
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
