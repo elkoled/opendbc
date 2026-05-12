@@ -8,6 +8,7 @@
 #define MSG_HCA_03           0x303U   // TX by OP, Heading Control Assist steering torque
 #define MSG_QFK_01           0x13DU   // RX, for steering angle
 #define MSG_GRA_ACC_01       0x12BU   // TX by OP, ACC control buttons for cancel/resume
+#define MSG_LDW_02           0x397U   // TX by OP, Lane line recognition and text alerts
 #define MSG_MOTOR_14         0x3BEU   // RX from ECU, for brake switch status
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
 
@@ -88,6 +89,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   UNUSED(param);
   // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
   static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true},
+                                                        {MSG_LDW_02, 0, 8, .check_relay = true},
                                                         {MSG_GRA_ACC_01, 0, 8, .check_relay = false},
                                                         {MSG_GRA_ACC_01, 2, 8, .check_relay = false}};
 

@@ -124,7 +124,7 @@ class CarController(CarControllerBase):
 
     # **** HUD Controls ***************************************************** #
 
-    if not self.CP.flags & VolkswagenFlags.MEB and self.frame % self.CCP.LDW_STEP == 0:
+    if self.frame % self.CCP.LDW_STEP == 0:
       hud_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]

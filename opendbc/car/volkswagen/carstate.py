@@ -20,6 +20,7 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.acc_type = 0
     self.steering_curvature = 0.0
+    self.ldw_stock_values = {}
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
