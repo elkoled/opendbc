@@ -378,7 +378,6 @@ class CAR(Platforms):
   VOLKSWAGEN_ID4_MK1 = VolkswagenMEBPlatformConfig(
     [
       VWCarDocs("Volkswagen ID.4 2021-23"),
-      VWCarDocs("Volkswagen ID.5 2022-23"),
     ],
     VolkswagenCarSpecs(mass=2224, wheelbase=2.77),
     chassis_codes={"E2"},
