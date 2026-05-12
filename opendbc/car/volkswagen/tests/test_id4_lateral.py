@@ -64,11 +64,15 @@ class TestId4TorqueBar(unittest.TestCase):
       _msg(self.packer, "GRA_ACC_01", self.CAN.pt, {"GRA_Typ_Hauptschalter": 1}),
     ]
     cam_msgs = [_msg(self.packer, "LDW_02", self.CAN.cam, {})]
-    # First pass: trigger lazy message subscription in the parser, then re-send to capture values
+    # First pass: trigger lazy message subscription in the parser, then re-send to capture values.
+    # Loop several times so the debounce in update_steering_pressed (5 frames) can latch.
     self.CS.update(self.parsers)
-    self.parsers[Bus.pt].update([0, msgs])
-    self.parsers[Bus.cam].update([0, cam_msgs])
-    return self.CS.update(self.parsers)
+    ret = None
+    for _ in range(10):
+      self.parsers[Bus.pt].update([0, msgs])
+      self.parsers[Bus.cam].update([0, cam_msgs])
+      ret = self.CS.update(self.parsers)
+    return ret
 
   def test_zero_torque(self):
     ret = self._tick(0)
