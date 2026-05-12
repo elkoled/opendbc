@@ -13,6 +13,7 @@ class CarState(CarStateBase):
     super().__init__(CP)
     self.frame = 0
     self.eps_init_complete = False
+    self.cruise_recovery_timer = 0
     self.CCP = CarControllerParams(CP)
     self.button_states = {button.event_type: False for button in self.CCP.BUTTONS}
     self.esp_hold_confirmation = False
@@ -322,7 +323,8 @@ class CarState(CarStateBase):
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
-    ret.accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7) and drive_mode
+    accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
+    ret.accFaulted = self.update_acc_fault(accFaulted, parking_brake=ret.parkingBrake, drive_mode=drive_mode)
 
     ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
@@ -368,9 +370,21 @@ class CarState(CarStateBase):
     # Treat FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
     # DISABLED means the EPS hasn't been configured to support Lane Assist
     self.eps_init_complete = self.eps_init_complete or (hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600)
-    perm_fault = drive_mode and (hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT"))
+    perm_fault = drive_mode and hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT")
     temp_fault = drive_mode and hca_status in ("REJECTED", "PREEMPTED") or not self.eps_init_complete
     return temp_fault, perm_fault
+
+  def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, recovery_frames_max=100):
+    # Ignore FAULT when not in drive mode and parked
+    # do not show misleading error during ignition in parked state
+    # grant a short time to recover a normal cruise state
+    fault = acc_fault
+    if parking_brake and not drive_mode:
+      fault = False
+      self.cruise_recovery_timer = self.frame
+    elif self.frame - self.cruise_recovery_timer < recovery_frames_max:
+      fault = False
+    return fault
 
   @staticmethod
   def get_can_parsers(CP):
