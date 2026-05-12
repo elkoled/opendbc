@@ -79,39 +79,19 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   return ret;
 }
 
-// lateral limits for curvature
-static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105, // 0.195 rad/m
-  .curvature_to_can = 149253.7313, // 1 / 6.7e-6 rad/m to can
-  .send_rate = 0.02,
-  .inactive_curvature_is_zero = true,
-  .max_power = 125 // 50%
-};
-
 static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == 0U) {
 
     // Update in-motion state by sampling wheel speeds
     if (msg->addr == MSG_ESC_51) {
-      uint32_t fr = msg->data[10] | msg->data[11] << 8;
-      uint32_t rr = msg->data[14] | msg->data[15] << 8;
-      uint32_t rl = msg->data[12] | msg->data[13] << 8;
-      uint32_t fl = msg->data[8] | msg->data[9] << 8;
+      uint32_t fr = msg->data[10] | ((uint32_t)msg->data[11] << 8);
+      uint32_t rr = msg->data[14] | ((uint32_t)msg->data[15] << 8);
+      uint32_t rl = msg->data[12] | ((uint32_t)msg->data[13] << 8);
+      uint32_t fl = msg->data[8]  | ((uint32_t)msg->data[9]  << 8);
 
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
 
-      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 0.0075 / 3.6);
-    }
-
-    if (msg->addr == MSG_QFK_01) { // we do not need conversion deg to can, same scaling as HCA_03 curvature
-      int current_curvature = ((msg->data[6] & 0x7F) << 8) | msg->data[5];
-
-      bool current_curvature_sign = GET_BIT(msg, 55U);
-      if (!current_curvature_sign) {
-        current_curvature *= -1;
-      }
-
-      update_sample(&curvature_meas, current_curvature);
+      UPDATE_VEHICLE_SPEED((fr + rr + rl + fl) / 4.0 * 0.0075 * KPH_TO_MS);
     }
 
     // Update driver input torque samples

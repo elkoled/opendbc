@@ -43,7 +43,6 @@ const int MAX_WRONG_COUNTERS = 5;
 
 // This can be set by the safety hooks
 bool controls_allowed = false;
-bool controls_allowed_lateral = false;
 bool relay_malfunction = false;
 bool gas_pressed = false;
 bool gas_pressed_prev = false;
@@ -79,9 +78,6 @@ uint32_t rt_angle_msgs = 0;
 uint32_t ts_angle_check_last = 0;
 int desired_angle_last = 0;
 struct sample_t angle_meas;         // last 6 steer angles/curvatures
-struct sample_t curvature_meas;         // last 6 steer curvatures
-int desired_curvature_last = 0;
-int desired_steer_power_last = 0;
 
 
 int alternative_experience = 0;
