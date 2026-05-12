@@ -409,7 +409,7 @@ class CarState(CarStateBase):
       ("Blinkmodi_02", 1),  # variable rate
     ]
     if CP.enableBsm:
-      pt_messages.append(("MEB_Side_Assist_01", 20))
+      pt_messages.append(("MEB_Side_Assist_01", 0))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
