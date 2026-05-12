@@ -1,12 +1,19 @@
-from opendbc.car import get_safety_config, structs
+import time
+
+from opendbc.car import get_safety_config, structs, uds
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.volkswagen.carcontroller import CarController
 from opendbc.car.volkswagen.carstate import CarState
-from opendbc.car.volkswagen.values import CanBus, CAR, NetworkLocation, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags
+from opendbc.car.volkswagen.radar_interface import RadarInterface
+from opendbc.car.volkswagen.values import CanBus, CAR, NetworkLocation, TransmissionType, VolkswagenFlags, VolkswagenSafetyFlags, RADAR_DISABLE_STATE
+from opendbc.car.carlog import carlog
+from opendbc.car.isotp_parallel_query import IsoTpParallelQuery
+
 
 class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
+  RadarInterface = RadarInterface
 
   DRIVABLE_GEARS = (structs.CarState.GearShifter.eco, structs.CarState.GearShifter.sport,
                     structs.CarState.GearShifter.manumatic)
@@ -32,6 +39,36 @@ class CarInterface(CarInterfaceBase):
         ret.networkLocation = NetworkLocation.fwdCamera
 
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation
+
+    elif ret.flags & VolkswagenFlags.MEB:
+      # Set global MEB parameters
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
+      ret.steerAtStandstill = True
+
+      if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, QFK_01
+        ret.networkLocation = NetworkLocation.gateway
+      else:
+        ret.networkLocation = NetworkLocation.fwdCamera
+
+      if ret.networkLocation == NetworkLocation.gateway:
+        ret.radarUnavailable = 0x24F not in fingerprint[0] # Strukturen_01
+
+      if 0x30B in fingerprint[0]:  # Kombi_01
+        ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
+
+      if 0x25D in fingerprint[0]:  # KLR_01
+        ret.flags |= VolkswagenFlags.STOCK_KLR_PRESENT.value
+
+      if 0x3DC in fingerprint[0]:  # Gatway_73
+        ret.flags |= VolkswagenFlags.ALT_GEAR.value
+
+      if ret.networkLocation == NetworkLocation.fwdCamera:
+        ret.flags |= VolkswagenFlags.DISABLE_RADAR.value
+        safety_configs[0].safetyParam |= VolkswagenSafetyFlags.DISABLE_RADAR.value
 
     elif ret.flags & VolkswagenFlags.MLB:
       # Set global MLB parameters
@@ -68,6 +105,8 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    elif ret.flags & VolkswagenFlags.MEB:
+      ret.steerActuatorDelay = 0.3
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
@@ -78,8 +117,14 @@ class CarInterface(CarInterfaceBase):
 
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
-    ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs
-    if alpha_long:
+    if ret.flags & VolkswagenFlags.MEB:
+      ret.longitudinalActuatorDelay = 0.5
+      ret.radarDelay = 0.8
+      ret.longitudinalTuning.kiBP = [0., 30.]
+      ret.longitudinalTuning.kiV = [0.4, 0.]
+
+    ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs or bool(ret.flags & VolkswagenFlags.DISABLE_RADAR)
+    if alpha_long and ret.alphaLongitudinalAvailable:
       # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
       ret.openpilotLongitudinalControl = True
       safety_configs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
@@ -92,10 +137,18 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.07
 
     ret.pcmCruise = not ret.openpilotLongitudinalControl
-    ret.stopAccel = -0.55
-    ret.vEgoStarting = 0.1
-    ret.vEgoStopping = 0.5
     ret.autoResumeSng = ret.minEnableSpeed == -1
+
+    if ret.flags & VolkswagenFlags.MEB:
+      ret.startingState = True # OP long starting state is used: for very slow start the car can go into error (EPB car shutting down bug)
+      ret.startAccel = 0.8
+      ret.vEgoStarting = 0.5 # minimum ~0.5 m/s acc starting state is neccessary to not fault the car
+      ret.vEgoStopping = 0.1
+      ret.stopAccel = -0.55 # different stopping accels seen, good working value
+    else:
+      ret.vEgoStarting = 0.1
+      ret.vEgoStopping = 0.5
+      ret.stopAccel = -0.55
 
     CAN = CanBus(fingerprint=fingerprint)
     if CAN.pt >= 4:
@@ -103,3 +156,100 @@ class CarInterface(CarInterfaceBase):
     ret.safetyConfigs = safety_configs
 
     return ret
+
+  @staticmethod
+  def init(CP, can_recv, can_send):
+    # communication control can be rejected with engine on
+    # uds.CONTROL_TYPE.ENABLE_RX_DISABLE_TX is lost with engine on transition for newer MEB cars
+    # uds.CONTROL_TYPE.DISABLE_RX_DISABLE_TX is probably not lost but the radar has to be revived manually
+    # -> deinit is not called in OP -> errors in dash, recovers after second ignition cycle
+    # Programming session is also rejected while engine on but recovers after key off on
+    if CP.openpilotLongitudinalControl and (CP.flags & VolkswagenFlags.DISABLE_RADAR):
+      RADAR_DISABLE_STATE["error"] = False
+      if CP.flags & VolkswagenFlags.MEB:
+        if CarInterface._is_engine_state_allowed_meb(can_recv): # prevent programming session request, it will not work
+          carlog.warning("Trying to disable the radar")
+          if not CarInterface._radar_communication_control(CP, can_recv, can_send):
+            RADAR_DISABLE_STATE["error"] = True
+        else:
+          RADAR_DISABLE_STATE["error"] = True
+          carlog.warning("The radar can not be disabled")
+
+  @staticmethod
+  def deinit(CP, can_recv, can_send):
+    # deinit is currently never executed in current state of Openpilot
+    # CarD is just killed, no reaction handling on SIGINT
+    if CP.openpilotLongitudinalControl and (CP.flags & VolkswagenFlags.DISABLE_RADAR):
+      if CP.flags & VolkswagenFlags.MEB:
+        CarInterface._radar_communication_control(CP, can_recv, can_send, disable=False)
+
+  @staticmethod
+  def _radar_communication_control(CP, can_recv, can_send, disable=True):
+    # disable/enable radar tx
+    bus = CanBus(CP).pt
+    addr_radar, addr_diag, volkswagen_rx_offset = 0x757, 0x700, 0x6A
+    retry, timeout = 3, 0.5
+
+    tp_req  = bytes([uds.SERVICE_TYPE.TESTER_PRESENT, 0x00])
+    tp_resp = bytes([uds.SERVICE_TYPE.TESTER_PRESENT + 0x40, 0x00])
+    ext_diag_req  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, uds.SESSION_TYPE.EXTENDED_DIAGNOSTIC])
+    ext_diag_resp = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL + 0x40, uds.SESSION_TYPE.EXTENDED_DIAGNOSTIC])
+    flash_req  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, uds.SESSION_TYPE.PROGRAMMING])
+    empty_resp = b''
+
+    txt = "disable" if disable else "enable"
+
+    for i in range(retry):
+      try:
+        # Tester Present
+        if disable:
+          query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [tp_req], [tp_resp], volkswagen_rx_offset, functional_addrs=[addr_diag])
+          if not query.get_data(timeout):
+            carlog.warning(f"Tester Present returned no data on attempt {i+1}")
+            continue
+
+          # Extended Diagnostic Session
+          query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [ext_diag_req], [ext_diag_resp], volkswagen_rx_offset)
+          if not query.get_data(timeout):
+            carlog.warning(f"Radar extended session returned no data on attempt {i+1}")
+            continue
+
+          # Programming Session
+          query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr_radar, None)], [flash_req], [empty_resp], volkswagen_rx_offset)
+          query.get_data(0) # no waiting time for this to begin sending our own commands as fast as possible to prevent cruise faults
+          carlog.warning(f"Radar {txt} by programming session sent on attempt {i+1}")
+
+        return True
+
+      except Exception as e:
+        carlog.error(f"Radar {txt} exception on attempt {i+1}: {repr(e)}")
+        continue
+
+    carlog.error(f"Radar {txt} failed")
+    return False
+
+  @staticmethod
+  def _is_engine_state_allowed_meb(can_recv, timeout: float = 0.5) -> bool:
+    # this is a safety measure
+    # detect if the radar can be disabled by engine state
+    # [Motor_54][Engine_On]
+    end_time = time.monotonic() + timeout
+
+    while time.monotonic() < end_time:
+      packets = can_recv(wait_for_one=True) or []
+      for packet in packets:
+        for msg in packet:
+          if msg.address != 0x14C:
+            continue
+
+          engine_on = bool((msg.dat[9] >> 5) & 0x01)
+
+          if engine_on:
+            carlog.warning(f"Engine state is not allowed: Engine_On={engine_on}")
+            return False
+          else:
+            carlog.warning(f"Engine state is allowed: Engine_On={engine_on}")
+            return True
+
+    carlog.warning("Engine state state unknown")
+    return True

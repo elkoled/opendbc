@@ -15,6 +15,8 @@ TransmissionType = structs.CarParams.TransmissionType
 GearShifter = structs.CarState.GearShifter
 Button = namedtuple('Button', ['event_type', 'can_addr', 'can_msg', 'values'])
 
+RADAR_DISABLE_STATE: dict[str, bool] = {"error": False}
+
 
 class CanBus(CanBusBase):
   def __init__(self, CP=None, fingerprint=None) -> None:
@@ -99,6 +101,53 @@ class CarControllerParams:
         "laneAssistDeactivTrailer": 5,  # "Lane Assist: no function with trailer"
       }
 
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.AEB_CONTROL_STEP        = 100   # AWV_03 message frequency 1Hz
+      self.AEB_HUD_STEP            = 20    # MEB_AWV_01 message frequency 5Hz
+      self.LDW_STEP                = 10    # LDW_02 message frequency 10Hz
+      self.ACC_HUD_STEP            = 6     # MEB_ACC_01 message frequency 16Hz
+      self.STEER_DRIVER_ALLOWANCE  = 60    # Driver torque 0.6 Nm, begin steering reduction from MAX
+      self.STEER_DRIVER_SLIGHT_PRESS = 15  # Driver torque 0.15 Nm for slight steering override detection
+      self.STEER_DRIVER_MAX        = 300   # Driver torque 3.0 Nm, stop steering reduction at MIN
+      self.STEERING_POWER_MAX      = 50    # HCA_03 maximum steering power, percentage
+      self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
+      self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
+      self.CURVATURE_MAX           = 0.195 # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
+
+      if CP.flags & VolkswagenFlags.ALT_GEAR:
+        self.shifter_values = can_define.dv["Gateway_73"]["GE_Fahrstufe"]
+      else:
+        self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
+
+      self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
+
+      BASE_BUTTONS = [
+        Button(structs.CarState.ButtonEvent.Type.setCruise, "GRA_ACC_01", "GRA_Tip_Setzen", [1]),
+        Button(structs.CarState.ButtonEvent.Type.resumeCruise, "GRA_ACC_01", "GRA_Tip_Wiederaufnahme", [1]),
+        Button(structs.CarState.ButtonEvent.Type.accelCruise, "GRA_ACC_01", "GRA_Tip_Hoch", [1]),
+        Button(structs.CarState.ButtonEvent.Type.decelCruise, "GRA_ACC_01", "GRA_Tip_Runter", [1]),
+        Button(structs.CarState.ButtonEvent.Type.gapAdjustCruise, "GRA_ACC_01", "GRA_Verstellung_Zeitluecke", [3]),
+      ]
+
+      self.BUTTONS = BASE_BUTTONS + [
+        Button(structs.CarState.ButtonEvent.Type.cancel, "GRA_ACC_01", "GRA_Hauptschalter", [1]), # main button cancels ACC operation when ACC active
+      ]
+
+      self.BUTTONS_ALT = BASE_BUTTONS + [
+        Button(structs.CarState.ButtonEvent.Type.cancel, "GRA_ACC_01", "GRA_Abbrechen", [1]), # there is a physical cancel button
+      ]
+
+      self.LDW_MESSAGES = {
+        "none": 0,                        # Nothing to display
+        "laneAssistTakeOverUrgent": 4,    # "Lane Assist: Please Take Over Steering" (red)
+        "laneAssistTakeOver": 8,          # "Lane Assist: Please Take Over Steering" (white)
+      }
+      self.LDW_SOUNDS = {
+        "None": 0,                        # No sound
+        "Chime": 1,                       # Play a chime
+        "Beep": 2,                        # Play a loud beep
+      }
+
     else:
       self.LDW_STEP = 10                  # LDW_02 message frequency 10Hz
       self.ACC_HUD_STEP = 6               # ACC_02 message frequency 16Hz
@@ -178,16 +227,21 @@ class WMI(StrEnum):
 
 class VolkswagenSafetyFlags(IntFlag):
   LONG_CONTROL = 1
+  DISABLE_RADAR = 8
 
 
 class VolkswagenFlags(IntFlag):
   # Detected flags
   STOCK_HCA_PRESENT = 1
   KOMBI_PRESENT = 4
+  STOCK_KLR_PRESENT = 64
+  ALT_GEAR = 512
+  DISABLE_RADAR = 4096
 
   # Static flags
   PQ = 2
   MLB = 8
+  MEB = 16
 
 
 @dataclass
@@ -198,6 +252,16 @@ class VolkswagenMLBPlatformConfig(PlatformConfig):
 
   def init(self):
     self.flags |= VolkswagenFlags.MLB
+
+
+@dataclass
+class VolkswagenMEBPlatformConfig(PlatformConfig):
+  dbc_dict: DbcDict = field(default_factory=lambda: {Bus.pt: 'vw_meb', Bus.radar: 'vw_meb'})
+  chassis_codes: set[str] = field(default_factory=set)
+  wmis: set[WMI] = field(default_factory=set)
+
+  def init(self):
+    self.flags |= VolkswagenFlags.MEB
 
 
 @dataclass
@@ -269,7 +333,7 @@ class VWCarDocs(CarDocs):
 # FW_VERSIONS for that existing CAR.
 
 class CAR(Platforms):
-  config: VolkswagenMQBPlatformConfig | VolkswagenPQPlatformConfig
+  config: VolkswagenMQBPlatformConfig | VolkswagenPQPlatformConfig | VolkswagenMEBPlatformConfig | VolkswagenMLBPlatformConfig
 
   VOLKSWAGEN_ARTEON_MK1 = VolkswagenMQBPlatformConfig(
     [
@@ -330,6 +394,15 @@ class CAR(Platforms):
     VolkswagenCarSpecs(mass=1397, wheelbase=2.62),
     chassis_codes={"5G", "AU", "BA", "BE"},
     wmis={WMI.VOLKSWAGEN_MEXICO_CAR, WMI.VOLKSWAGEN_EUROPE_CAR},
+  )
+  VOLKSWAGEN_ID4_MK1 = VolkswagenMEBPlatformConfig(
+    [
+      VWCarDocs("Volkswagen ID.4 2021-23"),
+      VWCarDocs("Volkswagen ID.5 2022-23"),
+    ],
+    VolkswagenCarSpecs(mass=2224, wheelbase=2.77),
+    chassis_codes={"E2"},
+    wmis={WMI.VOLKSWAGEN_USA_SUV, WMI.VOLKSWAGEN_EUROPE_CAR, WMI.VOLKSWAGEN_EUROPE_SUV},
   )
   VOLKSWAGEN_JETTA_MK6 = VolkswagenPQPlatformConfig(
     [VWCarDocs("Volkswagen Jetta 2015-18")],
@@ -576,7 +649,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
     Request(
       [VOLKSWAGEN_VERSION_REQUEST_MULTI],
       [VOLKSWAGEN_VERSION_RESPONSE],
-      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera],
+      whitelist_ecus=[Ecu.srs, Ecu.eps, Ecu.fwdRadar, Ecu.fwdCamera, Ecu.parkingAdas, Ecu.cornerRadar, Ecu.adas],
       rx_offset=VOLKSWAGEN_RX_OFFSET,
       bus=bus,
       obd_multiplexing=obd_multiplexing,
