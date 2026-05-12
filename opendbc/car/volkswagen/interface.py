@@ -52,6 +52,8 @@ class CarInterface(CarInterfaceBase):
       else:
         ret.networkLocation = NetworkLocation.fwdCamera
 
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
+
       ret.dashcamOnly = is_release  # MEB lateral port, safety validation pending
 
     else:

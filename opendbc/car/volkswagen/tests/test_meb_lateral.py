@@ -187,5 +187,52 @@ class TestMEBLateral(unittest.TestCase):
     self.assertAlmostEqual(decoded["Curvature"], 0.0, places=4)
 
 
+class TestMEBBlindspot(unittest.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    cls.CI = interfaces[CAR.VOLKSWAGEN_ID4_MK1.value]
+    fingerprint = {i: {} for i in range(8)}
+    fingerprint[0][0x24C] = 16  # MEB_Side_Assist_01 present on PT bus
+    cp = cls.CI.get_params(CAR.VOLKSWAGEN_ID4_MK1.value, fingerprint,
+                           [], alpha_long=False, is_release=False, docs=False)
+    cls.cp = cp
+
+  def test_enable_bsm_set(self):
+    self.assertTrue(self.cp.enableBsm)
+
+  def test_left_and_right_blindspot(self):
+    from opendbc.can import CANPacker
+    inst = self.CI(self.cp)
+    parsers = inst.CS.get_can_parsers(self.cp)
+    pt_cp = parsers[Bus.pt]
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_ID4_MK1.value][Bus.pt])
+
+    cases = [
+      ({"Blind_Spot_Info_Left": 1, "Blind_Spot_Warn_Left": 0,
+        "Blind_Spot_Info_Right": 0, "Blind_Spot_Warn_Right": 0}, True, False),
+      ({"Blind_Spot_Info_Left": 0, "Blind_Spot_Warn_Left": 1,
+        "Blind_Spot_Info_Right": 0, "Blind_Spot_Warn_Right": 0}, True, False),
+      ({"Blind_Spot_Info_Left": 0, "Blind_Spot_Warn_Left": 0,
+        "Blind_Spot_Info_Right": 1, "Blind_Spot_Warn_Right": 0}, False, True),
+      ({"Blind_Spot_Info_Left": 0, "Blind_Spot_Warn_Left": 0,
+        "Blind_Spot_Info_Right": 0, "Blind_Spot_Warn_Right": 1}, False, True),
+      ({"Blind_Spot_Info_Left": 1, "Blind_Spot_Warn_Left": 0,
+        "Blind_Spot_Info_Right": 1, "Blind_Spot_Warn_Right": 0}, True, True),
+      ({"Blind_Spot_Info_Left": 0, "Blind_Spot_Warn_Left": 0,
+        "Blind_Spot_Info_Right": 0, "Blind_Spot_Warn_Right": 0}, False, False),
+    ]
+    for vals, exp_left, exp_right in cases:
+      with self.subTest(**vals):
+        addr, dat, _ = packer.make_can_msg("MEB_Side_Assist_01", 0, vals)
+        pt_cp.update([(0, [(addr, dat, 0)])])
+        self.assertEqual(bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]),
+                         bool(vals["Blind_Spot_Info_Left"]))
+        cam_cp = parsers[Bus.cam]
+        ext_cp = parsers[Bus.alt]
+        ret = inst.CS.update_meb(pt_cp, cam_cp, ext_cp)
+        self.assertEqual(ret.leftBlindspot, exp_left)
+        self.assertEqual(ret.rightBlindspot, exp_right)
+
+
 if __name__ == "__main__":
   unittest.main()
