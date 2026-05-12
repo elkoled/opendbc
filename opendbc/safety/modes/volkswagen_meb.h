@@ -1,7 +1,6 @@
 #pragma once
 
 #include "opendbc/safety/declarations.h"
-#include "opendbc/safety/lateral.h"
 #include "opendbc/safety/modes/volkswagen_common.h"
 
 #define MSG_ESC_51           0xFCU    // RX, for wheel speeds
@@ -89,7 +88,7 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
 }
 
 static safety_config volkswagen_meb_init(uint16_t param) {
-  UNUSED(param);
+  SAFETY_UNUSED(param);
   // Transmit of GRA_ACC_01 is allowed on bus 0 and 2 to keep compatibility with gateway and camera integration
   static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {{MSG_HCA_03, 0, 24, .check_relay = true},
                                                         {MSG_LDW_02, 0, 8, .check_relay = true},
