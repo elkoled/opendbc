@@ -70,8 +70,8 @@ class CarControllerParams:
 
   ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
     0.195,
-    ([5., 25.], [0.00045, 0.0001]),
-    ([5., 25.], [0.00045, 0.00015]),
+    ([5., 10., 25.], [0.004, 0.001, 0.00016]),
+    ([5., 10., 25.], [0.004, 0.001, 0.00016]),
   )
 
   def __init__(self, CP):
