@@ -12,6 +12,10 @@
 #define VOLKSWAGEN_MEB_CURVATURE_TO_CAN 149253.7313f  // 1 / 6.7e-6
 #define VOLKSWAGEN_MEB_MAX_CURVATURE_CAN 29105
 
+// Helper expects deg_to_can; with stub VM params (slip=0, sR=1, wb=1) the helper's
+// "angle" math becomes an identity on curvature, so we scale curvature*RAD_TO_DEG to CAN.
+#define VOLKSWAGEN_MEB_RAD_TO_DEG 57.29577951308232f
+
 static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   int len = GET_LEN(msg);
 
@@ -46,20 +50,18 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
 
 static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = VOLKSWAGEN_MEB_MAX_CURVATURE_CAN,
-  .angle_deg_to_can = VOLKSWAGEN_MEB_CURVATURE_TO_CAN,
-  // Bounds the ISO 11270 lateral-jerk envelope (0.1 / max(v,1)^2 per STEER_STEP at 50Hz)
-  // used by apply_std_curvature_limits, with extra slack at low speed to accept the
-  // wind-down branch jump (clipped to ±CURVATURE_MAX). 3-point linear interp upper-bounds.
-  .angle_rate_up_lookup = {
-    {1., 5., 25.},
-    {0.4, 0.0029, 0.000115},
-  },
-  .angle_rate_down_lookup = {
-    {1., 5., 25.},
-    {0.4, 0.0029, 0.000115},
-  },
+  .angle_deg_to_can = VOLKSWAGEN_MEB_CURVATURE_TO_CAN / VOLKSWAGEN_MEB_RAD_TO_DEG,
+  .frequency = 50,
   .angle_is_curvature = true,
   .inactive_angle_is_zero = true,
+};
+
+// Stub vehicle model params: identity curvature_factor so the helper's lateral
+// accel/jerk envelope is expressed directly in curvature*RAD_TO_DEG units.
+static const AngleSteeringParams VOLKSWAGEN_MEB_STEERING_PARAMS = {
+  .slip_factor = 0.0f,
+  .steer_ratio = 1.0f,
+  .wheelbase = 1.0f,
 };
 
 static safety_config volkswagen_meb_init(uint16_t param) {
@@ -96,6 +98,9 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       uint32_t rl = msg->data[12] | (msg->data[13] << 8);
       uint32_t rr = msg->data[14] | (msg->data[15] << 8);
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
+      // Wheel speed signal scaling 0.0075 km/h per LSB; average four wheels into m/s
+      float v_ego_ms = ((float)(fl + fr + rl + rr)) * (0.0075f / 3.6f / 4.0f);
+      UPDATE_VEHICLE_SPEED(v_ego_ms);
     }
 
     if (msg->addr == MSG_QFK_01) {
@@ -149,7 +154,8 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     }
     bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
 
-    if (steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+    if (steer_angle_cmd_checks_vm(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS,
+                                  VOLKSWAGEN_MEB_STEERING_PARAMS)) {
       tx = false;
     }
   }
