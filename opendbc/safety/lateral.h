@@ -2,7 +2,6 @@
 
 // ISO 11270
 static const float ISO_LATERAL_ACCEL = 3.0;  // m/s^2
-static const float ISO_LATERAL_JERK = 5.0;   // m/s^3
 
 static const float EARTH_G = 9.81;
 static const float AVERAGE_ROAD_ROLL = 0.06;  // ~3.4 degrees, 6% superelevation
@@ -358,9 +357,9 @@ bool steer_power_cmd_checks(int desired_steer_power, bool steer_control_enabled,
   bool violation = false;
 
   violation |= safety_max_limit_check(desired_steer_power, limits.max_power, 0);
-  violation |= desired_steer_power > 0 && !steer_control_enabled;
-  violation |= !controls_allowed && steer_control_enabled && desired_steer_power != 0 && desired_steer_power >= desired_steer_power_last;
-  violation |= !controls_allowed && !steer_control_enabled && desired_steer_power != 0;
+  violation |= (desired_steer_power > 0) && !steer_control_enabled;
+  violation |= !controls_allowed && steer_control_enabled && (desired_steer_power != 0) && (desired_steer_power >= desired_steer_power_last);
+  violation |= !controls_allowed && !steer_control_enabled && (desired_steer_power != 0);
 
   desired_steer_power_last = desired_steer_power;
 
@@ -372,6 +371,7 @@ bool steer_curvature_cmd_checks_average(int desired_curvature, bool steer_contro
   bool violation = false;
 
   if (controls_allowed && steer_control_enabled) {
+    static const float ISO_LATERAL_JERK = 5.0;   // m/s^3
     violation |= safety_max_limit_check(desired_curvature, limits.max_curvature, -limits.max_curvature);
 
     // ISO jerk limit
@@ -381,8 +381,8 @@ bool steer_curvature_cmd_checks_average(int desired_curvature, bool steer_contro
     float max_curvature_delta     = max_curvature_rate_sec * (float)limits.send_rate;
     float max_curvature_delta_can = (max_curvature_delta * limits.curvature_to_can) + 1.;
 
-    int highest_desired_curvature = desired_curvature_last + max_curvature_delta_can;
-    int lowest_desired_curvature  = desired_curvature_last - max_curvature_delta_can;
+    int highest_desired_curvature = desired_curvature_last + (int)max_curvature_delta_can;
+    int lowest_desired_curvature  = desired_curvature_last - (int)max_curvature_delta_can;
 
     // ISO lateral acceleration limit
     static const float MAX_LATERAL_ACCEL_AVG = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^2

@@ -52,17 +52,6 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   return (uint8_t)(crc ^ 0xFFU);
 }
 
-// Lateral curvature limits — must match opendbc/car/volkswagen carcontroller curvature_to_can scale (1 / 6.7e-6).
-// Empirically validated values used by the sunnypilot fork's MEB port.
-static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
-  .max_curvature = 29105,                  // 0.195 rad/m
-  .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m -> CAN scale
-  .send_rate = 0.02,                       // 50 Hz
-  .inactive_curvature_is_zero = true,
-  .max_power = 125,                        // 50% duty
-};
-
-
 static safety_config volkswagen_meb_init(uint16_t param) {
   // Stock-long, lateral-only TX set: steering curvature, cancel button passthrough on bus 0 and 2, lane-departure HUD passthrough.
   static const CanMsg VOLKSWAGEN_MEB_STOCK_TX_MSGS[] = {
@@ -89,68 +78,75 @@ static safety_config volkswagen_meb_init(uint16_t param) {
 
 
 static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
-  if (msg->bus != 0U) {
-    return;
-  }
+  if (msg->bus == 0U) {
+    // Wheel speeds + vehicle motion (ESC_51 layout)
+    if (msg->addr == MSG_ESC_51) {
+      uint32_t fl = (uint32_t)msg->data[8]  | ((uint32_t)msg->data[9]  << 8);
+      uint32_t fr = (uint32_t)msg->data[10] | ((uint32_t)msg->data[11] << 8);
+      uint32_t rl = (uint32_t)msg->data[12] | ((uint32_t)msg->data[13] << 8);
+      uint32_t rr = (uint32_t)msg->data[14] | ((uint32_t)msg->data[15] << 8);
 
-  // Wheel speeds + vehicle motion (ESC_51 layout)
-  if (msg->addr == MSG_ESC_51) {
-    uint32_t fl = msg->data[8]  | msg->data[9]  << 8;
-    uint32_t fr = msg->data[10] | msg->data[11] << 8;
-    uint32_t rl = msg->data[12] | msg->data[13] << 8;
-    uint32_t rr = msg->data[14] | msg->data[15] << 8;
-
-    vehicle_moving = (fl > 0U) || (fr > 0U) || (rl > 0U) || (rr > 0U);
-    UPDATE_VEHICLE_SPEED(((fl + fr + rl + rr) / 4U) * 0.0075 / 3.6);
-  }
-
-  // Measured curvature feedback for inactive-curvature checks (QFK_01.Curvature, sign in bit 55)
-  if (msg->addr == MSG_QFK_01) {
-    int current_curvature = ((msg->data[6] & 0x7F) << 8) | msg->data[5];
-    bool current_curvature_sign = GET_BIT(msg, 55U);
-    if (!current_curvature_sign) {
-      current_curvature *= -1;
-    }
-    update_sample(&curvature_meas, current_curvature);
-  }
-
-  // Driver input torque sample (used by torque-driver-limited safety modes; harmless to track here)
-  if (msg->addr == MSG_LH_EPS_03) {
-    update_sample(&torque_driver, volkswagen_mlb_mqb_driver_input_torque(msg));
-  }
-
-  // Cruise state from drivetrain coordinator (Motor_51.TSK_Status at bits 88..90)
-  if (msg->addr == MSG_Motor_51) {
-    int acc_status = ((msg->data[11] >> 0) & 0x07U);
-    bool cruise_engaged = (acc_status == 3) || (acc_status == 4) || (acc_status == 5);
-    acc_main_on = cruise_engaged || (acc_status == 2);
-
-    pcm_cruise_check(cruise_engaged);
-    if (!acc_main_on) {
-      controls_allowed = false;
+      vehicle_moving = (fl > 0U) || (fr > 0U) || (rl > 0U) || (rr > 0U);
+      UPDATE_VEHICLE_SPEED(((fl + fr + rl + rr) / 4U) * 0.0075 / 3.6);
     }
 
-    // Accel pedal state (Motor_51.Accel_Pedal_Pressure)
-    int accel_pedal_value = ((msg->data[1] >> 4) & 0x0FU) | ((msg->data[2] & 0x1FU) << 4);
-    gas_pressed = accel_pedal_value > 0;
-  }
-
-  // Cancel button always disengages.
-  if (msg->addr == MSG_GRA_ACC_01) {
-    if (GET_BIT(msg, 13U)) {
-      controls_allowed = false;
+    // Measured curvature feedback for inactive-curvature checks (QFK_01.Curvature, sign in bit 55)
+    if (msg->addr == MSG_QFK_01) {
+      int current_curvature = ((msg->data[6] & 0x7FU) << 8) | msg->data[5];
+      bool current_curvature_sign = GET_BIT(msg, 55U);
+      if (!current_curvature_sign) {
+        current_curvature *= -1;
+      }
+      update_sample(&curvature_meas, current_curvature);
     }
-  }
 
-  // Brake pedal switch (MOTOR_14.MO_Fahrer_bremst at bit 28)
-  if (msg->addr == MSG_MOTOR_14) {
-    brake_pressed = GET_BIT(msg, 28U);
+    // Driver input torque sample (used by torque-driver-limited safety modes; harmless to track here)
+    if (msg->addr == MSG_LH_EPS_03) {
+      update_sample(&torque_driver, volkswagen_mlb_mqb_driver_input_torque(msg));
+    }
+
+    // Cruise state from drivetrain coordinator (Motor_51.TSK_Status at bits 88..90)
+    if (msg->addr == MSG_Motor_51) {
+      int acc_status = ((msg->data[11] >> 0) & 0x07U);
+      bool cruise_engaged = (acc_status == 3) || (acc_status == 4) || (acc_status == 5);
+      acc_main_on = cruise_engaged || (acc_status == 2);
+
+      pcm_cruise_check(cruise_engaged);
+      if (!acc_main_on) {
+        controls_allowed = false;
+      }
+
+      // Accel pedal state (Motor_51.Accel_Pedal_Pressure)
+      int accel_pedal_value = ((msg->data[1] >> 4) & 0x0FU) | ((msg->data[2] & 0x1FU) << 4);
+      gas_pressed = accel_pedal_value > 0;
+    }
+
+    // Cancel button always disengages.
+    if (msg->addr == MSG_GRA_ACC_01) {
+      if (GET_BIT(msg, 13U)) {
+        controls_allowed = false;
+      }
+    }
+
+    // Brake pedal switch (MOTOR_14.MO_Fahrer_bremst at bit 28)
+    if (msg->addr == MSG_MOTOR_14) {
+      brake_pressed = GET_BIT(msg, 28U);
+    }
   }
 }
 
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
+
+  // Lateral curvature limits — must match opendbc/car/volkswagen carcontroller curvature_to_can scale (1 / 6.7e-6).
+  const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
+    .max_curvature = 29105,                  // 0.195 rad/m
+    .curvature_to_can = 149253.7313,         // 1 / 6.7e-6 rad/m -> CAN scale
+    .send_rate = 0.02,                       // 50 Hz
+    .inactive_curvature_is_zero = true,
+    .max_power = 125,                        // 50% duty
+  };
 
   // HCA_03 — steering curvature command
   if (msg->addr == MSG_HCA_03) {
