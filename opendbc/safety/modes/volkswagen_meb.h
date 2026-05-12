@@ -47,13 +47,16 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
 static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = VOLKSWAGEN_MEB_MAX_CURVATURE_CAN,
   .angle_deg_to_can = VOLKSWAGEN_MEB_CURVATURE_TO_CAN,
+  // Bounds the ISO 11270 lateral-jerk envelope (0.1 / max(v,1)^2 per STEER_STEP at 50Hz)
+  // used by apply_std_curvature_limits, with extra slack at low speed to accept the
+  // wind-down branch jump (clipped to ±CURVATURE_MAX). 3-point linear interp upper-bounds.
   .angle_rate_up_lookup = {
-    {5., 10., 25.},
-    {0.004, 0.001, 0.00016},
+    {1., 5., 25.},
+    {0.4, 0.004, 0.00016},
   },
   .angle_rate_down_lookup = {
-    {5., 10., 25.},
-    {0.004, 0.001, 0.00016},
+    {1., 5., 25.},
+    {0.4, 0.004, 0.00016},
   },
   .angle_is_curvature = true,
   .inactive_angle_is_zero = true,

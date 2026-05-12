@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_steer_angle_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
@@ -67,34 +67,30 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
-        steer_max = CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX
+        # NOTE: CS.curvature_meas substitutes sunnypilot's CS.out.steeringCurvature (not in upstream cereal)
         if CC.latActive:
-          curvature_target = float(actuators.curvature) + (CS.curvature_meas - CC.currentCurvature)
-        elif self.steering_power_last > 0:
-          curvature_target = float(np.clip(CS.curvature_meas, -steer_max, steer_max))
-        else:
-          curvature_target = 0.0
-        apply_curvature = apply_std_steer_angle_limits(curvature_target, self.apply_curvature_last, CS.out.vEgoRaw,
-                                                       CS.out.steeringAngleDeg, True, CarControllerParams.ANGLE_LIMITS)
-        self.apply_curvature_last = apply_curvature
+          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
+                                                       CS.out.steeringPressed, self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
-        if CC.latActive:
-          hca_enabled = True
-          target_power_driver = float(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
-                                                                       [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+          min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
+          max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
+          target_power_driver = int(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                                                     [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
-          step = self.CCP.STEERING_POWER_STEP
-          steering_power = min(max(target_power, self.steering_power_last - step, self.CCP.STEERING_POWER_MIN),
-                               self.steering_power_last + step, self.CCP.STEERING_POWER_MAX)
-        elif self.steering_power_last > 0:
+          steering_power = min(max(target_power, min_power), max_power)
           hca_enabled = True
-          steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
         else:
-          hca_enabled = False
-          apply_curvature = 0.
-          self.apply_curvature_last = 0.
-          steering_power = 0
+          if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
+            hca_enabled = True
+            apply_curvature = np.clip(CS.curvature_meas, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX)
+            steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
+          else:
+            hca_enabled = False
+            apply_curvature = 0.
+            steering_power = 0
 
+        self.apply_curvature_last = apply_curvature
         self.steering_power_last = steering_power
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
 
