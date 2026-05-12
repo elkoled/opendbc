@@ -2,8 +2,8 @@ from collections import defaultdict, namedtuple
 from dataclasses import dataclass, field
 from enum import Enum, IntFlag, StrEnum
 
-from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
-from opendbc.car.lateral import CurvatureSteeringLimits
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
+from opendbc.car.lateral import AngleSteeringLimits, CurvatureSteeringLimits, ISO_LATERAL_ACCEL
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
@@ -45,6 +45,10 @@ class CanBus(CanBusBase):
   def ext(self) -> int:
     # ADAS / Extended CAN, side of the relay with the ACC radar
     return self._ext
+
+
+# Add extra tolerance for average banked road since safety doesn't have the roll
+AVERAGE_ROAD_ROLL = 0.06  # ~3.4 degrees, 6% superelevation. higher actual roll lowers lateral acceleration
 
 
 class CarControllerParams:
@@ -109,8 +113,25 @@ class CarControllerParams:
       self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
 
+      # Curvature wire-format clamp (HCA_03 transmits curvature, not angle)
       self.CURVATURE_LIMITS: CurvatureSteeringLimits = CurvatureSteeringLimits(
         0.195,  # Max curvature for steering command, m^-1
+      )
+
+      # Angle-control limits driving apply_steer_angle_limits_vm in carcontroller
+      self.ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
+        # EPS faults above this absolute steering wheel angle
+        STEER_ANGLE_MAX=540,  # deg
+        # Per-frame rate limits unused (vehicle-model path)
+        ANGLE_RATE_LIMIT_UP=([], []),
+        ANGLE_RATE_LIMIT_DOWN=([], []),
+
+        # Vehicle-model limits: ISO 11270 + average banked-road tolerance to match the curvature solution
+        MAX_LATERAL_ACCEL=ISO_LATERAL_ACCEL + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),  # ~3.6 m/s^2
+        MAX_LATERAL_JERK=3.0 + (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL),                # ~3.6 m/s^3
+
+        # Limit angle rate to prevent EPS fault and for low speed comfort
+        MAX_ANGLE_RATE=5,  # deg per STEER_STEP frame
       )
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]

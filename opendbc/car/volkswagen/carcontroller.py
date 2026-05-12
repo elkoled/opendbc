@@ -1,9 +1,11 @@
+import math
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_angle_limits_vm
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.vehicle_model import VehicleModel
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
@@ -51,10 +53,13 @@ class CarController(CarControllerBase):
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
+    self.apply_angle_last = 0.
     self.apply_curvature_last = 0.
     self.steering_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
+    # Vehicle model used to bridge angle-control commands to the curvature wire format (HCA_03)
+    self.VM = VehicleModel(CP)
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -65,12 +70,21 @@ class CarController(CarControllerBase):
 
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
-        # MEB rack can be used continously without time limits
+        # MEB rack can be used continously without time limits.
+        # openpilot speaks angle (steerControlType.angle); the wire still carries curvature on HCA_03,
+        # so we bridge angle -> curvature via the vehicle model. Safety remains 1:1 aligned with the
+        # curvature solution because both the carcontroller clamp and panda safety see the same
+        # CURVATURE_MAX on the wire.
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
-          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.measured_curvature,
-                                                       CS.out.steeringPressed, self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
+          self.apply_angle_last = apply_steer_angle_limits_vm(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw,
+                                                              CS.out.steeringAngleDeg, CC.latActive, self.CCP, self.VM)
+
+          # Convert the (already lateral-accel/jerk limited) angle to curvature for HCA_03,
+          # then close the loop on commanded vs. measured curvature so the EPS rack tracks our intent.
+          desired_curvature = self.VM.calc_curvature(math.radians(self.apply_angle_last), max(CS.out.vEgoRaw, 0.1), 0.)
+          apply_curvature = float(desired_curvature + (CS.measured_curvature - CC.currentCurvature))
+          apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX))
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
@@ -80,9 +94,11 @@ class CarController(CarControllerBase):
           steering_power = min(max(target_power, min_power), max_power)
 
         else:
+          # Snap our angle estimate to the current wheel angle so re-engage is bumpless.
+          self.apply_angle_last = CS.out.steeringAngleDeg
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
-            apply_curvature = np.clip(CS.measured_curvature, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX) # synchronize with current curvature
+            apply_curvature = float(np.clip(CS.measured_curvature, -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX, self.CCP.CURVATURE_LIMITS.CURVATURE_MAX)) # synchronize with current curvature
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
@@ -161,6 +177,7 @@ class CarController(CarControllerBase):
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque_last
     new_actuators.curvature = float(self.apply_curvature_last)
+    new_actuators.steeringAngleDeg = float(self.apply_angle_last)
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.frame += 1

@@ -281,6 +281,102 @@ class TestId4Blindspot(unittest.TestCase):
     self.assertFalse(ret.rightBlindspot)
 
 
+class TestId4AngleControlBridge(unittest.TestCase):
+  """openpilot is in steerControlType.angle, but HCA_03 transmits curvature.
+  Verify the carcontroller bridges angle -> curvature via VehicleModel and clamps to CURVATURE_MAX."""
+
+  def setUp(self):
+    self.CP = _build_cp()
+    self.CCP = CarControllerParams(self.CP)
+    self.CC = CarController({Bus.pt: DBC[self.CP.carFingerprint][Bus.pt]}, self.CP)
+
+  def _build_cc(self, angle_deg, v_ego, lat_active=True, measured_curvature=0.0, current_curvature=0.0):
+    cc = structs.CarControl()
+    cc.latActive = lat_active
+    cc.currentCurvature = current_curvature
+    cc.actuators.steeringAngleDeg = angle_deg
+    return cc
+
+  def _build_cs(self, v_ego=20.0, steering_angle=0.0, measured_curvature=0.0):
+    class _CS:
+      pass
+    cs = _CS()
+    out = structs.CarState()
+    out.vEgo = v_ego
+    out.vEgoRaw = v_ego
+    out.steeringAngleDeg = steering_angle
+    out.steeringTorque = 0.0
+    out.steeringPressed = False
+    cs.out = out
+    # Instance attrs the carcontroller reads
+    cs.measured_curvature = measured_curvature
+    cs.eps_stock_values = {}
+    cs.gra_stock_values = {"COUNTER": 0}
+    cs.ldw_stock_values = {}
+    return cs
+
+  def _send(self, angle_deg, v_ego, measured_curvature=0.0, current_curvature=0.0):
+    cc = self._build_cc(angle_deg, v_ego, current_curvature=current_curvature)
+    cs = self._build_cs(v_ego=v_ego, measured_curvature=measured_curvature)
+    new_actuators, can_sends = self.CC.update(cc.as_reader(), cs, 0)
+    return new_actuators, can_sends
+
+  def _decode_hca(self, can_sends):
+    from opendbc.can import CANParser
+    parser = CANParser(DBC[self.CP.carFingerprint][Bus.pt], [("HCA_03", 0)], 0)
+    for addr, dat, bus in can_sends:
+      if addr == 0x303:  # HCA_03
+        parser.update([0, [(addr, dat, bus)]])
+        return parser.vl["HCA_03"]
+    return None
+
+  def test_angle_control_type(self):
+    self.assertEqual(self.CP.steerControlType, structs.CarParams.SteerControlType.angle)
+
+  def test_zero_angle_produces_zero_curvature(self):
+    _, can_sends = self._send(angle_deg=0.0, v_ego=20.0)
+    hca = self._decode_hca(can_sends)
+    self.assertIsNotNone(hca)
+    self.assertAlmostEqual(hca["Curvature"], 0.0, places=3)
+
+  def test_positive_angle_produces_positive_curvature(self):
+    # +30 deg wheel angle at 20 m/s → some positive curvature, clipped at 0.195
+    _, can_sends = self._send(angle_deg=30.0, v_ego=20.0)
+    hca = self._decode_hca(can_sends)
+    self.assertIsNotNone(hca)
+    self.assertGreater(hca["Curvature"], 0)
+    self.assertLessEqual(hca["Curvature"], self.CCP.CURVATURE_LIMITS.CURVATURE_MAX)
+    self.assertEqual(hca["Curvature_VZ"], 1)  # positive direction
+
+  def test_negative_angle_produces_negative_curvature(self):
+    _, can_sends = self._send(angle_deg=-30.0, v_ego=20.0)
+    hca = self._decode_hca(can_sends)
+    self.assertIsNotNone(hca)
+    self.assertGreater(hca["Curvature"], 0)        # message uses |curvature| + sign bit
+    self.assertEqual(hca["Curvature_VZ"], 0)        # negative direction
+
+  def test_curvature_clamp_to_max(self):
+    # Huge angle at low speed → curvature wants to be way above max → must be clipped
+    _, can_sends = self._send(angle_deg=540.0, v_ego=1.0)
+    hca = self._decode_hca(can_sends)
+    self.assertIsNotNone(hca)
+    self.assertLessEqual(hca["Curvature"], self.CCP.CURVATURE_LIMITS.CURVATURE_MAX + 1e-3)
+
+  def test_closed_loop_correction(self):
+    # Verify EPS error is added to the wire-curvature.
+    # Closed-loop term: apply_curvature += (measured - current). Each setUp gives a fresh CC.
+    angle = 10.0
+    v_ego = 20.0
+    self._send(angle, v_ego, measured_curvature=0.01, current_curvature=0.01)
+    no_err = self.CC.apply_curvature_last
+    # Fresh CC for the error case
+    self.CC = CarController({Bus.pt: DBC[self.CP.carFingerprint][Bus.pt]}, self.CP)
+    self._send(angle, v_ego, measured_curvature=0.005, current_curvature=0.01)
+    err = self.CC.apply_curvature_last
+    # Error case: (measured - current) = -0.005 → commanded curvature is lower
+    self.assertLess(err, no_err)
+
+
 class TestId4HCAMessage(unittest.TestCase):
   """The HCA_03 message that hits the wire must encode the right curvature, sign,
   power, and request status. Critical for the EPS to accept the command."""
