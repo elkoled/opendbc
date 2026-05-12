@@ -328,11 +328,12 @@ class CarState(CarStateBase):
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
 
     if self.CP.enableBsm:
-      # Infostufe: BSM LED on, Warnung: BSM LED flashing
-      ret.leftBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or \
-                          bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"])
-      ret.rightBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or \
-                           bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"])
+      # Info: LED solid; Warn: LED flashing. MEB_Side_Assist_01 uses left/right (LHD assumption).
+      ret.leftBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
+                           bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
+      ret.rightBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
+                            bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"]))
+
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
@@ -408,8 +409,6 @@ class CarState(CarStateBase):
     pt_messages = [
       ("Blinkmodi_02", 1),  # variable rate
     ]
-    if CP.enableBsm:
-      pt_messages.append(("MEB_Side_Assist_01", 0))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
