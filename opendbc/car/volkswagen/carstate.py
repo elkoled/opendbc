@@ -329,10 +329,10 @@ class CarState(CarStateBase):
 
     if self.CP.enableBsm:
       # Info: LED solid; Warn: LED flashing. MEB_Side_Assist_01 uses left/right (LHD assumption).
-      ret.leftBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
-                           bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
-      ret.rightBlindspot = (bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
-                            bool(ext_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"]))
+      ret.leftBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
+                           bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
+      ret.rightBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
+                            bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"]))
 
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
