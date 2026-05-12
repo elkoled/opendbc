@@ -6,6 +6,7 @@ from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Plat
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
+from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
 from opendbc.car.vin import Vin
 
@@ -67,6 +68,15 @@ class CarControllerParams:
   ACCEL_MAX = 2.0                          # 2.0 m/s max acceleration
   ACCEL_MIN = -3.5                         # 3.5 m/s max deceleration
 
+  # MEB lateral curvature framework limits (using AngleSteeringLimits with angle_is_curvature=True).
+  # Wire signal stays curvature (rad/m) on HCA_03; this is purely the upstream rate/limit framework.
+  ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
+    0.195,  # Max curvature (rad/m), matches safety VOLKSWAGEN_MEB_MAX_CURVATURE_CAN
+    # Curvature rate limits, must match safety angle_rate_up/down_lookup
+    ([5., 25.], [0.00045, 0.0001]),
+    ([5., 25.], [0.00045, 0.00015]),
+  )
+
   def __init__(self, CP):
     can_define = CANDefine(DBC[CP.carFingerprint][Bus.pt])
 
@@ -107,9 +117,6 @@ class CarControllerParams:
       self.STEERING_POWER_MAX      = 50    # HCA_03 maximum steering power, percentage
       self.STEERING_POWER_MIN      = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP     = 2     # HCA_03 steering power counter steps
-
-      # Curvature limits for MEB lateral control (rad/m)
-      self.CURVATURE_MAX = 0.195
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
