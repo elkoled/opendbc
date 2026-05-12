@@ -305,7 +305,6 @@ class CarState(CarStateBase):
     ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
     ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
     ret.steeringPressed = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
-    # measured curvature (rad/m) consumed by the MEB carcontroller
     self.curvature_meas = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
 
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
@@ -328,7 +327,6 @@ class CarState(CarStateBase):
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
 
     if self.CP.enableBsm:
-      # Info: LED solid; Warn: LED flashing. MEB_Side_Assist_01 uses left/right (LHD assumption).
       ret.leftBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or
                            bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"]))
       ret.rightBlindspot = (bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or
@@ -407,7 +405,7 @@ class CarState(CarStateBase):
   @staticmethod
   def get_can_parsers_meb(CP):
     pt_messages = [
-      ("Blinkmodi_02", 1),  # variable rate
+      ("Blinkmodi_02", 1),
     ]
     if CP.enableBsm:
       pt_messages.append(("MEB_Side_Assist_01", float('nan')))

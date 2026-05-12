@@ -68,11 +68,8 @@ class CarControllerParams:
   ACCEL_MAX = 2.0                          # 2.0 m/s max acceleration
   ACCEL_MIN = -3.5                         # 3.5 m/s max deceleration
 
-  # MEB lateral curvature framework limits (using AngleSteeringLimits with angle_is_curvature=True).
-  # Wire signal stays curvature (rad/m) on HCA_03; this is purely the upstream rate/limit framework.
   ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
-    0.195,  # Max curvature (rad/m), matches safety VOLKSWAGEN_MEB_MAX_CURVATURE_CAN
-    # Curvature rate limits, must match safety angle_rate_up/down_lookup
+    0.195,
     ([5., 25.], [0.00045, 0.0001]),
     ([5., 25.], [0.00045, 0.00015]),
   )
@@ -111,7 +108,7 @@ class CarControllerParams:
 
     elif CP.flags & VolkswagenFlags.MEB:
       self.LDW_STEP = 10                  # LDW_02 message frequency 10Hz
-      self.ACC_HUD_STEP = 6               # unused on MEB (lateral-only) but referenced by long-control branch
+      self.ACC_HUD_STEP = 6
       self.STEER_DRIVER_ALLOWANCE = 60    # Driver torque 0.6 Nm, begin steering reduction from MAX
       self.STEER_DRIVER_MAX = 300         # Driver torque 3.0 Nm, stop steering reduction at MIN
       self.STEERING_POWER_MAX = 50        # HCA_03 maximum steering power, percentage
