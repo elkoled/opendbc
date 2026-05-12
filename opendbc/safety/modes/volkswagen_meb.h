@@ -95,7 +95,8 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
 
-      UPDATE_VEHICLE_SPEED(((fr + rr + rl + fl) / 4 ) * 0.0075 / 3.6);
+      // 4.0 (not 4) so the sum is averaged in float; matches parse_wheel_speeds() within 1e-3 m/s tolerance
+      UPDATE_VEHICLE_SPEED((fr + rr + rl + fl) / 4.0 * 0.0075 / 3.6);
     }
 
     if (msg->addr == MSG_QFK_01) { // we do not need conversion deg to can, same scaling as HCA_03 curvature
