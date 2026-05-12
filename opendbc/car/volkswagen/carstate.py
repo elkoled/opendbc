@@ -340,6 +340,14 @@ class CarState(CarStateBase):
 
     ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
 
+    # Consume blind-spot monitoring info/warning LED states, if available.
+    # MEB_Side_Assist_01 is on PT/Gateway bus on MEB.
+    if self.CP.enableBsm:
+      ret.leftBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or \
+                          bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"])
+      ret.rightBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or \
+                           bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"])
+
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
 
@@ -410,6 +418,8 @@ class CarState(CarStateBase):
     pt_messages = [
       ("Blinkmodi_02", 1),  # variable rate
     ]
+    if CP.enableBsm:
+      pt_messages.append(("MEB_Side_Assist_01", 20))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).cam),
