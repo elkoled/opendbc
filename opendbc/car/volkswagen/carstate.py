@@ -315,7 +315,7 @@ class CarState(CarStateBase):
 
     ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
-    ret.parkingBrake = bool(pt_cp.vl["ESC_50"]["Standstill"])
+    ret.parkingBrake = pt_cp.vl["Gateway_73"]["EPB_Status"] in (1, 4)
     ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
     ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
 
