@@ -55,6 +55,7 @@ class CarController(CarControllerBase):
     self.steering_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
+    self.klr_counter_last = None
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -109,6 +110,17 @@ class CarController(CarControllerBase):
         if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
+
+    # Emergency Assist intervention
+    if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
+      # send capacitive steering wheel touched
+      # propably EA is stock activated only for cars equipped with capacitive steering wheel
+      # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
+      if klr_send_ready:
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
+      self.klr_counter_last = CS.klr_stock_values["COUNTER"]
 
     # **** Acceleration Controls ******************************************** #
 
