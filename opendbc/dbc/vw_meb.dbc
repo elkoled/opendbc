@@ -230,8 +230,9 @@ BO_ 258 ESC_50: 48 XXX
  SG_ Yaw_Rate : 40|14@1+ (0.01,0) [0|16383] "Unit_DegreePerSecond" XXX
  SG_ Yaw_Rate_Sign : 54|1@0+ (1,0) [0|1] "" XXX
  SG_ Regen_Braking : 123|1@1+ (1,0) [0|7] "" XXX
- SG_ Standstill : 171|1@0+ (1,0) [0|1] "" XXX
+ SG_ Motion_State : 171|2@0+ (1,0) [0|1] "" XXX
  SG_ Longitudinal_Speed : 181|10@1+ (0.25,0) [0|255] "Unit_KilometerPerHour" XXX
+ SG_ EPB_Status : 317|3@1+ (1,0) [0|7] "" XXX
 
 BO_ 261 VMM_01: 8 XXX
  SG_ CRC : 0|8@1+ (1,0) [0|255] "" XXX
@@ -2222,6 +2223,8 @@ VAL_ 253 EDS_Eingriff 0 "kein_EDS_Eingriff" 1 "EDS_Eingriff";
 VAL_ 253 ESP_Eingriff 0 "kein_ESP_Eingriff" 1 "ESP_Eingriff_aktiv";
 VAL_ 253 ESP_ASP 0 "inaktiv" 1 "aktiv";
 VAL_ 253 ESC_Neutralschaltung 0 "keine_Anforderung" 1 "Neutralschaltung_angefordert";
+VAL_ 258 Motion_State 1 "Forwards" 2 "Reversing" 3 "Stopped";
+VAL_ 258 EPB_Status 0 "offen" 1 "geschlossen_Parken" 2 "teilgespannt_Halten" 3 "im_Lauf_oeffnen" 4 "im_Lauf_schliessen" 5 "tbd" 6 "Init" 7 "unbekannt";
 VAL_ 267 TSK_Status 0 "init" 1 "disabled" 2 "enabled" 3 "regulating" 4 "accel_pedal_override" 5 "brake_only" 6 "temp_fault" 7 "perm_fault";
 VAL_ 278 ESP_QBit_Wegimpuls_VL 0 "gueltiger_Wert" 1 "Ersatz_Init_oder_Fehlerwert";
 VAL_ 278 ESP_QBit_Wegimpuls_VR 0 "gueltiger_Wert" 1 "Ersatz_Init_oder_Fehlerwert";
