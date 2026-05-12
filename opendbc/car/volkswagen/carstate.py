@@ -292,7 +292,6 @@ class CarState(CarStateBase):
   def update_meb(self, pt_cp, cam_cp, ext_cp) -> structs.CarState:
     ret = structs.CarState()
 
-    # Update vehicle speed and acceleration from ABS wheel speeds.
     self.parse_wheel_speeds(ret,
       pt_cp.vl["ESC_51"]["VL_Radgeschw"],
       pt_cp.vl["ESC_51"]["VR_Radgeschw"],
@@ -303,52 +302,43 @@ class CarState(CarStateBase):
 
     # Update EPS position and state info. For signed values, VW sends the sign in a separate signal.
     ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
-    ret.steeringRateDeg  = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
-    ret.steeringTorque   = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
+    ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
+    ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE, 5)
-    # MEB measured curvature (rad/m), stored on CarState instance for the carcontroller
+    # measured curvature (rad/m) consumed by the MEB carcontroller
     self.curvature_meas = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
-
-    # Gear: MEB ID.4 uses Getriebe_11
-    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Getriebe_11"]["GE_Fahrstufe"], None))
 
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status)
 
-    self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
+    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Getriebe_11"]["GE_Fahrstufe"], None))
 
-    ret.gasPressed   = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
+    ret.gasPressed = pt_cp.vl["Motor_51"]["Accel_Pedal_Pressure"] > 0
     ret.brakePressed = bool(pt_cp.vl["Motor_14"]["MO_Fahrer_bremst"])
-
-    # ESC_50 standstill bit; EPB_Status not present in upstream vw_meb DBC
     ret.parkingBrake = bool(pt_cp.vl["ESC_50"]["Standstill"])
-
-    # door open / seatbelt: use ZV_02 (1411) and Airbag_02 if present, else default to safe
     ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
-
-    self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
+    ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
-    ret.cruiseState.enabled   = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
-    ret.accFaulted            = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
+    ret.cruiseState.enabled = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
+    ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
+    ret.accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
 
     ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
 
-    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
-    self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
-
-    ret.espDisabled = bool(pt_cp.vl["ESP_21"]["ESP_Tastung_passiv"])
-
-    # Consume blind-spot monitoring info/warning LED states, if available.
-    # MEB_Side_Assist_01 is on PT/Gateway bus on MEB.
     if self.CP.enableBsm:
+      # Infostufe: BSM LED on, Warnung: BSM LED flashing
       ret.leftBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Left"]) or \
                           bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Left"])
       ret.rightBlindspot = bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Info_Right"]) or \
                            bool(pt_cp.vl["MEB_Side_Assist_01"]["Blind_Spot_Warn_Right"])
 
-    ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
+    self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
+    self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
+    self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
+
+    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
 
     self.frame += 1
