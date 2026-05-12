@@ -38,6 +38,8 @@ def is_steering_msg(mode, param, addr):
     ret = addr == 0x120
   elif mode == CarParams.SafetyModel.tesla:
     ret = addr == 0x488
+  elif mode == CarParams.SafetyModel.volkswagenMeb:
+    ret = addr == 0x303  # HCA_03
   return ret
 
 
