@@ -4,7 +4,7 @@ from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.volkswagen import mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen import mlbcan, mqbcan, pqcan, mebcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -45,10 +45,14 @@ class CarController(CarControllerBase):
       self.CCS = pqcan
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
     else:
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
+    self.apply_curvature_last = 0.
+    self.steering_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
 
@@ -60,15 +64,36 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
-      apply_torque = 0
-      if CC.latActive:
-        new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
-        apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
+      if self.CP.flags & VolkswagenFlags.MEB:
+        if CC.latActive:
+          hca_enabled = True
+          apply_curvature = actuators.curvature + (CS.steering_curvature - CC.currentCurvature)
+          apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+          steering_power = self.CCP.STEERING_POWER_MAX
+        else:
+          if self.steering_power_last > 0:
+            hca_enabled = True
+            apply_curvature = float(np.clip(CS.steering_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+            steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
+          else:
+            hca_enabled = False
+            apply_curvature = 0.
+            steering_power = 0
 
-      apply_torque = self.hca_mitigation.update(apply_torque, self.apply_torque_last)
-      hca_enabled = apply_torque != 0
-      self.apply_torque_last = apply_torque
-      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_torque, hca_enabled))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
+        self.apply_curvature_last = apply_curvature
+        self.steering_power_last = steering_power
+        apply_torque = 0
+      else:
+        apply_torque = 0
+        if CC.latActive:
+          new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
+          apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
+
+        apply_torque = self.hca_mitigation.update(apply_torque, self.apply_torque_last)
+        hca_enabled = apply_torque != 0
+        self.apply_torque_last = apply_torque
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_torque, hca_enabled))
 
       if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
@@ -102,8 +127,12 @@ class CarController(CarControllerBase):
       hud_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
-      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
-                                                       CS.out.steeringPressed, hud_alert, hud_control))
+      if self.CP.flags & VolkswagenFlags.MEB:
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control, 0))
+      else:
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control))
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       lead_distance = 0
@@ -126,6 +155,7 @@ class CarController(CarControllerBase):
     new_actuators = actuators.as_builder()
     new_actuators.torque = self.apply_torque_last / self.CCP.STEER_MAX
     new_actuators.torqueOutputCan = self.apply_torque_last
+    new_actuators.curvature = float(self.apply_curvature_last)
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.frame += 1

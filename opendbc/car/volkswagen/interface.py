@@ -33,6 +33,21 @@ class CarInterface(CarInterfaceBase):
 
       ret.dashcamOnly = is_release  # Release support needs HCA timeout fix, safety validation
 
+    elif ret.flags & VolkswagenFlags.MEB:
+      safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerAtStandstill = True
+
+      if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, QFK_01
+        ret.networkLocation = NetworkLocation.gateway
+      else:
+        ret.networkLocation = NetworkLocation.fwdCamera
+
+      if 0x30B in fingerprint[0]:  # Kombi_01
+        ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
+
     elif ret.flags & VolkswagenFlags.MLB:
       # Set global MLB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMlb)]
@@ -68,6 +83,13 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ or ret.flags & VolkswagenFlags.MLB:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    elif ret.flags & VolkswagenFlags.MEB:
+      ret.steerActuatorDelay = 0.3
+      ret.lateralTuning.pid.kpBP = [0.]
+      ret.lateralTuning.pid.kiBP = [0.]
+      ret.lateralTuning.pid.kf = 0.00006
+      ret.lateralTuning.pid.kpV = [0.6]
+      ret.lateralTuning.pid.kiV = [0.2]
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
@@ -78,8 +100,8 @@ class CarInterface(CarInterfaceBase):
 
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
-    ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs
-    if alpha_long:
+    ret.alphaLongitudinalAvailable = (ret.networkLocation == NetworkLocation.gateway or docs) and not (ret.flags & VolkswagenFlags.MEB)
+    if alpha_long and ret.alphaLongitudinalAvailable:
       # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
       ret.openpilotLongitudinalControl = True
       safety_configs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
