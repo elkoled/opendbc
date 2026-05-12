@@ -44,7 +44,10 @@ class CarInterface(CarInterfaceBase):
       # Set global MEB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
       ret.transmissionType = TransmissionType.direct
-      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      # HCA_03 wire signal is curvature, but openpilot drives it as an angle car (Ford pattern).
+      # The numeric value flowing through carcontroller is curvature in rad/m; the safety
+      # validates the same curvature on the wire, so openpilot and safety stay 1:1 aligned.
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
       ret.steerAtStandstill = True
       ret.enableBsm = 0x24C in fingerprint[2]  # MEB_Side_Assist_01
 
