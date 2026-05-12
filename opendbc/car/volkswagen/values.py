@@ -6,7 +6,7 @@ from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Plat
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
-from opendbc.car.lateral import AngleSteeringLimits
+from opendbc.car.lateral import AngleSteeringLimits, CurvatureSteeringLimits
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
 from opendbc.car.vin import Vin
 
@@ -68,10 +68,8 @@ class CarControllerParams:
   ACCEL_MAX = 2.0                          # 2.0 m/s max acceleration
   ACCEL_MIN = -3.5                         # 3.5 m/s max deceleration
 
-  ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
-    0.195,
-    ([5., 10., 25.], [0.004, 0.001, 0.00016]),
-    ([5., 10., 25.], [0.004, 0.001, 0.00016]),
+  CURVATURE_LIMITS: CurvatureSteeringLimits = CurvatureSteeringLimits(
+    0.195,  # Max curvature for steering command, m^-1
   )
 
   def __init__(self, CP):
