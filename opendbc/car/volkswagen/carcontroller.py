@@ -67,7 +67,13 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
-        curvature_target = float(actuators.curvature) + (CS.curvature_meas - CC.currentCurvature) if CC.latActive else 0.0
+        steer_max = CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX
+        if CC.latActive:
+          curvature_target = float(actuators.curvature) + (CS.curvature_meas - CC.currentCurvature)
+        elif self.steering_power_last > 0:
+          curvature_target = float(np.clip(CS.curvature_meas, -steer_max, steer_max))
+        else:
+          curvature_target = 0.0
         apply_curvature = apply_std_steer_angle_limits(curvature_target, self.apply_curvature_last, CS.out.vEgoRaw,
                                                        CS.out.steeringAngleDeg, True, CarControllerParams.ANGLE_LIMITS)
         self.apply_curvature_last = apply_curvature
@@ -80,7 +86,7 @@ class CarController(CarControllerBase):
           step = self.CCP.STEERING_POWER_STEP
           steering_power = min(max(target_power, self.steering_power_last - step, self.CCP.STEERING_POWER_MIN),
                                self.steering_power_last + step, self.CCP.STEERING_POWER_MAX)
-        elif self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
+        elif self.steering_power_last > 0:
           hca_enabled = True
           steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
         else:

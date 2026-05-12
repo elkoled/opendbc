@@ -105,18 +105,47 @@ class TestMEBLateral(unittest.TestCase):
         self.assertEqual(int(decoded["Curvature_VZ"]), 1 if cmd > 0 else 0)
         self.assertEqual(int(decoded["RequestStatus"]), 4)  # HCA enabled
 
-  # (b2) Rate-limit test (Ford-style): a fast step is rate-limited frame-to-frame.
+  # (b2) Rate-limit test: per-frame |delta| matches the BP/V interpolation at multiple speeds.
   def test_curvature_rate_limit(self):
     """A large step in commanded curvature is limited by ANGLE_RATE_LIMIT_UP per send cycle."""
+    rate_up = CarControllerParams.ANGLE_LIMITS.ANGLE_RATE_LIMIT_UP
+    for v in (5.0, 10.0, 25.0):
+      with self.subTest(v=v):
+        inst = self.CI(self.cp)
+        CS = _make_carstate(inst, vEgo=v)
+        CC = _build_cc(latActive=True, curvature=0.1)
+        new_act, _ = inst.CC.update(CC, CS, 0)
+        expected_step = float(np.interp(v, rate_up[0], rate_up[1]))
+        self.assertLessEqual(abs(new_act.curvature), expected_step * 1.05)
+        self.assertGreater(abs(new_act.curvature), expected_step * 0.5)
+
+  def test_wind_down_syncs_to_measured(self):
+    """latActive=False with steering_power_last>0 ramps curvature toward CS.curvature_meas, not 0."""
     inst = self.CI(self.cp)
-    CS = _make_carstate(inst, vEgo=10.0)
-    CC = _build_cc(latActive=True, curvature=0.1)
-    # First send cycle aligned to STEER_STEP=2
-    new_act, _ = inst.CC.update(CC, CS, 0)
+    # Prime: ramp steering_power up while active
+    CS_on = _make_carstate(inst, vEgo=10.0)
+    CC_on = _build_cc(latActive=True, curvature=0.0)
+    for _ in range(50):
+      inst.CC.update(CC_on, CS_on, 0)
+    self.assertGreater(inst.CC.steering_power_last, 0)
+
+    # Switch to inactive; measured curvature is +0.05 — output should move toward it.
+    CS_off = _make_carstate(inst, vEgo=10.0, curvature_meas=0.05)
+    CC_off = _build_cc(latActive=False, curvature=0.0)
+    prior = inst.CC.apply_curvature_last
+    new_act, sends = inst.CC.update(CC_off, CS_off, 0)
+    # Moved toward +0.05, not toward 0, and not held at prior
+    self.assertGreater(new_act.curvature, prior)
+    self.assertGreater(new_act.curvature, 0.0)
+    # Still rate-limited
     rate_up = CarControllerParams.ANGLE_LIMITS.ANGLE_RATE_LIMIT_UP
     expected_step = float(np.interp(10.0, rate_up[0], rate_up[1]))
-    self.assertLessEqual(abs(new_act.curvature), expected_step + 1e-9)
-    self.assertGreater(abs(new_act.curvature), 0.0)
+    self.assertLessEqual(new_act.curvature - prior, expected_step * 1.05)
+    # HCA must still be enabled during wind-down (RequestStatus=4)
+    hca = next((m for m in sends if m[0] == HCA_03_ADDR), None)
+    self.assertIsNotNone(hca)
+    decoded = _decode(HCA_03_ADDR, hca[1], ["RequestStatus"])
+    self.assertEqual(int(decoded["RequestStatus"]), 4)
 
   # (c) Steering power ramp test
   def test_steering_power_ramp_up_and_down(self):

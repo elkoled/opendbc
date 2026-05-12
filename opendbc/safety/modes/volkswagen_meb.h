@@ -48,12 +48,12 @@ static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = VOLKSWAGEN_MEB_MAX_CURVATURE_CAN,
   .angle_deg_to_can = VOLKSWAGEN_MEB_CURVATURE_TO_CAN,
   .angle_rate_up_lookup = {
-    {5., 25., 25.},
-    {0.00045, 0.0001, 0.0001},
+    {5., 10., 25.},
+    {0.004, 0.001, 0.00016},
   },
   .angle_rate_down_lookup = {
-    {5., 25., 25.},
-    {0.00045, 0.00015, 0.00015},
+    {5., 10., 25.},
+    {0.004, 0.001, 0.00016},
   },
   .angle_is_curvature = true,
   .inactive_angle_is_zero = true,
