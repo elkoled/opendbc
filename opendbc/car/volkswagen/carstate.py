@@ -322,7 +322,7 @@ class CarState(CarStateBase):
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
-    ret.accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
+    ret.accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7) and drive_mode
 
     ret.leftBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
     ret.rightBlinker = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
