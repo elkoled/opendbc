@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
@@ -75,7 +75,12 @@ class CarController(CarControllerBase):
           # Close the loop on commanded vs. measured curvature so the EPS rack tracks our intent
           # instead of its own model's interpretation.
           apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
-          apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+          # Enforce same ISO jerk + accel + absolute max as opendbc/safety/modes/volkswagen_meb.h
+          # so panda safety never has to reject our HCA_03 message.
+          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last,
+                                                       CS.out.vEgoRaw, CS.measured_curvature,
+                                                       CS.out.steeringPressed, self.CCP.STEER_STEP,
+                                                       CC.latActive, self.CCP.CURVATURE_LIMITS)
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)

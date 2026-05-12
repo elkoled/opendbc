@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum, IntFlag, StrEnum
 
 from opendbc.car import Bus, CanBusBase, CarSpecs, DbcDict, PlatformConfig, Platforms, structs, uds
+from opendbc.car.lateral import CurvatureSteeringLimits
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
@@ -105,6 +106,7 @@ class CarControllerParams:
       self.STEERING_POWER_MIN  = 4     # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP = 2     # HCA_03 steering power counter steps
       self.CURVATURE_MAX       = 0.195 # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
+      self.CURVATURE_LIMITS    = CurvatureSteeringLimits(self.CURVATURE_MAX)  # used by apply_std_curvature_limits
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
