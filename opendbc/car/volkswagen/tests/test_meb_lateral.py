@@ -1,9 +1,11 @@
 import unittest
 
+import numpy as np
+
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.car_helpers import interfaces
-from opendbc.car.volkswagen.values import CAR, DBC
+from opendbc.car.volkswagen.values import CAR, CarControllerParams, DBC
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
@@ -11,10 +13,12 @@ HCA_03_ADDR = 771
 LDW_02_ADDR = 919
 
 
-def _make_carstate(CC_inst, vEgo=10.0, steeringTorque=0.0, curvature_meas=0.0):
+def _make_carstate(CC_inst, vEgo=10.0, steeringTorque=0.0, curvature_meas=0.0, steeringAngleDeg=0.0):
   CS = CC_inst.CS
   CS.out = structs.CarState()
   CS.out.vEgo = vEgo
+  CS.out.vEgoRaw = vEgo
+  CS.out.steeringAngleDeg = float(steeringAngleDeg)
   CS.out.steeringTorque = float(steeringTorque)
   CS.out.steeringPressed = abs(steeringTorque) > CC_inst.CC.CCP.STEER_DRIVER_ALLOWANCE
   CS.curvature_meas = float(curvature_meas)
@@ -75,22 +79,44 @@ class TestMEBLateral(unittest.TestCase):
 
   # (b) Curvature clip / saturation test
   def test_curvature_clip_and_encoding(self):
-    """Out-of-range commanded curvature is clipped to ±CURVATURE_MAX in actuators and on the wire."""
+    """Out-of-range commanded curvature ramps via the angle framework and saturates at ±STEER_ANGLE_MAX."""
+    cmax = CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX
     for cmd in (+0.5, -0.5):
       with self.subTest(cmd=cmd):
         inst = self.CI(self.cp)
-        CS = _make_carstate(inst)
+        CS = _make_carstate(inst, vEgo=10.0)
         CC = _build_cc(latActive=True, curvature=cmd)
-        new_act, sends = inst.CC.update(CC, CS, 0)
+        new_act = None
+        last_hca = None
+        # Run long enough for the rate-limited curvature to saturate at the max
+        for _ in range(2000):
+          new_act, sends = inst.CC.update(CC, CS, 0)
+          for m in sends:
+            if m[0] == HCA_03_ADDR:
+              last_hca = m
 
-        self.assertAlmostEqual(abs(new_act.curvature), self.CCP.CURVATURE_MAX, places=4)
+        self.assertAlmostEqual(abs(new_act.curvature), cmax, places=4)
         self.assertEqual(new_act.curvature > 0, cmd > 0)
 
-        hca = next(s for s in sends if s[0] == HCA_03_ADDR)
+        hca = last_hca
+        self.assertIsNotNone(hca)
         decoded = _decode(HCA_03_ADDR, hca[1], ["Curvature", "Curvature_VZ", "RequestStatus"])
-        self.assertAlmostEqual(decoded["Curvature"], self.CCP.CURVATURE_MAX, places=3)
+        self.assertAlmostEqual(decoded["Curvature"], cmax, places=3)
         self.assertEqual(int(decoded["Curvature_VZ"]), 1 if cmd > 0 else 0)
         self.assertEqual(int(decoded["RequestStatus"]), 4)  # HCA enabled
+
+  # (b2) Rate-limit test (Ford-style): a fast step is rate-limited frame-to-frame.
+  def test_curvature_rate_limit(self):
+    """A large step in commanded curvature is limited by ANGLE_RATE_LIMIT_UP per send cycle."""
+    inst = self.CI(self.cp)
+    CS = _make_carstate(inst, vEgo=10.0)
+    CC = _build_cc(latActive=True, curvature=0.1)
+    # First send cycle aligned to STEER_STEP=2
+    new_act, _ = inst.CC.update(CC, CS, 0)
+    rate_up = CarControllerParams.ANGLE_LIMITS.ANGLE_RATE_LIMIT_UP
+    expected_step = float(np.interp(10.0, rate_up[0], rate_up[1]))
+    self.assertLessEqual(abs(new_act.curvature), expected_step + 1e-9)
+    self.assertGreater(abs(new_act.curvature), 0.0)
 
   # (c) Steering power ramp test
   def test_steering_power_ramp_up_and_down(self):

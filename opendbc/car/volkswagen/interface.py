@@ -44,7 +44,7 @@ class CarInterface(CarInterfaceBase):
       # Set global MEB parameters
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
       ret.transmissionType = TransmissionType.direct
-      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
       ret.steerAtStandstill = True
 
       if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, QFK_01
@@ -84,12 +84,6 @@ class CarInterface(CarInterfaceBase):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     elif ret.flags & VolkswagenFlags.MEB:
       ret.steerActuatorDelay = 0.3
-      # MEB lateral uses curvature control directly; provide nominal PID values to satisfy validation
-      ret.lateralTuning.pid.kpBP = [0.]
-      ret.lateralTuning.pid.kiBP = [0.]
-      ret.lateralTuning.pid.kf = 1.
-      ret.lateralTuning.pid.kpV = [0.]
-      ret.lateralTuning.pid.kiV = [0.]
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
