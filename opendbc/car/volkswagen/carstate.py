@@ -14,12 +14,13 @@ class CarState(CarStateBase):
     self.frame = 0
     self.eps_init_complete = False
     self.CCP = CarControllerParams(CP)
+    self.params = self.CCP
     self.button_states = {button.event_type: False for button in self.CCP.BUTTONS}
     self.esp_hold_confirmation = False
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
     self.acc_type = 0
-    self.steering_curvature_measured = 0.
+    self.measured_curvature = 0.
 
   def update_button_enable(self, buttonEvents: list[structs.CarState.ButtonEvent]):
     if not self.CP.pcmCruise:
@@ -250,8 +251,8 @@ class CarState(CarStateBase):
     ret.steeringAngleDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradwinkel"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradwinkel"])]
     ret.steeringRateDeg  = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
     ret.steeringTorque   = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
-    ret.steeringPressed  = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
-    self.steering_curvature_measured = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
+    ret.steeringPressed  = self.update_steering_pressed(abs(ret.steeringTorque) > self.params.STEER_THRESHOLD, 5)
+    self.measured_curvature = -pt_cp.vl["QFK_01"]["Curvature"] * (1, -1)[int(pt_cp.vl["QFK_01"]["Curvature_VZ"])]
 
     # Update gear position
     ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(pt_cp.vl["Getriebe_11"]["GE_Fahrstufe"], None))
@@ -276,6 +277,13 @@ class CarState(CarStateBase):
 
     # Update seatbelt fastened status.
     ret.seatbeltUnlatched = pt_cp.vl["Airbag_02"]["AB_Gurtschloss_FA"] != 3
+
+    # Consume blind-spot monitoring info/warning LED states (LHD only — left = driver).
+    # Infostufe: BSM LED on, Warnung: BSM LED flashing.
+    if self.CP.enableBsm:
+      bsm = ext_cp.vl["MEB_Side_Assist_01"]
+      ret.leftBlindspot  = bool(bsm["Blind_Spot_Info_Driver"]) or bool(bsm["Blind_Spot_Warn_Driver"])
+      ret.rightBlindspot = bool(bsm["Blind_Spot_Info_Passenger"]) or bool(bsm["Blind_Spot_Warn_Passenger"])
 
     # Cruise state from TSK
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
