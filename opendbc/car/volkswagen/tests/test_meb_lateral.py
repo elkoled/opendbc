@@ -80,7 +80,7 @@ class TestMEBLateral(unittest.TestCase):
   # (b) Curvature clip / saturation test
   def test_curvature_clip_and_encoding(self):
     """Out-of-range commanded curvature ramps via the angle framework and saturates at ±STEER_ANGLE_MAX."""
-    cmax = CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX / CarControllerParams.MEB_RAD_TO_DEG
+    cmax = CarControllerParams.CURVATURE_LIMITS.CURVATURE_MAX
     # Use low vEgo so the lateral-accel envelope (~3.6/v^2) does not clip below CURVATURE_MAX.
     for cmd in (+0.5, -0.5):
       with self.subTest(cmd=cmd):
@@ -108,18 +108,15 @@ class TestMEBLateral(unittest.TestCase):
 
   # (b2) Rate-limit test: per-frame |delta| matches the BP/V interpolation at multiple speeds.
   def test_curvature_rate_limit(self):
-    """A large step in commanded curvature is limited by the VM jerk envelope per send cycle."""
-    from opendbc.car import DT_CTRL
+    """A large step in commanded curvature is limited by apply_std_curvature_limits jerk per send cycle."""
+    from opendbc.car.lateral import get_max_curvature_jerk
     for v in (5.0, 10.0, 25.0):
       with self.subTest(v=v):
         inst = self.CI(self.cp)
         CS = _make_carstate(inst, vEgo=v)
         CC = _build_cc(latActive=True, curvature=0.1)
         new_act, _ = inst.CC.update(CC, CS, 0)
-        # Stub VM (slip=0, sR=1, wb=1) → identity curvature factor: max delta per send
-        # equals MAX_LATERAL_JERK / v^2 * DT_CTRL * STEER_STEP (in curvature units).
-        ccp = CarControllerParams
-        expected_step = ccp.ANGLE_LIMITS.MAX_LATERAL_JERK / (max(v, 1.0) ** 2) * DT_CTRL * ccp.STEER_STEP
+        expected_step = get_max_curvature_jerk(v, CarControllerParams.STEER_STEP)
         self.assertLessEqual(abs(new_act.curvature), expected_step * 1.05)
         self.assertGreater(abs(new_act.curvature), expected_step * 0.5)
 
@@ -298,7 +295,6 @@ class TestMEBSafetyOracle(unittest.TestCase):
     CS = _make_carstate(self.inst, vEgo=15.0)
 
     # Walk through randomized requested curvatures + measured curvatures
-    sends_us = 0
     for step in range(500):
       v = float(rng.uniform(2.0, 30.0))
       cmd = float(rng.uniform(-0.25, 0.25))
@@ -312,17 +308,9 @@ class TestMEBSafetyOracle(unittest.TestCase):
       CC = _build_cc(latActive=lat_active, curvature=cmd)
       _, sends = self.inst.CC.update(CC, CS, 0)
 
-      # Feed safety the wheel speed so steer_angle_cmd_checks_vm sees the same v_ego
-      val = int(v * 3.6 / 0.0075)
-      esc = self.libsafety_py.make_CANPacket(0xFC, 0, bytes(8) + val.to_bytes(2, 'little') * 4)
-      self.safety.safety_rx_hook(esc)
-
       for addr, dat, _bus in sends:
         if addr != HCA_03_ADDR:
           continue
-        # advance timer 20ms per HCA frame so the rt_angle limit window resets correctly
-        sends_us += 20000
-        self.safety.set_timer(sends_us)
         pkt = self._raw_hca_to_safety_packet(dat, addr)
         accepted = self.safety.safety_tx_hook(pkt)
         self.assertTrue(accepted, f"safety rejected HCA_03 at step {step}: cmd={cmd:.4f} meas={meas:.4f} lat={lat_active}")
