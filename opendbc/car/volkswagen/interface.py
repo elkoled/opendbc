@@ -54,6 +54,9 @@ class CarInterface(CarInterfaceBase):
 
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
 
+      if 0x25D in fingerprint[0]:  # KLR_01
+        ret.flags |= VolkswagenFlags.STOCK_KLR_PRESENT.value
+
       ret.dashcamOnly = is_release
 
     else:

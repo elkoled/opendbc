@@ -5,7 +5,7 @@ import numpy as np
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.car_helpers import interfaces
-from opendbc.car.volkswagen.values import CAR, CarControllerParams, DBC
+from opendbc.car.volkswagen.values import CAR, CarControllerParams, DBC, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
@@ -311,6 +311,70 @@ class TestMEBSafetyOracle(unittest.TestCase):
       "Curvature": 0.05, "Curvature_VZ": 1, "Power": 0, "RequestStatus": 2, "HighSendRate": 0,
     })
     self.assertFalse(self.safety.safety_tx_hook(self._raw_hca_to_safety_packet(dat, addr)))
+
+
+KLR_01_ADDR = 0x25D
+
+
+class TestMEBEmergencyAssist(unittest.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    cls.CI = interfaces[CAR.VOLKSWAGEN_ID4_MK1.value]
+
+  def _make_cp(self, klr_present):
+    fingerprint = {i: {} for i in range(8)}
+    if klr_present:
+      fingerprint[0][0x25D] = 8  # KLR_01
+    return self.CI.get_params(CAR.VOLKSWAGEN_ID4_MK1.value, fingerprint,
+                              [], alpha_long=False, is_release=False, docs=False)
+
+  def _make_cs(self, inst, counter):
+    CS = _make_carstate(inst, vEgo=10.0)
+    CS.klr_stock_values = {
+      "COUNTER": counter,
+      "KLR_Touchintensitaet_1": 0,
+      "KLR_Touchintensitaet_2": 0,
+      "KLR_Touchintensitaet_3": 0,
+      "KLR_Touchauswertung": 0,
+    }
+    return CS
+
+  def test_klr_flag_set_from_fingerprint(self):
+    cp = self._make_cp(klr_present=True)
+    self.assertTrue(cp.flags & VolkswagenFlags.STOCK_KLR_PRESENT)
+
+  def test_klr_flag_not_set_without_fingerprint(self):
+    cp = self._make_cp(klr_present=False)
+    self.assertFalse(cp.flags & VolkswagenFlags.STOCK_KLR_PRESENT)
+
+  def test_klr_tx_with_flag(self):
+    cp = self._make_cp(klr_present=True)
+    inst = self.CI(cp)
+    CC = _build_cc(latActive=True)
+    CS = self._make_cs(inst, counter=3)
+    _, sends = inst.CC.update(CC, CS, 0)
+    # two frames (cam + pt) on first send
+    klr_frames = [m for m in sends if m[0] == KLR_01_ADDR]
+    self.assertEqual(len(klr_frames), 2)
+    # second update with same counter -> no new send
+    _, sends = inst.CC.update(CC, CS, 0)
+    klr_frames = [m for m in sends if m[0] == KLR_01_ADDR]
+    self.assertEqual(len(klr_frames), 0)
+    # counter advances -> send again
+    CS.klr_stock_values["COUNTER"] = 4
+    _, sends = inst.CC.update(CC, CS, 0)
+    klr_frames = [m for m in sends if m[0] == KLR_01_ADDR]
+    self.assertEqual(len(klr_frames), 2)
+
+  def test_klr_no_tx_without_flag(self):
+    cp = self._make_cp(klr_present=False)
+    inst = self.CI(cp)
+    CC = _build_cc(latActive=True)
+    CS = _make_carstate(inst, vEgo=10.0)
+    for _ in range(10):
+      _, sends = inst.CC.update(CC, CS, 0)
+      klr_frames = [m for m in sends if m[0] == KLR_01_ADDR]
+      self.assertEqual(len(klr_frames), 0)
 
 
 if __name__ == "__main__":

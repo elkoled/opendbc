@@ -10,6 +10,7 @@ MSG_ESC_51 = 0xFC       # RX from ABS, for wheel speeds
 MSG_Motor_51 = 0x10B    # RX from ECU, for ACC status / accel pedal
 MSG_GRA_ACC_01 = 0x12B  # TX by OP, ACC control buttons for cancel/resume
 MSG_QFK_01 = 0x13D
+MSG_KLR_01 = 0x25D      # TX by OP, capacitive steering wheel touch
 MSG_HCA_03 = 0x303
 MSG_LDW_02 = 0x397      # TX by OP, Lane line recognition and text alerts
 MSG_MOTOR_14 = 0x3BE
@@ -17,9 +18,10 @@ MSG_MOTOR_14 = 0x3BE
 
 class TestVolkswagenMebStockSafety(common.CarSafetyTest):
   STANDSTILL_THRESHOLD = 0
-  RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02)}
-  FWD_BLACKLISTED_ADDRS = {2: [MSG_HCA_03, MSG_LDW_02]}
-  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_GRA_ACC_01, 0], [MSG_GRA_ACC_01, 2]]
+  RELAY_MALFUNCTION_ADDRS = {0: (MSG_HCA_03, MSG_LDW_02), 2: (MSG_KLR_01,)}
+  FWD_BLACKLISTED_ADDRS = {0: [MSG_KLR_01], 2: [MSG_HCA_03, MSG_LDW_02]}
+  TX_MSGS = [[MSG_HCA_03, 0], [MSG_LDW_02, 0], [MSG_GRA_ACC_01, 0], [MSG_GRA_ACC_01, 2],
+             [MSG_KLR_01, 0], [MSG_KLR_01, 2]]
 
   def setUp(self):
     self.packer = CANPackerSafety("vw_meb")
