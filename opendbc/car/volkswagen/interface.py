@@ -46,8 +46,7 @@ class CarInterface(CarInterfaceBase):
 
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
-      # Route aebd8f1d4ea16066/00000009--b31e222338 reports curvatureDEPRECATED
-      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
       ret.steerAtStandstill = True
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release
