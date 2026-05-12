@@ -66,9 +66,6 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
-        # MEB sends curvature on HCA_03; rate-limit through the angle framework
-        # (angle_is_curvature=True) so openpilot's output stays byte-for-byte
-        # aligned with the panda safety check.
         curvature_target = float(actuators.curvature) + (CS.curvature_meas - CC.currentCurvature) if CC.latActive else 0.0
         apply_curvature = apply_std_steer_angle_limits(curvature_target, self.apply_curvature_last, CS.out.vEgoRaw,
                                                        CS.out.steeringAngleDeg, True, CarControllerParams.ANGLE_LIMITS)
@@ -79,12 +76,10 @@ class CarController(CarControllerBase):
           target_power_driver = float(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
                                                                        [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
-          # ramp at most STEERING_POWER_STEP per cycle, bounded by [MIN, MAX]
           step = self.CCP.STEERING_POWER_STEP
           steering_power = min(max(target_power, self.steering_power_last - step, self.CCP.STEERING_POWER_MIN),
                                self.steering_power_last + step, self.CCP.STEERING_POWER_MAX)
-        elif self.steering_power_last > 0:
-          # keep HCA alive while we ramp steering power down to zero
+        elif self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
           hca_enabled = True
           steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
         else:

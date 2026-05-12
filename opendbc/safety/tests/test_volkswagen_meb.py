@@ -9,10 +9,10 @@ MSG_LH_EPS_03 = 0x9F    # RX from EPS, for driver steering torque
 MSG_ESC_51 = 0xFC       # RX from ABS, for wheel speeds
 MSG_Motor_51 = 0x10B    # RX from ECU, for ACC status / accel pedal
 MSG_GRA_ACC_01 = 0x12B  # TX by OP, ACC control buttons for cancel/resume
-MSG_QFK_01 = 0x13D      # RX from EPS, for steering curvature
-MSG_HCA_03 = 0x303      # TX by OP, Heading Control Assist curvature
+MSG_QFK_01 = 0x13D
+MSG_HCA_03 = 0x303
 MSG_LDW_02 = 0x397      # TX by OP, Lane line recognition and text alerts
-MSG_MOTOR_14 = 0x3BE    # RX from ECU, for brake switch status
+MSG_MOTOR_14 = 0x3BE
 
 
 class TestVolkswagenMebStockSafety(common.CarSafetyTest):
@@ -29,7 +29,6 @@ class TestVolkswagenMebStockSafety(common.CarSafetyTest):
 
   # Wheel speeds
   def _speed_msg(self, speed):
-    # speed is m/s; ESC_51 wheel speeds use 0.0075 / 3.6 m/s per LSB based on safety hook
     val = int(speed * 3.6 / 0.0075)
     values = {f"{s}_Radgeschw": val for s in ["VL", "VR", "HL", "HR"]}
     return self.packer.make_can_msg_safety("ESC_51", 0, values)
@@ -39,7 +38,6 @@ class TestVolkswagenMebStockSafety(common.CarSafetyTest):
     return self.packer.make_can_msg_safety("Motor_14", 0, values)
 
   def _user_gas_msg(self, gas):
-    # Gas and TSK share Motor_51; assume cruise stays engaged when gas tests run
     values = {"Accel_Pedal_Pressure": 1 if gas else 0, "TSK_Status": 3}
     return self.packer.make_can_msg_safety("Motor_51", 0, values)
 
@@ -52,7 +50,6 @@ class TestVolkswagenMebStockSafety(common.CarSafetyTest):
     return self.packer.make_can_msg_safety("GRA_ACC_01", bus, values)
 
   def _hca_03_msg(self, curvature, steer_req=True):
-    # Curvature in rad/m
     values = {
       "Curvature": abs(curvature),
       "Curvature_VZ": 1 if curvature > 0 else 0,

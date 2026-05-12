@@ -4,19 +4,16 @@
 #include "opendbc/safety/modes/volkswagen_common.h"
 
 #define MSG_ESC_51           0xFCU    // RX, for wheel speeds
-#define MSG_HCA_03           0x303U   // TX by OP, Heading Control Assist curvature
-#define MSG_QFK_01           0x13DU   // RX, for steering curvature
+#define MSG_HCA_03           0x303U
+#define MSG_QFK_01           0x13DU
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
 
-// Curvature scaling (rad/m to CAN units, from HCA_03/QFK_01 DBC: 6.7e-6 rad/m per LSB)
-// max_angle in CAN units: 0.195 / 6.7e-6 = 29105
 #define VOLKSWAGEN_MEB_CURVATURE_TO_CAN 149253.7313f  // 1 / 6.7e-6
 #define VOLKSWAGEN_MEB_MAX_CURVATURE_CAN 29105
 
 static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   int len = GET_LEN(msg);
 
-  // CRC-8H2F/AUTOSAR with per-message magic byte XOR (same algorithm as MQB)
   uint8_t crc = 0xFFU;
   for (int i = 1; i < len; i++) {
     crc ^= (uint8_t)msg->data[i];
@@ -44,7 +41,6 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   return (uint8_t)(crc ^ 0xFFU);
 }
 
-// Curvature steering limits, modeled as angle limits (Ford-style: curvature in CAN units)
 static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = VOLKSWAGEN_MEB_MAX_CURVATURE_CAN,
   .angle_deg_to_can = VOLKSWAGEN_MEB_CURVATURE_TO_CAN,
@@ -95,7 +91,6 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
     }
 
-    // Update measured curvature for steering safety check (in CAN units)
     if (msg->addr == MSG_QFK_01) {
       int current_curvature = ((msg->data[6] & 0x7FU) << 8) | msg->data[5];
       bool current_curvature_sign = GET_BIT(msg, 55U);
@@ -105,12 +100,10 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       update_sample(&angle_meas, current_curvature);
     }
 
-    // Driver torque sample (shared signal/sign with MQB)
     if (msg->addr == MSG_LH_EPS_03) {
       update_sample(&torque_driver, volkswagen_mlb_mqb_driver_input_torque(msg));
     }
 
-    // Cruise state from Motor_51 TSK_Status
     if (msg->addr == MSG_Motor_51) {
       int acc_status = (msg->data[11] & 0x07U);
       bool cruise_engaged = (acc_status == 3) || (acc_status == 4) || (acc_status == 5);
@@ -120,7 +113,6 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
         controls_allowed = false;
       }
 
-      // Accel pedal
       int accel_pedal_value = ((msg->data[1] >> 4) & 0x0FU) | ((msg->data[2] & 0x1FU) << 4);
       gas_pressed = accel_pedal_value > 0;
     }
@@ -155,7 +147,6 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // FORCE CANCEL: ensure only the cancel button press is sent when controls are off
   if ((msg->addr == MSG_GRA_ACC_01) && !controls_allowed) {
     // disallow resume and set: bits 16 and 19
     if ((msg->data[2] & 0x9U) != 0U) {
