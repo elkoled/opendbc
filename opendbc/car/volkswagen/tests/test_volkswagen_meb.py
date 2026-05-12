@@ -41,7 +41,7 @@ def _make_CC(*, lat_active, curvature=0.0):
 def _make_cs(CP, *, steering_torque=0.0, v_ego=20.0):
   cs = CarState(CP)
   cs.gra_stock_values = {"COUNTER": 0}
-  cs.steering_curvature = 0.0
+  cs.measured_curvature = 0.0
   cs.out.steeringTorque = steering_torque
   cs.out.steeringPressed = abs(steering_torque) > 60  # STEER_DRIVER_ALLOWANCE
   cs.out.vEgo = v_ego
@@ -70,9 +70,10 @@ def cc_cp():
 
 # --- Torque bar (HCA_03 Power) ---------------------------------------------
 
-# Math: target_power_driver = interp(|torque|, [60, 300], [50, 4])
-# At vEgo=20 (>= 0.5), target_power = target_power_driver
-# Power raw byte = int(power / 0.4)
+# Math: target_power_driver = interp(CS.out.steeringTorque, [60, 300], [50, 4])
+# Signed torque: only positive torque past the allowance reduces power.
+# (Carstate uses abs() to detect steering_pressed; carcontroller uses signed torque per sunnypilot.)
+# At vEgo=20 (>= 0.5), target_power = target_power_driver. Power raw byte = int(power / 0.4)
 @pytest.mark.parametrize("driver_torque, expected_power", [
   (0,    50),  # no override → full
   (30,   50),  # below allowance → full
@@ -82,11 +83,11 @@ def cc_cp():
   (240,  15),  # interp middle high
   (300,   4),  # at max → min
   (400,   4),  # past max → clamped
-  (-120, 38),  # symmetric negative
-  (-180, 27),
-  (-240, 15),
-  (-300,  4),
-  (-500,  4),
+  # Negative torque is below the [60, 300] interp range, so np.interp clamps to y[0]=50
+  (-120, 50),
+  (-180, 50),
+  (-300, 50),
+  (-500, 50),
 ])
 def test_torque_bar_curve(cc_cp, driver_torque, expected_power):
   cc, CP = cc_cp
@@ -99,19 +100,6 @@ def test_torque_bar_curve(cc_cp, driver_torque, expected_power):
   # ±2 raw units tolerance for packer rounding and rate-step quantization
   assert abs(power_raw - expected_raw) <= 2, \
     f"torque={driver_torque}Nm/100 expected raw~{expected_raw} ({expected_power}%) got raw={power_raw} ({power_raw*POWER_SCALE:.1f}%)"
-
-
-def test_torque_bar_symmetric(cc_cp):
-  """abs() of driver torque means +180 and -180 produce identical power."""
-  cc, CP = cc_cp
-  for mag in (120, 180, 240, 500):
-    cc_p = CarController({b: 'vw_meb' for b in (Bus.pt, Bus.alt, Bus.cam, Bus.radar)}, CP)
-    cc_n = CarController({b: 'vw_meb' for b in (Bus.pt, Bus.alt, Bus.cam, Bus.radar)}, CP)
-    last_p, _ = _run(cc_p, _make_cs(CP, steering_torque=mag), _make_CC(lat_active=True))
-    last_n, _ = _run(cc_n, _make_cs(CP, steering_torque=-mag), _make_CC(lat_active=True))
-    p_pos = _decode_hca_power_raw(last_p)
-    p_neg = _decode_hca_power_raw(last_n)
-    assert abs(p_pos - p_neg) <= 1, f"torque ±{mag}: pos_raw={p_pos} neg_raw={p_neg}"
 
 
 def test_torque_bar_rate_limit(cc_cp):

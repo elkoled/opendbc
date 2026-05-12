@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
+from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
@@ -45,11 +45,13 @@ class CarController(CarControllerBase):
       self.CCS = pqcan
     elif CP.flags & VolkswagenFlags.MLB:
       self.CCS = mlbcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
     else:
       self.CCS = mqbcan
 
     self.apply_torque_last = 0
-    self.apply_curvature_last = 0
+    self.apply_curvature_last = 0.
     self.steering_power_last = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
@@ -61,49 +63,57 @@ class CarController(CarControllerBase):
 
     # **** Steering Controls ************************************************ #
 
-    if self.CP.flags & VolkswagenFlags.MEB:
-      if self.frame % self.CCP.STEER_STEP == 0:
+    if self.frame % self.CCP.STEER_STEP == 0:
+      if self.CP.flags & VolkswagenFlags.MEB:
+        # Logic to avoid HCA refused state:
+        #   * steering power as counter and near zero before OP lane assist deactivation
+        # MEB rack can be used continously without time limits
+
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.steering_curvature - CC.currentCurvature)
-          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
-                                                       CS.steering_curvature, CS.out.steeringPressed,
-                                                       self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
+          apply_curvature = actuators.curvature + (CS.measured_curvature - CC.currentCurvature)
+          apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
-          target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
-                                                                          [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
+          target_power_driver = int(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                                                     [self.CCP.STEERING_POWER_MAX, self.CCP.STEERING_POWER_MIN]))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
           steering_power = min(max(target_power, min_power), max_power)
-        else:
-          hca_enabled = False
-          apply_curvature = 0
-          steering_power = 0
 
+        else:
+          if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
+            hca_enabled = True
+            apply_curvature = float(np.clip(CS.measured_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+            steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
+          else:
+            hca_enabled = False
+            apply_curvature = 0.
+            steering_power = 0
+
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
         self.apply_curvature_last = apply_curvature
         self.steering_power_last = steering_power
-        can_sends.append(mebcan.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature, hca_enabled, steering_power))
 
-    elif self.frame % self.CCP.STEER_STEP == 0:
-      apply_torque = 0
-      if CC.latActive:
-        new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
-        apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
+      else:
+        apply_torque = 0
+        if CC.latActive:
+          new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
+          apply_torque = apply_driver_steer_torque_limits(new_torque, self.apply_torque_last, CS.out.steeringTorque, self.CCP)
 
-      apply_torque = self.hca_mitigation.update(apply_torque, self.apply_torque_last)
-      hca_enabled = apply_torque != 0
-      self.apply_torque_last = apply_torque
-      can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_torque, hca_enabled))
+        apply_torque = self.hca_mitigation.update(apply_torque, self.apply_torque_last)
+        hca_enabled = apply_torque != 0
+        self.apply_torque_last = apply_torque
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_torque, hca_enabled))
 
-      if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
-        # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
-        # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
-        # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
-        if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
-          ea_simulated_torque = CS.out.steeringTorque
-        can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
+        if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
+          # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
+          # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
+          # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
+          ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
+          if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
+            ea_simulated_torque = CS.out.steeringTorque
+          can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
     # **** Acceleration Controls ******************************************** #
 

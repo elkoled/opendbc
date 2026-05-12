@@ -13,13 +13,13 @@
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
 
 // HCA_03 carries curvature (rad/m, scale 6.7e-6) and a sign bit.
-// Lateral safety reuses the AngleSteeringLimits machinery with angle_is_curvature=false,
-// because openpilot's apply_std_curvature_limits clips to MAX_LATERAL_ACCEL with +g*roll
-// margin while the safety helper uses -g*roll; enabling angle_is_curvature would block
-// openpilot's legitimate commands. enforce_angle_error is also false since the controller
-// deliberately adds (CS.steering_curvature - CC.currentCurvature) as a correction term.
-// Rate lookup is set well above ISO_LATERAL_JERK/v^2 at every speed so openpilot's
-// per-step clip (ISO_LATERAL_JERK * DT_CTRL * STEER_STEP / v^2) always fits.
+// Lateral safety reuses the AngleSteeringLimits machinery with angle_is_curvature=false
+// because the safety's MAX_LATERAL_ACCEL uses -g*roll margin while the controller clips to
+// the static CCP.CURVATURE_MAX; enabling angle_is_curvature would over-restrict legitimate
+// commands. enforce_angle_error is also false since the carcontroller deliberately adds
+// (CS.measured_curvature - CC.currentCurvature) as a correction term.
+// Rate lookup is set well above ISO_LATERAL_JERK/v^2 at every speed so openpilot's per-step
+// clip always fits.
 static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = 29105,             // 0.195 rad/m / 6.7e-6
   .angle_deg_to_can = 149253.7313,// 1 / 6.7e-6 rad/m to can
