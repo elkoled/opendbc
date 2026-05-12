@@ -323,19 +323,13 @@ class CarState(CarStateBase):
     ret.stockFcw = bool(ext_cp.vl["AWV_03"]["FCW_Active"]) if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) else False # currently most plausible candidate # noqa: E501
     ret.stockAeb = False #bool(pt_cp.vl["VMM_02"]["AEB_Active"]) TODO find correct signal
 
-    self.acc_type                = ext_cp.vl["ACC_18"]["ACC_Typ"] if not (self.CP.flags & VolkswagenFlags.DISABLE_RADAR) else 2 # 2: acc stop and go
     self.travel_assist_available = bool(cam_cp.vl["TA_01"]["Travel_Assist_Available"])
 
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled   = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
 
-    if self.CP.pcmCruise:
-      # Cruise Control mode; check for distance UI setting from the radar.
-      # ECM does not manage this, so do not need to check for openpilot longitudinal
-      ret.cruiseState.nonAdaptive = bool(ext_cp.vl["ACC_19"]["ACC_Limiter_Mode"])
-    else:
-      # Speed limiter mode; ECM faults if we command ACC while not pcmCruise
-      ret.cruiseState.nonAdaptive = bool(pt_cp.vl["Motor_51"]["TSK_Limiter_ausgewaehlt"])
+    # Long-related ACC_19 read (nonAdaptive limiter mode from radar) stripped with MEB longitudinal removal.
+    ret.cruiseState.nonAdaptive = bool(pt_cp.vl["Motor_51"]["TSK_Limiter_ausgewaehlt"])
 
     accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
     ret.accFaulted = self.update_acc_fault(accFaulted, parking_brake=ret.parkingBrake, drive_mode=drive_mode)
@@ -348,12 +342,7 @@ class CarState(CarStateBase):
 
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
 
-    # Update ACC setpoint. When the setpoint is zero or there's an error, the
-    # radar sends a set-speed of ~90.69 m/s / 203mph.
-    if self.CP.pcmCruise:
-      ret.cruiseState.speed = int(round(ext_cp.vl["ACC_19"]["ACC_Wunschgeschw_02"])) * CV.KPH_TO_MS
-      if ret.cruiseState.speed > 90:
-        ret.cruiseState.speed = 0
+    # ACC setpoint (ACC_19.ACC_Wunschgeschw_02) read stripped with MEB longitudinal removal.
 
     # Update button states for turn signals and ACC controls, capture all ACC button state/config for passthrough
     # turn signal effect

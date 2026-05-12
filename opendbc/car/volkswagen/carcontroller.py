@@ -1,12 +1,11 @@
 import numpy as np
 from opendbc.can import CANPacker
-from opendbc.car import Bus, DT_CTRL, structs, make_tester_present_msg
+from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
-from opendbc.car.volkswagen.mebutils import LongControlJerk, LongControlLimit
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -55,10 +54,6 @@ class CarController(CarControllerBase):
     self.apply_curvature_last = 0.
     self.steering_power_last = 0
     self.accel_last = 0.
-    self.long_jerk_control = LongControlJerk(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if CP.flags & VolkswagenFlags.MEB else None
-    self.long_limit_control = LongControlLimit(dt=(DT_CTRL * self.CCP.ACC_CONTROL_STEP)) if CP.flags & VolkswagenFlags.MEB else None
-    self.long_override_counter = 0
-    self.long_disabled_counter = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.klr_counter_last = None
@@ -167,41 +162,12 @@ class CarController(CarControllerBase):
       if self.frame % self.CCP.ACC_CONTROL_STEP == 0 and not CS.radar_disable_failed:
         stopping = actuators.longControlState == LongCtrlState.stopping
 
-        if self.CP.flags & VolkswagenFlags.MEB:
-          # Logic to prevent car error with EPB:
-          #   * send a few frames of HMS RAMP RELEASE command at the very begin of long override and right at the end of active long control -> clean exit of ACC car controls # noqa: E501
-          #   * (1 frame of HMS RAMP RELEASE is enough, but lower the possibility of panda safety blocking it)
-          starting = actuators.longControlState == LongCtrlState.starting and CS.out.vEgo <= self.CP.vEgoStarting # openpilot sets starting state after overriding, ensure being in range # noqa: E501
-          accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.enabled else 0)
+        starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
+        accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0)
 
-          long_override = CC.cruiseControl.override or CS.out.gasPressed
-          self.long_override_counter = min(self.long_override_counter + 1, 5) if long_override else 0
-          long_override_begin = long_override and self.long_override_counter < 5
-
-          self.long_disabled_counter = min(self.long_disabled_counter + 1, 5) if not CC.enabled else 0
-          long_disabling = not CC.enabled and self.long_disabled_counter < 5
-
-          critical_state = hud_control.visualAlert == VisualAlert.fcw
-          # leadDistance/leadFollowTime not in capnp; pass 0 distance and rely on leadVisible
-          self.long_jerk_control.update(CC.enabled, long_override, 0, hud_control.leadVisible, accel, critical_state)
-          self.long_limit_control.update(CC.enabled, CS.out.vEgoRaw, hud_control.setSpeed, 0, hud_control.leadVisible, critical_state)
-
-          acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, long_override)
-          acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, starting, stopping,
-                                                 CS.esp_hold_confirmation, long_override, long_override_begin, long_disabling)
-          can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CP, CS.acc_type, CC.enabled,
-                                                             self.long_jerk_control.get_jerk_up(), self.long_jerk_control.get_jerk_down(),
-                                                             self.long_limit_control.get_upper_limit(), self.long_limit_control.get_lower_limit(),
-                                                             accel, acc_control, acc_hold_type, stopping, starting, CS.esp_hold_confirmation,
-                                                             CS.out.vEgoRaw * CV.MS_TO_KPH, long_override, CS.travel_assist_available))
-
-        else:
-          starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
-          accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0)
-
-          acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
-          can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.longActive, accel,
-                                                             acc_control, stopping, starting, CS.esp_hold_confirmation))
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, self.CAN.pt, CS.acc_type, CC.longActive, accel,
+                                                           acc_control, stopping, starting, CS.esp_hold_confirmation))
         self.accel_last = accel
 
       #if self.aeb_available:
@@ -215,23 +181,6 @@ class CarController(CarControllerBase):
     # Disables Autonomous Emergency Braking (AEB), Front Collision Warning (FCW), Emergency Assist (EA),
     # Predicative Speed Control, (for MQBevo Traffic Sign Detection)
     # Dash warnings for critical deactivations are shown for several seconds
-
-    if self.CP.flags & VolkswagenFlags.DISABLE_RADAR and self.CP.openpilotLongitudinalControl and not CS.radar_disable_failed:
-      if self.CP.flags & VolkswagenFlags.MEB:
-        if self.radar_disabled_warning_timer < 600: # display critical hud warnings for some seconds
-          self.radar_disabled_warning_timer += 1
-        else:
-          self.hide_ea_error = True # block EA error after several seconds
-
-        if self.frame % self.CCP.AEB_CONTROL_STEP == 0:
-          can_sends.append(make_tester_present_msg(0x700, self.CAN.pt, suppress_response=True)) # Tester Present to keep the programming session
-          can_sends.append(self.CCS.create_aeb_control(self.packer_pt, self.CAN.pt, self.CP)) # AEB Control (1 Hz)
-
-        if self.frame % self.CCP.AEB_HUD_STEP == 0:
-          can_sends.append(self.CCS.create_aeb_hud(self.packer_pt, self.CAN.pt, self.radar_disabled_warning_timer < 600)) # AEB HUD (5 Hz), show deactivation for several seconds # noqa: E501
-
-        if self.frame % 4 == 0:
-          can_sends.append(self.CCS.create_radar_objects(self.packer_pt, self.CAN.pt)) # Radar Objects (25 Hz)
 
     # **** HUD Controls ***************************************************** #
 
@@ -252,36 +201,15 @@ class CarController(CarControllerBase):
       self.distance_bar_frame = self.frame
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl and not CS.radar_disable_failed:
-      if self.CP.flags & VolkswagenFlags.MEB:
-        fcw_alert = hud_control.visualAlert == VisualAlert.fcw
-        show_distance_bars = self.frame - self.distance_bar_frame < 400
-        # leadDistance/leadFollowTime not in capnp; substitute defaults
-        gap = 0
-        distance = 8 if hud_control.leadVisible else 0
-        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled,
-                                                       CC.cruiseControl.override or CS.out.gasPressed)
-
-        # speedLimit / speedLimitPredicative not in capnp; predicative speed limit dormant
-        sl_predicative_active = False
-        sl_active = False
-        speed_limit = 0
-
-        acc_hud_event = self.CCS.acc_hud_event(acc_hud_status, CS.esp_hold_confirmation, sl_predicative_active, 0, sl_active)
-
-        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
-                                                         hud_control.leadVisible, hud_control.leadDistanceBars + 1, show_distance_bars,
-                                                         CS.esp_hold_confirmation, distance, gap, fcw_alert, acc_hud_event, speed_limit))
-
-      else:
-        lead_distance = 0
-        if hud_control.leadVisible and self.frame * DT_CTRL > 1.0:  # Don't display lead until we know the scaling factor
-          lead_distance = 512 if CS.upscale_lead_car_signal else 8
-        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
-        # FIXME: PQ may need to use the on-the-wire mph/kmh toggle to fix rounding errors
-        # FIXME: Detect clusters with vEgoCluster offsets and apply an identical vCruiseCluster offset
-        set_speed = hud_control.setSpeed * CV.MS_TO_KPH
-        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, set_speed,
-                                                         lead_distance, hud_control.leadDistanceBars))
+      lead_distance = 0
+      if hud_control.leadVisible and self.frame * DT_CTRL > 1.0:  # Don't display lead until we know the scaling factor
+        lead_distance = 512 if CS.upscale_lead_car_signal else 8
+      acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+      # FIXME: PQ may need to use the on-the-wire mph/kmh toggle to fix rounding errors
+      # FIXME: Detect clusters with vEgoCluster offsets and apply an identical vCruiseCluster offset
+      set_speed = hud_control.setSpeed * CV.MS_TO_KPH
+      can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, self.CAN.pt, acc_hud_status, set_speed,
+                                                       lead_distance, hud_control.leadDistanceBars))
 
     # **** Stock ACC Button Controls **************************************** #
 

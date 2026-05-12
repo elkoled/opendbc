@@ -7,12 +7,9 @@
 #define MSG_ESC_51        0x0FCU   // RX, ABS wheel speeds + brake pressure (MEB)
 #define MSG_Motor_51      0x10BU   // RX, drivetrain coordinator: TSK_Status + accel pedal (MEB)
 #define MSG_QFK_01        0x13DU   // RX, EPS lateral controller status + measured curvature (MEB)
-#define MSG_ACC_18        0x14DU   // TX, ACC acceleration request to drivetrain coordinator (MEB OP-long)
 #define MSG_EA_01         0x1A4U   // TX, Emergency Assist control passthrough
-#define MSG_TA_01         0x26BU   // TX, Travel Assist Status passthrough
 #define MSG_KLR_01        0x25DU   // TX, capacitive steering wheel touch passthrough
 #define MSG_EA_02         0x1F0U   // TX, Emergency Assist HUD passthrough (blinker control)
-#define MSG_ACC_19        0x300U   // TX, ACC HUD passthrough to instrument cluster (MEB OP-long)
 #define MSG_HCA_03        0x303U   // TX, Heading Control Assist curvature command (MEB)
 
 
@@ -141,19 +138,6 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_KLR_01,      2, 8,  .check_relay = true},
   };
 
-  // OP-long TX set: stock-long messages + ACC_18 acceleration request + ACC_19 HUD + TA_01 Travel Assist.
-  static const CanMsg VOLKSWAGEN_MEB_LONG_TX_MSGS[] = {
-    {MSG_HCA_03,      0, 24, .check_relay = true},
-    {MSG_LDW_02,      0, 8,  .check_relay = true},
-    {MSG_ACC_18,      0, 32, .check_relay = true},
-    {MSG_ACC_19,      0, 48, .check_relay = true},
-    {MSG_EA_01,       0, 8,  .check_relay = false},
-    {MSG_EA_02,       0, 8,  .check_relay = true},
-    {MSG_KLR_01,      0, 8,  .check_relay = false},
-    {MSG_KLR_01,      2, 8,  .check_relay = true},
-    {MSG_TA_01,       0, 8,  .check_relay = true},
-  };
-
   static RxCheck volkswagen_meb_rx_checks[] = {
     VW_MEB_COMMON_RX_CHECKS
     VW_MEB_RX_CHECKS
@@ -165,21 +149,13 @@ static safety_config volkswagen_meb_init(uint16_t param) {
   desired_steer_power_last = 0;
   reset_sample(&curvature_meas);
 
-#ifdef ALLOW_DEBUG
-  volkswagen_longitudinal = GET_FLAG(param, FLAG_VOLKSWAGEN_LONG_CONTROL);
-#else
   SAFETY_UNUSED(param);
   volkswagen_longitudinal = false;
-#endif
 
   gen_crc_lookup_table_8(0x2F, volkswagen_crc8_lut_8h2f);
 
   safety_config ret;
-  if (volkswagen_longitudinal) {
-    SET_TX_MSGS(VOLKSWAGEN_MEB_LONG_TX_MSGS, ret);
-  } else {
-    SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
-  }
+  SET_TX_MSGS(VOLKSWAGEN_MEB_STOCK_TX_MSGS, ret);
   SET_RX_CHECKS(volkswagen_meb_rx_checks, ret);
   return ret;
 }
@@ -254,13 +230,6 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 
 
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
-  // ACC_18 acceleration request limits (m/s^2 * 1000 to avoid floating point math)
-  const LongitudinalLimits VOLKSWAGEN_MEB_LONG_LIMITS = {
-    .max_accel = 2000,
-    .min_accel = -3500,
-    .inactive_accel = 3010,  // VW sends one increment above the max range when inactive
-  };
-
   // Curvature limits match the carcontroller scale (1 / 6.7e-6 rad/m -> CAN units).
   static const CurvatureSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
     .max_curvature = 29105,                  // 0.195 rad/m
@@ -287,18 +256,6 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       tx = false;
     }
     if (steer_curvature_cmd_checks_average(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
-      tx = false;
-    }
-  }
-
-  // ACC_18 — acceleration request to drivetrain coordinator (matches MQB ACC_06.ACC_Sollbeschleunigung_02 layout)
-  if (msg->addr == MSG_ACC_18) {
-    int desired_accel = ((((msg->data[4] & 0x7U) << 8) | msg->data[3]) * 5U) - 7220U;
-    // MEB override: the TSK expects accel=0 (ACCEL_OVERRIDE) while the driver is on the gas.
-    // The generic longitudinal_accel_checks blocks non-inactive accel when gas_pressed_prev is true,
-    // so we explicitly allow accel=0 when controls_allowed (the override path).
-    bool accel_override = controls_allowed && (desired_accel == 0);
-    if (!accel_override && longitudinal_accel_checks(desired_accel, VOLKSWAGEN_MEB_LONG_LIMITS)) {
       tx = false;
     }
   }

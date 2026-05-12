@@ -123,13 +123,18 @@ class CarInterface(CarInterfaceBase):
       ret.longitudinalTuning.kiBP = [0., 30.]
       ret.longitudinalTuning.kiV = [0.4, 0.]
 
-    ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs or bool(ret.flags & VolkswagenFlags.DISABLE_RADAR)
-    if alpha_long and ret.alphaLongitudinalAvailable:
-      # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
-      ret.openpilotLongitudinalControl = True
-      safety_configs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
-      if ret.transmissionType == TransmissionType.manual:
-        ret.minEnableSpeed = 4.5
+    if ret.flags & VolkswagenFlags.MEB:
+      # MEB longitudinal control is not supported in this port; force stock ACC.
+      ret.alphaLongitudinalAvailable = False
+      ret.openpilotLongitudinalControl = False
+    else:
+      ret.alphaLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs or bool(ret.flags & VolkswagenFlags.DISABLE_RADAR)
+      if alpha_long and ret.alphaLongitudinalAvailable:
+        # Proof-of-concept, prep for E2E only. No radar points available. Panda ALLOW_DEBUG firmware required.
+        ret.openpilotLongitudinalControl = True
+        safety_configs[0].safetyParam |= VolkswagenSafetyFlags.LONG_CONTROL.value
+        if ret.transmissionType == TransmissionType.manual:
+          ret.minEnableSpeed = 4.5
 
     # Per-vehicle overrides
 
