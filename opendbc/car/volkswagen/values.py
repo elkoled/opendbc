@@ -7,6 +7,7 @@ from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
+from opendbc.car.lateral import AngleSteeringLimits
 from opendbc.car.vin import Vin
 
 Ecu = structs.CarParams.Ecu
@@ -108,7 +109,15 @@ class CarControllerParams:
       self.STEERING_POWER_MAX        = 50   # HCA_03 maximum steering power, percentage
       self.STEERING_POWER_MIN        = 4    # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP       = 2    # HCA_03 steering power counter steps
-      self.CURVATURE_MAX             = 0.195  # rad/m, matches MAX_CURVATURE in opendbc/safety/modes/volkswagen_meb.h
+
+      # Shared steering limits (units: rad/m of curvature, reused as the "angle" abstraction
+      # via SteerControlType.angle). MUST match VOLKSWAGEN_MEB_STEERING_LIMITS in
+      # opendbc/safety/modes/volkswagen_meb.h byte-for-byte after the * angle_deg_to_can scale.
+      self.ANGLE_LIMITS = AngleSteeringLimits(
+        STEER_ANGLE_MAX=0.195,  # rad/m, == 29105 / 149253.7313
+        ANGLE_RATE_LIMIT_UP=([0., 10., 30.], [0.15, 0.005, 0.0005]),
+        ANGLE_RATE_LIMIT_DOWN=([0., 10., 30.], [0.15, 0.005, 0.0005]),
+      )
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]

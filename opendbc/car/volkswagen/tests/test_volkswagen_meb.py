@@ -182,3 +182,63 @@ def test_warning_off_when_lat_inactive(cc_cp):
   gelb, gruen = _decode_ldw_leds(last_ldw)
   assert gelb == 0, "yellow LED must be off when openpilot not active"
   assert gruen == 0, "green LED must be off when openpilot not active"
+
+
+# --- 1:1 alignment between Python (carcontroller) and C (panda safety) limits ----
+
+def test_angle_limits_match_safety_header():
+  """CCP.ANGLE_LIMITS must match VOLKSWAGEN_MEB_STEERING_LIMITS in volkswagen_meb.h.
+  Both sides clip curvature through these same numbers; any drift breaks the
+  steer_angle_cmd_checks contract and the safety hook can start blocking valid commands."""
+  import re
+  from pathlib import Path
+  CP = CarInterface.get_non_essential_params(CAR.VOLKSWAGEN_ID4_MK1.value)
+  ccp = type(cc_cp)  # not used; access CCP via CarController instance below
+  from opendbc.car.volkswagen.values import CarControllerParams
+  ccp = CarControllerParams(CP)
+  py_limits = ccp.ANGLE_LIMITS
+
+  header = Path(__file__).resolve().parents[3] / "safety/modes/volkswagen_meb.h"
+  src = header.read_text()
+
+  # Pull the VOLKSWAGEN_MEB_STEERING_LIMITS block up to the matching closing brace
+  start = src.index("VOLKSWAGEN_MEB_STEERING_LIMITS")
+  open_brace = src.index("{", start)
+  depth = 0
+  end = open_brace
+  for i, ch in enumerate(src[open_brace:], start=open_brace):
+    if ch == "{":
+      depth += 1
+    elif ch == "}":
+      depth -= 1
+      if depth == 0:
+        end = i
+        break
+  block = src[open_brace + 1:end]
+
+  def _grab_float(field):
+    mm = re.search(rf"\.{field}\s*=\s*([-+]?\d+(?:\.\d*)?(?:e[-+]?\d+)?)", block)
+    assert mm is not None, f"safety header missing field {field}"
+    return float(mm.group(1))
+
+  def _grab_lookup(field):
+    mm = re.search(rf"\.{field}\s*=\s*\{{\s*\{{([^}}]+)\}}\s*,\s*\{{([^}}]+)\}}\s*\}}", block, re.DOTALL)
+    assert mm is not None, f"safety header missing lookup {field}"
+    xs = [float(s.strip().rstrip(".")) for s in mm.group(1).split(",") if s.strip()]
+    ys = [float(s.strip().rstrip(".")) for s in mm.group(2).split(",") if s.strip()]
+    return xs, ys
+
+  c_max_angle = _grab_float("max_angle")
+  c_a2c = _grab_float("angle_deg_to_can")
+  c_up_x, c_up_y = _grab_lookup("angle_rate_up_lookup")
+  c_dn_x, c_dn_y = _grab_lookup("angle_rate_down_lookup")
+
+  # Python's STEER_ANGLE_MAX is in rad/m; C's max_angle is in CAN-raw units (= rad/m * a2c).
+  expected_max_can = py_limits.STEER_ANGLE_MAX * c_a2c
+  assert abs(c_max_angle - expected_max_can) <= 1, \
+    f"max_angle drift: Python {py_limits.STEER_ANGLE_MAX} rad/m * {c_a2c} = {expected_max_can}, C={c_max_angle}"
+
+  py_up_x, py_up_y = py_limits.ANGLE_RATE_LIMIT_UP
+  py_dn_x, py_dn_y = py_limits.ANGLE_RATE_LIMIT_DOWN
+  assert py_up_x == c_up_x and py_up_y == c_up_y, "angle_rate_up_lookup mismatch"
+  assert py_dn_x == c_dn_x and py_dn_y == c_dn_y, "angle_rate_down_lookup mismatch"

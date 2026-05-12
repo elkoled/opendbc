@@ -12,14 +12,17 @@
 #define MSG_MOTOR_14         0x3BEU   // RX from ECU, for brake switch status
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
 
-// HCA_03 carries curvature (rad/m, scale 6.7e-6) and a sign bit.
-// Lateral safety reuses the AngleSteeringLimits machinery with angle_is_curvature=false
-// because the safety's MAX_LATERAL_ACCEL uses -g*roll margin while the controller clips to
-// the static CCP.CURVATURE_MAX; enabling angle_is_curvature would over-restrict legitimate
-// commands. enforce_angle_error is also false since the carcontroller deliberately adds
-// (CS.measured_curvature - CC.currentCurvature) as a correction term.
-// Rate lookup is set well above ISO_LATERAL_JERK/v^2 at every speed so openpilot's per-step
-// clip always fits.
+// HCA_03 carries curvature (rad/m, scale 6.7e-6) and a sign bit. Treated as the "angle"
+// abstraction via SteerControlType.angle, so the safety and the openpilot carcontroller
+// share the same AngleSteeringLimits values (mirrored in values.py as CCP.ANGLE_LIMITS)
+// and both call the same rate-limit + abs-limit logic for 1:1 alignment.
+//
+// angle_is_curvature is false because the safety's lateral-acceleration check uses
+// MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL - g*roll (~2.4 m/s^2), which is tighter than what
+// apply_std_steer_angle_limits clips to (just the abs limit + rate limit). Enabling it
+// would reject legitimate openpilot commands. inactive_angle_is_zero is false so the
+// inactive check tolerates the measured-curvature value the carcontroller sends during
+// disengage ramp-down.
 static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .max_angle = 29105,             // 0.195 rad/m / 6.7e-6
   .angle_deg_to_can = 149253.7313,// 1 / 6.7e-6 rad/m to can
@@ -36,7 +39,7 @@ static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   .frequency = 50,
   .angle_is_curvature = false,
   .enforce_angle_error = false,
-  .inactive_angle_is_zero = true,
+  .inactive_angle_is_zero = false,
 };
 
 
@@ -134,6 +137,19 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
     // Signal: LH_EPS_03.EPS_VZ_Lenkmoment (direction)
     if (msg->addr == MSG_LH_EPS_03) {
       update_sample(&torque_driver, volkswagen_mlb_mqb_driver_input_torque(msg));
+    }
+
+    // Update measured-curvature samples (in CAN units, matching the HCA_03 TX scale)
+    // so steer_angle_cmd_checks's inactive-angle check can validate the carcontroller's
+    // disengage value against the real EPS reading.
+    // Signal: QFK_01.Curvature (15 bit at LSB 40) + Curvature_VZ (bit 55)
+    if (msg->addr == MSG_QFK_01) {
+      int current_curvature = ((msg->data[6] & 0x7FU) << 8) | msg->data[5];
+      bool current_curvature_sign = GET_BIT(msg, 55U);
+      if (!current_curvature_sign) {
+        current_curvature *= -1;
+      }
+      update_sample(&angle_meas, current_curvature);
     }
 
     // Update cruise state

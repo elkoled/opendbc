@@ -45,7 +45,7 @@ class CarInterface(CarInterfaceBase):
       safety_configs = [get_safety_config(structs.CarParams.SafetyModel.volkswagenMeb)]
       ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
-      ret.steerControlType = structs.CarParams.SteerControlType.curvatureDEPRECATED
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
       ret.steerAtStandstill = True
       ret.networkLocation = NetworkLocation.gateway
       ret.dashcamOnly = is_release
