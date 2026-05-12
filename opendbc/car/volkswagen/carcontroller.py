@@ -66,21 +66,30 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
         # MEB lateral: curvature control via the angle framework (Ford-style).
-        # apply_std_steer_angle_limits rate-limits and clips the requested curvature; we
-        # then add the measured-vs-VM correction term and re-clip. The pre-correction
-        # value is what controlsd's saturation detection sees.
+        # The curvature on the wire (HCA_03) is what panda safety rate-limits and
+        # clips; to stay byte-for-byte aligned with safety, we feed the *corrected*
+        # curvature target into apply_std_steer_angle_limits and use its output
+        # directly on the wire. The same rate-limited value is fed back as
+        # apply_curvature_last so the next frame's safety delta is identical.
         # MEB rack can be used continuously without time limits.
-        apply_curvature = apply_std_steer_angle_limits(actuators.curvature, self.apply_curvature_last, CS.out.vEgoRaw,
-                                                       CS.out.steeringAngleDeg, CC.latActive, CarControllerParams.ANGLE_LIMITS)
+        if CC.latActive:
+          # curvature correction: cancel VM-derived currentCurvature offset using measured curvature
+          curvature_target = float(actuators.curvature) + (CS.curvature_meas - CC.currentCurvature)
+        else:
+          # ramp toward zero so safety sees a continuous rate-limited path; on the
+          # disabled frame (steering_power == 0 below) we'll force zero anyway
+          curvature_target = 0.0
+
+        # Rate-limit/clip with lat_active=True so the framework rate-limits toward
+        # the target rather than snapping to steering_angle (which would also
+        # corrupt apply_curvature_last with a degrees value).
+        apply_curvature = apply_std_steer_angle_limits(curvature_target, self.apply_curvature_last, CS.out.vEgoRaw,
+                                                       CS.out.steeringAngleDeg, True, CarControllerParams.ANGLE_LIMITS)
         self.apply_curvature_last = apply_curvature
+        apply_curvature_out = apply_curvature
 
         if CC.latActive:
           hca_enabled = True
-          # curvature correction: cancel VM-derived currentCurvature offset using measured curvature
-          apply_curvature_out = float(np.clip(apply_curvature + (CS.curvature_meas - CC.currentCurvature),
-                                              -CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX,
-                                              CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX))
-
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
           target_power_driver = int(np.interp(CS.out.steeringTorque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
@@ -90,12 +99,11 @@ class CarController(CarControllerBase):
         else:
           if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
-            apply_curvature_out = float(np.clip(CS.curvature_meas, -CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX,
-                                                CarControllerParams.ANGLE_LIMITS.STEER_ANGLE_MAX))
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
             apply_curvature_out = 0.
+            self.apply_curvature_last = 0.
             steering_power = 0
 
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, self.CAN.pt, apply_curvature_out, hca_enabled, steering_power))

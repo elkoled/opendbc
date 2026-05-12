@@ -234,5 +234,84 @@ class TestMEBBlindspot(unittest.TestCase):
         self.assertEqual(ret.rightBlindspot, exp_right)
 
 
+class TestMEBSafetyOracle(unittest.TestCase):
+  """Drive carcontroller through randomized inputs and confirm panda safety
+  (volkswagenMeb) accepts every HCA_03 frame it produces. Conversely confirm
+  that bypassing the rate limit causes safety to reject."""
+
+  @classmethod
+  def setUpClass(cls):
+    cls.CI = interfaces[CAR.VOLKSWAGEN_ID4_MK1.value]
+    cp = cls.CI.get_params(CAR.VOLKSWAGEN_ID4_MK1.value, {i: {} for i in range(8)},
+                           [], alpha_long=False, is_release=False, docs=False)
+    cls.cp = cp
+
+  def setUp(self):
+    # Lazy import: keeps the rest of this module importable without libsafety
+    from opendbc.car.structs import CarParams
+    from opendbc.safety.tests.libsafety import libsafety_py
+    self.libsafety_py = libsafety_py
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.volkswagenMeb, 0)
+    self.safety.init_tests()
+    self.safety.set_controls_allowed(1)
+
+    self.inst = self.CI(self.cp)
+    self.CCP = self.inst.CC.CCP
+
+  def _raw_hca_to_safety_packet(self, dat, addr=771):
+    return self.libsafety_py.make_CANPacket(addr, 0, dat)
+
+  def test_oracle_random_sequence(self):
+    rng = np.random.default_rng(0)
+    CS = _make_carstate(self.inst, vEgo=15.0)
+
+    # Walk through randomized requested curvatures + measured curvatures
+    for step in range(500):
+      v = float(rng.uniform(2.0, 30.0))
+      cmd = float(rng.uniform(-0.25, 0.25))
+      meas = float(rng.uniform(-0.2, 0.2))
+      lat_active = bool(rng.integers(0, 2)) or step < 200  # mostly active
+
+      CS.out.vEgo = v
+      CS.out.vEgoRaw = v
+      CS.out.steeringAngleDeg = float(rng.uniform(-90, 90))
+      CS.curvature_meas = meas
+      CC = _build_cc(latActive=lat_active, curvature=cmd)
+      _, sends = self.inst.CC.update(CC, CS, 0)
+
+      for addr, dat, _bus in sends:
+        if addr != HCA_03_ADDR:
+          continue
+        pkt = self._raw_hca_to_safety_packet(dat, addr)
+        accepted = self.safety.safety_tx_hook(pkt)
+        self.assertTrue(accepted, f"safety rejected HCA_03 at step {step}: cmd={cmd:.4f} meas={meas:.4f} lat={lat_active}")
+
+  def test_oracle_rate_limit_violation_rejected(self):
+    """Hand-craft an HCA_03 that exceeds the safety rate limit; expect rejection."""
+    # First a small, in-bounds frame to set desired_angle_last
+    from opendbc.can import CANPacker
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_ID4_MK1.value][Bus.pt])
+    addr, dat0, _ = packer.make_can_msg("HCA_03", 0, {
+      "Curvature": 0.0, "Curvature_VZ": 0, "Power": 50, "RequestStatus": 4, "HighSendRate": 1,
+    })
+    self.assertTrue(self.safety.safety_tx_hook(self._raw_hca_to_safety_packet(dat0, addr)))
+
+    # Now jump way past one frame's allowed delta (limit is ~0.00045 rad/m at low speed)
+    addr, dat1, _ = packer.make_can_msg("HCA_03", 0, {
+      "Curvature": 0.10, "Curvature_VZ": 1, "Power": 50, "RequestStatus": 4, "HighSendRate": 1,
+    })
+    self.assertFalse(self.safety.safety_tx_hook(self._raw_hca_to_safety_packet(dat1, addr)))
+
+  def test_oracle_inactive_nonzero_rejected(self):
+    """When steer_req=False (RequestStatus!=4), curvature must be zero per safety."""
+    from opendbc.can import CANPacker
+    packer = CANPacker(DBC[CAR.VOLKSWAGEN_ID4_MK1.value][Bus.pt])
+    addr, dat, _ = packer.make_can_msg("HCA_03", 0, {
+      "Curvature": 0.05, "Curvature_VZ": 1, "Power": 0, "RequestStatus": 2, "HighSendRate": 0,
+    })
+    self.assertFalse(self.safety.safety_tx_hook(self._raw_hca_to_safety_packet(dat, addr)))
+
+
 if __name__ == "__main__":
   unittest.main()
