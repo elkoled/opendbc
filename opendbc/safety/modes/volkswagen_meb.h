@@ -52,11 +52,11 @@ static const AngleSteeringLimits VOLKSWAGEN_MEB_STEERING_LIMITS = {
   // wind-down branch jump (clipped to ±CURVATURE_MAX). 3-point linear interp upper-bounds.
   .angle_rate_up_lookup = {
     {1., 5., 25.},
-    {0.4, 0.004, 0.00016},
+    {0.4, 0.0029, 0.000115},
   },
   .angle_rate_down_lookup = {
     {1., 5., 25.},
-    {0.4, 0.004, 0.00016},
+    {0.4, 0.0029, 0.000115},
   },
   .angle_is_curvature = true,
   .inactive_angle_is_zero = true,
