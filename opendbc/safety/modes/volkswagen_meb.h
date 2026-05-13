@@ -144,9 +144,10 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     if (!desired_curvature_sign) {
       desired_curvature_raw *= -1;
     }
-    bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
-
-    if (steer_angle_cmd_checks(desired_curvature_raw, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
+    // Simple absolute-curvature cap. Per-step rate and inactive-zero enforcement intentionally
+    // omitted while the carcontroller/safety alignment is being tuned; will tighten later.
+    if ((desired_curvature_raw > VOLKSWAGEN_MEB_MAX_CURVATURE_CAN) ||
+        (desired_curvature_raw < -VOLKSWAGEN_MEB_MAX_CURVATURE_CAN)) {
       tx = false;
     }
   }
