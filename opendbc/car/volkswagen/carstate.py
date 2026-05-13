@@ -235,61 +235,6 @@ class CarState(CarStateBase):
     self.frame += 1
     return ret
 
-  def update_mlb(self, pt_cp, cam_cp, ext_cp, alt_cp) -> structs.CarState:
-    ret = structs.CarState()
-
-    self.parse_wheel_speeds(ret,
-      pt_cp.vl["ESP_03"]["ESP_VL_Radgeschw"],
-      pt_cp.vl["ESP_03"]["ESP_VR_Radgeschw"],
-      pt_cp.vl["ESP_03"]["ESP_HL_Radgeschw"],
-      pt_cp.vl["ESP_03"]["ESP_HR_Radgeschw"],
-    )
-
-    ret.gasPressed = pt_cp.vl["Motor_03"]["MO_Fahrpedalrohwert_01"] > 0
-    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(alt_cp.vl["Getriebe_03"]["GE_Waehlhebel"], None))
-
-    # TODO: We don't have a true mainswitch state yet, might need stateful tracking on LS_01 if momentary-press is a thing
-    # TSK_04.TSK_Status_GRA_ACC_02 0 = not engaged, 1 = engaged, 2 = engaged with driver accel override, 3 = fault
-    ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (0, 1, 2)
-    ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (1, 2)
-    ret.accFaulted = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] == 3
-    ret.cruiseState.speed = ext_cp.vl["ACC_02"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS
-
-    self.parse_mlb_mqb_steering_state(ret, pt_cp)
-
-    ret.brake = pt_cp.vl["ESP_05"]["ESP_Bremsdruck"] / 250.0
-    brake_pedal_pressed = bool(pt_cp.vl["Motor_03"]["MO_Fahrer_bremst"])
-    brake_pressure_detected = bool(pt_cp.vl["ESP_05"]["ESP_Fahrer_bremst"])
-    ret.brakePressed = brake_pedal_pressed or brake_pressure_detected
-    ret.parkingBrake = bool(pt_cp.vl["Kombi_01"]["KBI_Handbremse"])
-    ret.espDisabled = pt_cp.vl["ESP_01"]["ESP_Tastung_passiv"] != 0
-
-    ret.leftBlinker = bool(pt_cp.vl["BCM"]["BLINKER_LEFT"])
-    ret.rightBlinker = bool(pt_cp.vl["BCM"]["BLINKER_RIGHT"])
-
-    ret.seatbeltUnlatched = bool(pt_cp.vl["Airbag_01"]["AB_Gurtwarn_VF"])
-    ret.doorOpen = any([alt_cp.vl["Gateway_05"]["FT_Tuer_geoeffnet"],
-                        alt_cp.vl["Gateway_05"]["BT_Tuer_geoeffnet"],
-                        alt_cp.vl["Gateway_05"]["HL_Tuer_geoeffnet"],
-                        alt_cp.vl["Gateway_05"]["HR_Tuer_geoeffnet"]])
-
-    # Consume blind-spot monitoring info/warning LED states, if available.
-    # Infostufe: BSM LED on, Warnung: BSM LED flashing
-    if self.CP.enableBsm:
-      ret.leftBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_li"])
-      ret.rightBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_re"])
-
-    self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
-    self.gra_stock_values = pt_cp.vl["LS_01"]
-
-    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
-
-    ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
-    ret.standstill = ret.vEgoRaw == 0
-
-    self.frame += 1
-    return ret
-
   def update_meb(self, pt_cp, cam_cp, ext_cp) -> structs.CarState:
     ret = structs.CarState()
 
@@ -346,6 +291,61 @@ class CarState(CarStateBase):
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
+
+    self.frame += 1
+    return ret
+
+  def update_mlb(self, pt_cp, cam_cp, ext_cp, alt_cp) -> structs.CarState:
+    ret = structs.CarState()
+
+    self.parse_wheel_speeds(ret,
+      pt_cp.vl["ESP_03"]["ESP_VL_Radgeschw"],
+      pt_cp.vl["ESP_03"]["ESP_VR_Radgeschw"],
+      pt_cp.vl["ESP_03"]["ESP_HL_Radgeschw"],
+      pt_cp.vl["ESP_03"]["ESP_HR_Radgeschw"],
+    )
+
+    ret.gasPressed = pt_cp.vl["Motor_03"]["MO_Fahrpedalrohwert_01"] > 0
+    ret.gearShifter = self.parse_gear_shifter(self.CCP.shifter_values.get(alt_cp.vl["Getriebe_03"]["GE_Waehlhebel"], None))
+
+    # TODO: We don't have a true mainswitch state yet, might need stateful tracking on LS_01 if momentary-press is a thing
+    # TSK_04.TSK_Status_GRA_ACC_02 0 = not engaged, 1 = engaged, 2 = engaged with driver accel override, 3 = fault
+    ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (0, 1, 2)
+    ret.cruiseState.available = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] in (1, 2)
+    ret.accFaulted = alt_cp.vl["TSK_04"]["TSK_Status_GRA_ACC_02"] == 3
+    ret.cruiseState.speed = ext_cp.vl["ACC_02"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS
+
+    self.parse_mlb_mqb_steering_state(ret, pt_cp)
+
+    ret.brake = pt_cp.vl["ESP_05"]["ESP_Bremsdruck"] / 250.0
+    brake_pedal_pressed = bool(pt_cp.vl["Motor_03"]["MO_Fahrer_bremst"])
+    brake_pressure_detected = bool(pt_cp.vl["ESP_05"]["ESP_Fahrer_bremst"])
+    ret.brakePressed = brake_pedal_pressed or brake_pressure_detected
+    ret.parkingBrake = bool(pt_cp.vl["Kombi_01"]["KBI_Handbremse"])
+    ret.espDisabled = pt_cp.vl["ESP_01"]["ESP_Tastung_passiv"] != 0
+
+    ret.leftBlinker = bool(pt_cp.vl["BCM"]["BLINKER_LEFT"])
+    ret.rightBlinker = bool(pt_cp.vl["BCM"]["BLINKER_RIGHT"])
+
+    ret.seatbeltUnlatched = bool(pt_cp.vl["Airbag_01"]["AB_Gurtwarn_VF"])
+    ret.doorOpen = any([alt_cp.vl["Gateway_05"]["FT_Tuer_geoeffnet"],
+                        alt_cp.vl["Gateway_05"]["BT_Tuer_geoeffnet"],
+                        alt_cp.vl["Gateway_05"]["HL_Tuer_geoeffnet"],
+                        alt_cp.vl["Gateway_05"]["HR_Tuer_geoeffnet"]])
+
+    # Consume blind-spot monitoring info/warning LED states, if available.
+    # Infostufe: BSM LED on, Warnung: BSM LED flashing
+    if self.CP.enableBsm:
+      ret.leftBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_li"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_li"])
+      ret.rightBlindspot = bool(ext_cp.vl["SWA_01"]["SWA_Infostufe_SWA_re"]) or bool(ext_cp.vl["SWA_01"]["SWA_Warnung_SWA_re"])
+
+    self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
+    self.gra_stock_values = pt_cp.vl["LS_01"]
+
+    ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
+
+    ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
+    ret.standstill = ret.vEgoRaw == 0
 
     self.frame += 1
     return ret
