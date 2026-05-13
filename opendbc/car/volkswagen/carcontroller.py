@@ -72,6 +72,7 @@ class CarController(CarControllerBase):
     self.VM = _meb_safety_vm() if CP.flags & VolkswagenFlags.MEB else None
     self.RAD_TO_DEG = CarControllerParams.MEB_RAD_TO_DEG
     self.gra_acc_counter_last = None
+    self.klr_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
 
   def update(self, CC, CS, now_nanos):
