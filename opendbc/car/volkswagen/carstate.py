@@ -431,7 +431,12 @@ class CarState(CarStateBase):
       ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
       ("Gateway_73", 10),   # Gear position (ALT_GEAR) and EPB status
     ]
-    cam_messages = []
+    cam_messages = [
+      ("ACC_02", 17),       # ACC setpoint speed (ACC_Wunschgeschw_02) from radar/ACC ECU
+    ]
+    # When panda sits between gateway and forward camera, ACC_02 reaches openpilot on pt bus
+    if CP.networkLocation == NetworkLocation.fwdCamera:
+      pt_messages.append(cam_messages.pop(0))
     if CP.enableBsm:
       bsm_target = cam_messages if CP.networkLocation == NetworkLocation.gateway else pt_messages
       bsm_target.append(("MEB_Side_Assist_01", float('nan')))
