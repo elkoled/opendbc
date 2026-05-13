@@ -144,11 +144,25 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
     if (!desired_curvature_sign) {
       desired_curvature_raw *= -1;
     }
-    // Simple absolute-curvature cap. Per-step rate and inactive-zero enforcement intentionally
-    // omitted while the carcontroller/safety alignment is being tuned; will tighten later.
+    bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
+
+    // Absolute curvature cap
     if ((desired_curvature_raw > VOLKSWAGEN_MEB_MAX_CURVATURE_CAN) ||
         (desired_curvature_raw < -VOLKSWAGEN_MEB_MAX_CURVATURE_CAN)) {
       tx = false;
+    }
+
+    // ISO lateral acceleration envelope (only while actively steering)
+    if (controls_allowed && steer_req) {
+      const float fudged_speed = (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0f;
+      const float v_clamped = (fudged_speed < 1.0f) ? 1.0f : fudged_speed;
+      const float max_lat_accel = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);
+      const float max_curvature = max_lat_accel / (v_clamped * v_clamped);
+      const int max_curvature_can = (int)((max_curvature * VOLKSWAGEN_MEB_CURVATURE_TO_CAN) + 1.0f);
+      if ((desired_curvature_raw > max_curvature_can) ||
+          (desired_curvature_raw < -max_curvature_can)) {
+        tx = false;
+      }
     }
   }
 
