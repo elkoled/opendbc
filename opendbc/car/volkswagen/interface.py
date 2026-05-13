@@ -80,6 +80,8 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= VolkswagenFlags.STOCK_HCA_PRESENT.value
       if 0x6B8 in fingerprint[0]:  # Kombi_03
         ret.flags |= VolkswagenFlags.KOMBI_PRESENT.value
+      if 0x3DC in fingerprint[0]:  # Gateway_73
+        ret.flags |= VolkswagenFlags.ALT_GEAR.value
 
     # Global lateral tuning defaults, can be overridden per-vehicle
 
