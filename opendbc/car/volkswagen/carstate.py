@@ -274,6 +274,9 @@ class CarState(CarStateBase):
     ret.cruiseState.available = pt_cp.vl["Motor_51"]["TSK_Status"] in (2, 3, 4, 5)
     ret.cruiseState.enabled = pt_cp.vl["Motor_51"]["TSK_Status"] in (3, 4, 5)
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
+    ret.cruiseState.speed = ext_cp.vl["MEB_ACC_01"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS
+    if ret.cruiseState.speed > 90:  # 255 kph in m/s == no current setpoint
+      ret.cruiseState.speed = 0
     accFaulted = pt_cp.vl["Motor_51"]["TSK_Status"] in (6, 7)
     ret.accFaulted = self.update_acc_fault(accFaulted, parking_brake=ret.parkingBrake, drive_mode=drive_mode)
 
@@ -432,9 +435,9 @@ class CarState(CarStateBase):
       ("Gateway_73", 10),   # Gear position (ALT_GEAR) and EPB status
     ]
     cam_messages = [
-      ("ACC_02", 17),       # ACC setpoint speed (ACC_Wunschgeschw_02) from radar/ACC ECU
+      ("MEB_ACC_01", 17),   # ACC setpoint speed (ACC_Wunschgeschw_02) from radar/ACC ECU
     ]
-    # When panda sits between gateway and forward camera, ACC_02 reaches openpilot on pt bus
+    # When panda sits between gateway and forward camera, MEB_ACC_01 reaches openpilot on pt bus
     if CP.networkLocation == NetworkLocation.fwdCamera:
       pt_messages.append(cam_messages.pop(0))
     if CP.enableBsm:
