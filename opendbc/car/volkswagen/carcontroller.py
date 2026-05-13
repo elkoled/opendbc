@@ -107,15 +107,7 @@ class CarController(CarControllerBase):
         else:
           if self.steering_power_last > 0:
             hca_enabled = True
-            # Rate-limit the wind-down toward measured curvature with the same VM envelope
-            # safety enforces; clip endpoint to the safety angle limit.
-            wind_target = float(np.clip(CS.curvature_meas, -max_curvature, max_curvature))
-            limited_deg = apply_steer_angle_limits_vm(wind_target * self.RAD_TO_DEG,
-                                                      self.apply_curvature_last * self.RAD_TO_DEG,
-                                                      CS.out.vEgoRaw,
-                                                      CS.curvature_meas * self.RAD_TO_DEG,
-                                                      True, self.CCP, self.VM)
-            apply_curvature = limited_deg / self.RAD_TO_DEG
+            apply_curvature = float(np.clip(CS.curvature_meas, -max_curvature, max_curvature))
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
