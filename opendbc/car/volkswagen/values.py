@@ -6,7 +6,7 @@ from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, CanBusBase, CarSpecs, 
 from opendbc.can import CANDefine
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.docs_definitions import CarFootnote, CarHarness, CarDocs, CarParts, Column
-from opendbc.car.lateral import AngleSteeringLimits, ISO_LATERAL_ACCEL
+from opendbc.car.lateral import AngleSteeringLimits, CurvatureSteeringLimits, ISO_LATERAL_ACCEL
 from opendbc.car.fw_query_definitions import EcuAddrSubAddr, FwQueryConfig, Request, p16
 from opendbc.car.vin import Vin
 
@@ -125,6 +125,8 @@ class CarControllerParams:
       self.STEERING_POWER_MAX = 50        # HCA_03 maximum steering power, percentage
       self.STEERING_POWER_MIN = 4         # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP = 2        # HCA_03 steering power counter steps
+
+      self.CURVATURE_LIMITS = CurvatureSteeringLimits(0.195)  # Max curvature for steering command, m^-1
 
       self.shifter_values = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
       self.hca_status_values = can_define.dv["QFK_01"]["LatCon_HCA_Status"]
