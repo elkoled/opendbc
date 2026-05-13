@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 import unittest
+
 from opendbc.car.structs import CarParams
 from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 from opendbc.safety.tests.common import CANPackerSafety
 
+
 MSG_LH_EPS_03 = 0x9F    # RX from EPS, for driver steering torque
 MSG_ESC_51 = 0xFC       # RX from ABS, for wheel speeds
 MSG_Motor_51 = 0x10B    # RX from ECU, for ACC status / accel pedal
 MSG_GRA_ACC_01 = 0x12B  # TX by OP, ACC control buttons for cancel/resume
-MSG_QFK_01 = 0x13D
 MSG_KLR_01 = 0x25D      # TX by OP, capacitive steering wheel touch
 MSG_HCA_03 = 0x303
 MSG_LDW_02 = 0x397      # TX by OP, Lane line recognition and text alerts
-MSG_MOTOR_14 = 0x3BE
 
 
 class TestVolkswagenMebStockSafety(common.CarSafetyTest):
@@ -68,6 +68,37 @@ class TestVolkswagenMebStockSafety(common.CarSafetyTest):
     # do not block resume if we are engaged already
     self.safety.set_controls_allowed(1)
     self.assertTrue(self._tx(self._gra_acc_01_msg(resume=1)))
+
+
+class TestVolkswagenMebIgnition(unittest.TestCase):
+  TX_MSGS: list = []
+
+  def setUp(self):
+    self.safety = libsafety_py.libsafety
+    self.safety.init_tests()
+    self.packer = CANPackerSafety("vw_meb")
+
+  def _msg(self, counter, ign):
+    return self.packer.make_can_msg_safety("Klemmen_Status_01", 0,
+                                           {"Klemmen_Status_01_BZ": counter,
+                                            "ZAS_Kl_15": ign})
+
+  # ZAS_Kl_15=1
+  def test_ignition_on(self):
+    for i in range(16):
+      self.safety.init_tests()
+      self.safety.ignition_can_hook(self._msg(i, 1))
+      self.assertFalse(self.safety.get_ignition_can())
+      self.safety.ignition_can_hook(self._msg((i + 1) % 16, 1))
+      self.assertTrue(self.safety.get_ignition_can())
+
+  def test_ignition_off(self):
+    self.safety.ignition_can_hook(self._msg(0, 1))
+    self.safety.ignition_can_hook(self._msg(1, 1))
+    self.assertTrue(self.safety.get_ignition_can())
+    self.safety.ignition_can_hook(self._msg(2, 0))
+    self.safety.ignition_can_hook(self._msg(3, 0))
+    self.assertFalse(self.safety.get_ignition_can())
 
 
 if __name__ == "__main__":
