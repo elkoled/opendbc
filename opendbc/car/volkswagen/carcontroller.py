@@ -82,13 +82,18 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
+      apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
         max_curvature = self.CCP.ANGLE_LIMITS.STEER_ANGLE_MAX / self.RAD_TO_DEG
+        # Logic to avoid HCA refused state:
+        #   * steering power as counter and near zero before OP lane assist deactivation
+        # MEB rack can be used continously without time limits
+        # maximum real steering angle change ~ 120-130 deg/s
         if CC.latActive:
           hca_enabled = True
           curvature_target = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
-          # Rate-limit using the same VM-based envelope (lateral accel + jerk) that safety enforces.
-          # apply_steer_angle_limits_vm operates in degrees; we feed curvature*RAD_TO_DEG and unscale.
+          # rate-limit using the same vm envelope from safety
+          # apply_steer_angle_limits_vm operates in degrees, convert from curvature
           limited_deg = apply_steer_angle_limits_vm(curvature_target * self.RAD_TO_DEG,
                                                     self.apply_curvature_last * self.RAD_TO_DEG,
                                                     CS.out.vEgoRaw,
