@@ -1,27 +1,11 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_steer_angle_limits_vm
+from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.vehicle_model import VehicleModel
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
-
-
-def _meb_safety_vm() -> VehicleModel:
-  # Stub VehicleModel matching the safety params (slip=0, steerRatio=1, wheelbase=1)
-  # so apply_steer_angle_limits_vm reduces to an identity on curvature*RAD_TO_DEG.
-  CP = structs.CarParams()
-  CP.mass = 1.0
-  CP.wheelbase = 1.0
-  CP.centerToFront = 0.5
-  CP.steerRatio = 1.0
-  CP.steerRatioRear = 0.0
-  CP.rotationalInertia = 1.0
-  CP.tireStiffnessFront = 1.0
-  CP.tireStiffnessRear = 1.0
-  return VehicleModel(CP)
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -69,8 +53,6 @@ class CarController(CarControllerBase):
     self.apply_torque_last = 0
     self.apply_curvature_last = 0.
     self.steering_power_last = 0
-    self.VM = _meb_safety_vm() if CP.flags & VolkswagenFlags.MEB else None
-    self.RAD_TO_DEG = CarControllerParams.MEB_RAD_TO_DEG
     self.gra_acc_counter_last = None
     self.klr_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
@@ -85,22 +67,12 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
-        max_curvature = self.CCP.ANGLE_LIMITS.STEER_ANGLE_MAX / self.RAD_TO_DEG
-        # Logic to avoid HCA refused state:
-        #   * steering power as counter and near zero before OP lane assist deactivation
-        # MEB rack can be used continously without time limits
-        # maximum real steering angle change ~ 120-130 deg/s
         if CC.latActive:
           hca_enabled = True
-          curvature_target = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
-          # rate-limit using the same vm envelope from safety
-          # apply_steer_angle_limits_vm operates in degrees, convert from curvature
-          limited_deg = apply_steer_angle_limits_vm(curvature_target * self.RAD_TO_DEG,
-                                                    self.apply_curvature_last * self.RAD_TO_DEG,
-                                                    CS.out.vEgoRaw,
-                                                    CS.curvature_meas * self.RAD_TO_DEG,
-                                                    CC.latActive, self.CCP, self.VM)
-          apply_curvature = limited_deg / self.RAD_TO_DEG
+          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
+                                                      CS.curvature_meas, False, self.CCP.STEER_STEP, CC.latActive,
+                                                      self.CCP.CURVATURE_LIMITS)
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)
@@ -112,15 +84,9 @@ class CarController(CarControllerBase):
         else:
           if self.steering_power_last > 0:
             hca_enabled = True
-            # rate-limit the wind-down toward measured curvature with the same vm envelope from safety
-            # clip endpoint to the safety angle limit
-            wind_target = float(np.clip(CS.curvature_meas, -max_curvature, max_curvature))
-            limited_deg = apply_steer_angle_limits_vm(wind_target * self.RAD_TO_DEG,
-                                                      self.apply_curvature_last * self.RAD_TO_DEG,
-                                                      CS.out.vEgoRaw,
-                                                      CS.curvature_meas * self.RAD_TO_DEG,
-                                                      True, self.CCP, self.VM)
-            apply_curvature = limited_deg / self.RAD_TO_DEG
+            apply_curvature = float(np.clip(CS.curvature_meas,
+                                            -self.CCP.CURVATURE_LIMITS.CURVATURE_MAX,
+                                            self.CCP.CURVATURE_LIMITS.CURVATURE_MAX))
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
