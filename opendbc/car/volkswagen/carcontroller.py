@@ -111,8 +111,8 @@ class CarController(CarControllerBase):
         else:
           if self.steering_power_last > 0:
             hca_enabled = True
-            # Rate-limit the wind-down toward measured curvature with the same VM envelope
-            # safety enforces; clip endpoint to the safety angle limit.
+            # rate-limit the wind-down toward measured curvature with the same vm envelope from safety
+            # clip endpoint to the safety angle limit
             wind_target = float(np.clip(CS.curvature_meas, -max_curvature, max_curvature))
             limited_deg = apply_steer_angle_limits_vm(wind_target * self.RAD_TO_DEG,
                                                       self.apply_curvature_last * self.RAD_TO_DEG,
@@ -131,6 +131,14 @@ class CarController(CarControllerBase):
         self.steering_power_last = steering_power
 
       else:
+        # Logic to avoid HCA state 4 "refused":
+        #   * Don't steer unless HCA is in state 3 "ready" or 5 "active"
+        #   * Don't steer at standstill
+        #   * Don't send > 3.00 Newton-meters torque
+        #   * Don't send the same torque for > 6 seconds
+        #   * Don't send uninterrupted steering for > 360 seconds
+        # MQB racks reset the uninterrupted steering timer after a single frame
+        # of HCA disabled; this is done whenever output happens to be zero.
         apply_torque = 0
         if CC.latActive:
           new_torque = int(round(actuators.torque * self.CCP.STEER_MAX))
