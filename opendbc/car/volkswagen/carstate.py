@@ -431,14 +431,11 @@ class CarState(CarStateBase):
   @staticmethod
   def get_can_parsers_meb(CP):
     pt_messages = [
+      # frequency changes too much for the CANParser to figure out
       ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
-    ],
+      ("SMLS_01", 1),       # From Stalk Controls
+    ]
     cam_messages = []
-    if CP.networkLocation == NetworkLocation.fwdCamera:
-      pt_messages.append(cam_messages.pop(0))
-    if CP.enableBsm:
-      bsm_target = cam_messages if CP.networkLocation == NetworkLocation.gateway else pt_messages
-      bsm_target.append(("MEB_Side_Assist_01", float('nan')))
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus(CP).pt),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus(CP).cam),
