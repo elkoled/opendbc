@@ -378,9 +378,9 @@ class CarState(CarStateBase):
   def update_hca_state(self, hca_status, drive_mode=True):
     # Treat FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
     # DISABLED means the EPS hasn't been configured to support Lane Assist
-    self.eps_init_complete = self.eps_init_complete or hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600
-    perm_fault = self.eps_init_complete and hca_status == "FAULT"
-    temp_fault = (drive_mode and hca_status == "REJECTED") or not self.eps_init_complete
+    self.eps_init_complete = self.eps_init_complete or (hca_status in ("DISABLED", "READY", "ACTIVE") or self.frame > 600)
+    perm_fault = drive_mode and hca_status == "DISABLED" or (self.eps_init_complete and hca_status == "FAULT")
+    temp_fault = drive_mode and hca_status in ("REJECTED", "PREEMPTED") or not self.eps_init_complete
     return temp_fault, perm_fault
 
   def update_acc_fault(self, acc_fault, parking_brake=False, drive_mode=True, recovery_frames_max=100):
@@ -432,12 +432,7 @@ class CarState(CarStateBase):
   def get_can_parsers_meb(CP):
     pt_messages = [
       ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
-      ("Gateway_73", 10),   # Gear position (ALT_GEAR) and EPB status
     ]
-    cam_messages = [
-      ("MEB_ACC_01", 17),   # ACC setpoint speed (ACC_Wunschgeschw_02) from radar/ACC ECU
-    ]
-    # When panda sits between gateway and forward camera, MEB_ACC_01 reaches openpilot on pt bus
     if CP.networkLocation == NetworkLocation.fwdCamera:
       pt_messages.append(cam_messages.pop(0))
     if CP.enableBsm:
