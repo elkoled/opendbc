@@ -130,7 +130,8 @@ class CarState(CarStateBase):
     ret.standstill = ret.vEgoRaw == 0
     ret.cruiseState.standstill = self.CP.pcmCruise and self.esp_hold_confirmation
     ret.cruiseState.nonAdaptive = acc_limiter_mode or speed_limiter_mode
-    if ret.cruiseState.speed > 90:
+    ret.cruiseState.speed = ext_cp.vl["MEB_ACC_01"]["ACC_Wunschgeschw_02"] * CV.KPH_TO_MS
+    if ret.cruiseState.speed > 90:  # 255 kph in m/s == no current setpoint
       ret.cruiseState.speed = 0
 
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
