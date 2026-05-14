@@ -432,7 +432,8 @@ class CarState(CarStateBase):
   def get_can_parsers_meb(CP):
     pt_messages = [
       ("Blinkmodi_02", 1),  # From J519 BCM (sent at 1Hz when no lights active, 50Hz when active)
-    ]
+    ],
+    cam_messages = []
     if CP.networkLocation == NetworkLocation.fwdCamera:
       pt_messages.append(cam_messages.pop(0))
     if CP.enableBsm:
