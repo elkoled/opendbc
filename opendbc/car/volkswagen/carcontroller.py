@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.can import CANPacker
-from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curvature_limits
+from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, DT_CTRL, structs
+from opendbc.car.lateral import ISO_LATERAL_ACCEL, apply_driver_steer_torque_limits, apply_std_curvature_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
@@ -9,6 +9,10 @@ from opendbc.car.volkswagen.values import CanBus, CarControllerParams, Volkswage
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
+
+# Limit to average banked road since safety doesn't have the roll
+AVERAGE_ROAD_ROLL = 0.06  # ~3.4 degrees, 6% superelevation. higher actual roll raises lateral acceleration
+MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL - (ACCELERATION_DUE_TO_GRAVITY * AVERAGE_ROAD_ROLL)  # ~2.4 m/s^2
 
 
 class HCAMitigation:
@@ -73,6 +77,9 @@ class CarController(CarControllerBase):
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw,
                                                       CS.curvature_meas, False, self.CCP.STEER_STEP, CC.latActive,
                                                       self.CCP.CURVATURE_LIMITS)
+          # Limit curvature to conservative max lateral acceleration
+          curvature_accel_limit = MAX_LATERAL_ACCEL / (max(CS.out.vEgoRaw, 1) ** 2)
+          apply_curvature = float(np.clip(apply_curvature, -curvature_accel_limit, curvature_accel_limit))
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)

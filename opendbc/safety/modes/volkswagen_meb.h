@@ -93,6 +93,7 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
       uint32_t rl = msg->data[12] | (msg->data[13] << 8);
       uint32_t rr = msg->data[14] | (msg->data[15] << 8);
       vehicle_moving = (fr > 0U) || (rr > 0U) || (rl > 0U) || (fl > 0U);
+      UPDATE_VEHICLE_SPEED((fr + rr + rl + fl) / 4.0 * 0.0075 * KPH_TO_MS);
     }
 
     if (msg->addr == MSG_QFK_01) {
@@ -137,32 +138,15 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
 static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
 
-  // Safety check for HCA_03 Heading Control Assist curvature
   if (msg->addr == MSG_HCA_03) {
-    int desired_curvature_raw = GET_BYTES(msg, 3, 2) & 0x7FFFU;
-    bool desired_curvature_sign = GET_BIT(msg, 39U);
-    if (!desired_curvature_sign) {
-      desired_curvature_raw *= -1;
+    int desired_curvature = GET_BYTES(msg, 3, 2) & 0x7FFFU;
+    if (!GET_BIT(msg, 39U)) {
+      desired_curvature *= -1;
     }
     bool steer_req = (((msg->data[1] >> 4) & 0x0FU) == 4U);
 
-    // Absolute curvature cap
-    if ((desired_curvature_raw > VOLKSWAGEN_MEB_MAX_CURVATURE_CAN) ||
-        (desired_curvature_raw < -VOLKSWAGEN_MEB_MAX_CURVATURE_CAN)) {
+    if (steer_angle_cmd_checks(desired_curvature, steer_req, VOLKSWAGEN_MEB_STEERING_LIMITS)) {
       tx = false;
-    }
-
-    // ISO lateral acceleration envelope (only while actively steering)
-    if (controls_allowed && steer_req) {
-      const float fudged_speed = (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0f;
-      const float v_clamped = (fudged_speed < 1.0f) ? 1.0f : fudged_speed;
-      const float max_lat_accel = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);
-      const float max_curvature = max_lat_accel / (v_clamped * v_clamped);
-      const int max_curvature_can = (int)((max_curvature * VOLKSWAGEN_MEB_CURVATURE_TO_CAN) + 1.0f);
-      if ((desired_curvature_raw > max_curvature_can) ||
-          (desired_curvature_raw < -max_curvature_can)) {
-        tx = false;
-      }
     }
   }
 
