@@ -89,6 +89,28 @@ class CarController(CarControllerBase):
     hud_control = CC.hudControl
     can_sends = []
 
+    # MEB-only Emergency-Assist pacification gate.
+    # VW EA fires a brake jolt after ~30 s of no driver hands-on detection.
+    # Today we mask EA by continuously sending fake driver-torque / capacitive
+    # wheel-touch messages — so a distracted-driver alert from openpilot can
+    # never escalate to the stock brake jolt. Two changes here:
+    #   1. On openpilot's driver-distracted alert (VisualAlert.steerRequired),
+    #      stop sending the EA-pacification messages entirely so the stock
+    #      brake jolt actually fires and wakes the driver.
+    #   2. Even during normal operation, only PULSE the pacification for ~1 s
+    #      every 28 s instead of streaming it continuously. This lets VW EA's
+    #      internal hands-off timer charge up to ~27 s between pulses; when
+    #      openpilot's distracted alert hits, the brake jolt fires within a
+    #      handful of seconds instead of waiting the full 30 s window.
+    # openpilot stays engaged throughout — only the pacification stream is
+    # gated. MEB-only; MQB/PQ paths unchanged.
+    ea_distracted = hud_control.visualAlert == VisualAlert.steerRequired
+    _EA_PACIFY_PERIOD_FRAMES = int(28.0 / DT_CTRL)
+    _EA_PACIFY_BURST_FRAMES = int(1.0 / DT_CTRL)
+    ea_pacify_send_meb = bool(self.CP.flags & VolkswagenFlags.MEB) \
+                         and not ea_distracted \
+                         and (self.frame % _EA_PACIFY_PERIOD_FRAMES) < _EA_PACIFY_BURST_FRAMES
+
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
@@ -156,10 +178,12 @@ class CarController(CarControllerBase):
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
-        if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
-          ea_simulated_torque = CS.out.steeringTorque
-        can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
+        # MEB only: gate this on the EA-pacification pulse window (see top of update()). MQB/PQ unchanged.
+        if not (self.CP.flags & VolkswagenFlags.MEB) or ea_pacify_send_meb:
+          ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
+          if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
+            ea_simulated_torque = CS.out.steeringTorque
+          can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
     # Emergency Assist intervention
     if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
@@ -167,7 +191,8 @@ class CarController(CarControllerBase):
       # probably EA is stock activated only for cars equipped with capacitive steering wheel
       # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
-      if klr_send_ready:
+      # Gate on the EA-pacification pulse window — see top of update().
+      if klr_send_ready and ea_pacify_send_meb:
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]
