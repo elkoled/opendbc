@@ -109,6 +109,12 @@ class CarControllerParams:
       self.STEERING_POWER_MIN = 4         # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP = 2        # HCA_03 steering power counter steps
 
+      # EA pacification duty cycle (frames at 100 Hz). Stock EA fires brake jolt
+      # ~30 s after losing driver input; pulsing pacify every 25 s keeps the
+      # timer pre-charged so a real DM-driven dropout escalates in ~12 s mean.
+      self.EA_PACIFY_PERIOD = 2500        # 25.0 s @ 100 Hz
+      self.EA_PACIFY_ACTIVE = 50          # 0.5 s pacify pulse
+
       self.CURVATURE_LIMITS: CurvatureSteeringLimits = CurvatureSteeringLimits(
         0.195,  # Max curvature for steering command, m^-1
       )

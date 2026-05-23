@@ -68,6 +68,17 @@ class CarController(CarControllerBase):
     hud_control = CC.hudControl
     can_sends = []
 
+    # MEB: pulse EA pacification so the stock 30 s driver-inactivity timer stays
+    # pre-charged near expiry. When openpilot's driver-attention warning fires
+    # (VisualAlert.steerRequired), drop pacification entirely so the stock
+    # brake jolt escalates within seconds. openpilot itself stays engaged.
+    # Non-MEB keeps the original continuous pacification behavior.
+    ea_pacify = True
+    if self.CP.flags & VolkswagenFlags.MEB:
+      ea_pacify = CC.latActive \
+                  and hud_control.visualAlert != VisualAlert.steerRequired \
+                  and (self.frame % self.CCP.EA_PACIFY_PERIOD) < self.CCP.EA_PACIFY_ACTIVE
+
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
@@ -133,7 +144,10 @@ class CarController(CarControllerBase):
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
+        # MEB only inflates during the ea_pacify pulse; off-pulse and during steerRequired
+        # the simulated torque falls back to the real driver torque (zero if hands off).
+        boost = apply_torque * 2 if ea_pacify else 0
+        ea_simulated_torque = float(np.clip(boost, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
         if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
@@ -143,10 +157,12 @@ class CarController(CarControllerBase):
       # send capacitive steering wheel touched
       # probably EA is stock activated only for cars equipped with capacitive steering wheel
       # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      # Gated on ea_pacify: pulses to pre-charge the stock 30 s timer; drops entirely
+      # under VisualAlert.steerRequired so the brake jolt escalates fast.
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
       if klr_send_ready:
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, ea_pacify, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, ea_pacify, CS.klr_stock_values))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]
 
     # **** Acceleration Controls ******************************************** #
