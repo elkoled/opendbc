@@ -5,6 +5,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curv
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.eps_correction import EPSCorrection
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -61,6 +62,9 @@ class CarController(CarControllerBase):
     self.gra_acc_counter_last = None
     self.klr_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
+    # Static EPS correction (ID4_MK1 only; returns 0 on all other platforms).
+    # See opendbc/car/volkswagen/eps_correction.py for LOO-CV caveats.
+    self.eps_correction = EPSCorrection(CP.carFingerprint)
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -79,7 +83,8 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          eps_correction = self.eps_correction.lookup(actuators.curvature, CS.out.vEgo)
+          apply_curvature = actuators.curvature + eps_correction + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
