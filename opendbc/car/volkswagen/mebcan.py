@@ -27,7 +27,8 @@ def create_eps_update(packer, bus, eps_stock_values, ea_simulated_torque):
   return packer.make_can_msg("LH_EPS_03", bus, values)
 
 
-def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_pressed, hud_alert, hud_control, sound_alert=False):
+def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_pressed, hud_alert, hud_control,
+                           sound_alert=False, driver_distracted=False):
   display_mode = 1 if lat_active else 0  # travel assist style showing yellow lanes when op is active
 
   values = {}
@@ -42,8 +43,11 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
 
   values.update({
     "LDW_Gong": sound_alert,
-    "LDW_Status_LED_gelb": 1 if lat_active and steering_pressed else 0,
-    "LDW_Status_LED_gruen": 1 if lat_active and not steering_pressed else 0,
+    # Yellow LED = warning state (driver inattentive); green = system OK.
+    # Previously these were wired to steering_pressed in the opposite of the
+    # automotive HMI convention, which masked the dashboard distracted-warning.
+    "LDW_Status_LED_gelb": 1 if lat_active and driver_distracted else 0,
+    "LDW_Status_LED_gruen": 1 if lat_active and not driver_distracted else 0,
     "LDW_Lernmodus_links": 3 + display_mode if hud_control.leftLaneDepart else 1 + hud_control.leftLaneVisible + display_mode,
     "LDW_Lernmodus_rechts": 3 + display_mode if hud_control.rightLaneDepart else 1 + hud_control.rightLaneVisible + display_mode,
     "LDW_Texte": hud_alert,
@@ -259,7 +263,20 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
   return packer.make_can_msg("MEB_ACC_01", bus, values)
 
 
-def create_capacitive_wheel_touch(packer, bus, lat_active, klr_stock_values):
+def create_capacitive_wheel_touch(packer, bus, lat_active, klr_stock_values, send_touch=True):
+  """Fake capacitive-wheel touch to pacify VW Emergency Assist.
+
+  `send_touch=False` passes the stock KLR_01 values through unchanged so
+  VW's internal driver-inactivity timer increments (rather than being
+  reset every cycle). The caller is responsible for the cadence:
+
+    * To suppress VW driver-warning escalation entirely (the prior
+      behaviour) send `send_touch=True` every cycle.
+    * To keep VW's ~30 s timer pre-charged near its threshold, send
+      `send_touch=True` only every Nth cycle.
+    * When openpilot's driver-distracted warning fires, send
+      `send_touch=False` so VW's natural escalation (brake jolt) runs.
+  """
   values = {s: klr_stock_values[s] for s in [
     "COUNTER",
     "KLR_Touchintensitaet_1",
@@ -268,7 +285,7 @@ def create_capacitive_wheel_touch(packer, bus, lat_active, klr_stock_values):
     "KLR_Touchauswertung",
   ]}
 
-  if lat_active:
+  if lat_active and send_touch:
     values.update({
       "COUNTER": (klr_stock_values["COUNTER"] + 1) % 16,
       "KLR_Touchintensitaet_1": 80,

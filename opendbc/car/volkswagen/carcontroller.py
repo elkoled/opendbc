@@ -61,6 +61,7 @@ class CarController(CarControllerBase):
     self.distance_bar_frame = 0
     self.gra_acc_counter_last = None
     self.klr_counter_last = None
+    self.klr_recharge_counter = 0
     self.hca_mitigation = HCAMitigation(self.CCP)
 
   def update(self, CC, CS, now_nanos):
@@ -68,12 +69,24 @@ class CarController(CarControllerBase):
     hud_control = CC.hudControl
     can_sends = []
 
-    # When openpilot is asking the driver to take over (DM distraction,
-    # unresponsive, ALC limit, LDW, etc.) we stop pacifying VW's Emergency
-    # Assist driver-inactivity detection so the stock system can actually
-    # do its brake-jolt + emergency stop sequence. openpilot itself stays
-    # engaged (controlsd handles its own escalation).
-    driver_takeover_required = hud_control.visualAlert == VisualAlert.steerRequired
+    # MEB-only: when openpilot raises the driver-distracted warning
+    # (VisualAlert.steerRequired), we stop pacifying VW's Emergency
+    # Assist and stop overriding the capacitive wheel touch so the stock
+    # ~30 s VW timer runs out and fires the brake jolt. openpilot itself
+    # stays engaged -- HCA_03 is still sent every cycle.
+    #
+    # Pre-charge: when attentive, the fake touch / EA torque overrides
+    # are sent only for a brief burst every KLR_RECHARGE_PERIOD frames,
+    # so VW's internal counter is held climbing near (but not over) its
+    # threshold most of the time. The moment we let it run, the jolt
+    # fires in seconds rather than the full 30 s.
+    KLR_RECHARGE_PERIOD = 2800   # frames; at DT_CTRL=0.01 s -> ~28 s, just under VW's ~30 s
+    KLR_RECHARGE_BURST = 100     # frames sustained per burst -> ~1 s touch, enough to reset VW
+    is_meb = bool(self.CP.flags & VolkswagenFlags.MEB)
+    driver_distracted = is_meb and hud_control.visualAlert == VisualAlert.steerRequired
+    self.klr_recharge_counter = (self.klr_recharge_counter + 1) % KLR_RECHARGE_PERIOD
+    in_recharge_burst = self.klr_recharge_counter < KLR_RECHARGE_BURST
+    pacify_vw = is_meb and (not driver_distracted) and in_recharge_burst
 
     # **** Steering Controls ************************************************ #
 
@@ -139,28 +152,29 @@ class CarController(CarControllerBase):
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        # When openpilot is asking the driver to take over, pass the REAL driver torque through (no spoof) so EA
-        # can detect hands-off and intervene.
-        if driver_takeover_required:
-          ea_simulated_torque = CS.out.steeringTorque
+        #
+        # MEB: gated by `pacify_vw` (only the recharge burst) so VW's EA timer stays pre-charged near
+        # threshold, and so it actually fires when the openpilot driver-distracted warning is up.
+        # Non-MEB: unchanged (always send).
+        if is_meb and not pacify_vw:
+          pass  # let stock EA torque pass through -> VW timer climbs
         else:
           ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
           if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
             ea_simulated_torque = CS.out.steeringTorque
-        can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
+          can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
     # Emergency Assist intervention
     if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
-      # send capacitive steering wheel touched
-      # probably EA is stock activated only for cars equipped with capacitive steering wheel
-      # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
-      # When openpilot wants the driver to take over, suppress the hands-on spoof so the stock EA
-      # detects hands-off and runs its brake-jolt + emergency stop sequence.
+      # Send capacitive steering wheel "touched" only in the recharge burst when attentive.
+      # When openpilot's driver-distracted warning is up, send_touch is False so stock
+      # KLR_01 passes through unmodified and VW's natural escalation runs.
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
       if klr_send_ready:
-        spoof_hands_on = CC.latActive and not driver_takeover_required
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, spoof_hands_on, CS.klr_stock_values))
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, spoof_hands_on, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive,
+                                                              CS.klr_stock_values, send_touch=pacify_vw))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive,
+                                                              CS.klr_stock_values, send_touch=pacify_vw))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]
 
     # **** Acceleration Controls ******************************************** #
@@ -214,17 +228,9 @@ class CarController(CarControllerBase):
       hud_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
-      if self.CP.flags & VolkswagenFlags.MEB:
-        # MEB's create_lka_hud_control exposes LDW_Gong (the stock LDW chime).
-        # carcontroller previously never passed sound_alert, so the chime
-        # never fired even when openpilot's visual takeover alert did. Fire
-        # the gong whenever we display the takeover hud_alert.
-        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
-                                                         CS.out.steeringPressed, hud_alert, hud_control,
-                                                         sound_alert=driver_takeover_required))
-      else:
-        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
-                                                         CS.out.steeringPressed, hud_alert, hud_control))
+      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                       CS.out.steeringPressed, hud_alert, hud_control,
+                                                       driver_distracted=driver_distracted))
 
     if hud_control.leadDistanceBars != self.lead_distance_bars_last:
       self.distance_bar_frame = self.frame
