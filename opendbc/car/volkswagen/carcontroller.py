@@ -5,6 +5,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curv
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.eps_correction import correct_meb_curvature
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -79,7 +80,10 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # Pre-compensate the MEB EPS plant inverse for supported fingerprints.
+          # Passes through unchanged for fingerprints not in the fitted set.
+          target_curvature = correct_meb_curvature(actuators.curvature, CS.out.vEgo, self.CP.carFingerprint)
+          apply_curvature = target_curvature + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
