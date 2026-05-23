@@ -79,7 +79,19 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # ID4 fleet-best-effort EPS plant correction. ARX(1,1,d) fit on
+          # HCA_03 -> yaw_actual across 5 dongles, 42 segments; K_plant
+          # drops with speed (within-dongle slope -0.17 to -0.73 per
+          # 100 km/h on 3 dongles independently). 80 km/h cross-dongle
+          # validated (K=0.784, 2 dongles, n=11 fits, CI 0.784-0.785);
+          # 100/120/140 km/h are single-dongle multi-fit estimates,
+          # corroborated only by within-dongle slope direction. Gain
+          # capped at +30%. NOT cross-dongle validated above 80 km/h.
+          # See openpilot tools/lateral_maneuvers/fleet_residuals/FINDINGS.md
+          MEB_FF_BP = [19.4, 22.2, 27.8, 33.3, 38.9]
+          MEB_FF_V = [1.0, 1.276, 1.300, 1.300, 1.300]
+          ff_gain = float(np.interp(CS.out.vEgoRaw, MEB_FF_BP, MEB_FF_V))
+          apply_curvature = ff_gain * actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
