@@ -6,6 +6,7 @@ from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
+from opendbc.car.volkswagen.values_meb_K import apply_fleet_K_correction
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
@@ -80,6 +81,11 @@ class CarController(CarControllerBase):
         if CC.latActive:
           hca_enabled = True
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # MEB fleet EPS gain inversion: empirically the plant tracks ~60-85%
+          # of commanded curvature at 60-100 km/h (see values_meb_K). Boost by
+          # 1/K(v) before the safety envelope clips. Capped at 2.0x. Outside
+          # the validated speed range this is passthrough.
+          apply_curvature = apply_fleet_K_correction(apply_curvature, CS.out.vEgoRaw)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
