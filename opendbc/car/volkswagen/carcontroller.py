@@ -27,6 +27,17 @@ LongCtrlState = structs.CarControl.Actuators.LongControlState
 MEB_EPS_GAIN_SPEEDS_MPS = (0.0, 5.0, 10.0, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0, 32.5, 35.0, 40.0)
 MEB_EPS_GAIN_MULT       = (1.0, 1.0, 1.0,  1.0,  1.0235, 1.0554, 1.0960, 1.1484, 1.2017, 1.2016, 1.2014, 1.2522, 1.3000)
 
+# MEB Emergency Assist (EA) — keep its untouched-timer pre-charged.  Stock EA
+# fires a brake jolt when ~30 s elapses with no detected driver touch.  We
+# spoof KLR_01 ("hands on") to stay engaged, but if we spoof every cycle the
+# timer is always 0 — so when we actually WANT EA to fire (driver-distracted
+# escalation) we'd have to wait a fresh ~30 s.  Pre-charge it by only sending
+# the spoof during a short pulse once per KLR_PRECHARGE_PERIOD_S; the timer
+# averages roughly PERIOD/2 and the first post-release jolt fires within
+# ~PERIOD/2 seconds instead of ~30 s.  PERIOD < 30 s by a safe margin.
+KLR_PRECHARGE_PERIOD_FRAMES = int(25.0 / DT_CTRL)   # 25 s between spoof pulses
+KLR_PRECHARGE_PULSE_FRAMES  = int(0.20 / DT_CTRL)   # 200 ms pulse (~10 KLR_01 ticks)
+
 
 class HCAMitigation:
   """
@@ -157,8 +168,18 @@ class CarController(CarControllerBase):
       # send capacitive steering wheel touched
       # probably EA is stock activated only for cars equipped with capacitive steering wheel
       # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      #
+      # If openpilot has escalated a driver-distraction alert, stop spoofing the
+      # touch entirely so stock EA can take over (brake jolt).  Otherwise spoof
+      # only during a short pulse once per KLR_PRECHARGE_PERIOD_FRAMES to keep
+      # the EA untouched-timer pre-charged (see constants at top of file).
+      AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
+      driver_distracted = hud_control.audibleAlert in (AudibleAlert.promptDistracted,
+                                                       AudibleAlert.warningSoft,
+                                                       AudibleAlert.warningImmediate)
+      precharge_pulse = (self.frame % KLR_PRECHARGE_PERIOD_FRAMES) < KLR_PRECHARGE_PULSE_FRAMES
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
-      if klr_send_ready:
+      if klr_send_ready and precharge_pulse and not driver_distracted:
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]
