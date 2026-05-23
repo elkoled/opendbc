@@ -10,6 +10,28 @@ from opendbc.car.volkswagen.values import CanBus, CarControllerParams, Volkswage
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
+# VW MEB EPS plant static-gain table — fit on 606 routes / 7 dongles of real
+# VW ID4_MK1 device uploads (data-fallback.comma.life rlogs, 286k+ samples).
+# K = QFK_01.Curvature / HCA_03.Curvature in steady state, at Power = at_cap
+# (the dominant operating state with STEERING_POWER_MAX=50).
+# Per-bin OLS slopes; R² in [0.86, 0.98]; 90% bootstrap CI width ~ 0.005-0.05.
+# K(v) peaks at ~0.97 around 10–20 m/s and dips to ~0.88 at 25–30 m/s — the
+# highway hot zone. K < 1 means rack under-delivers commanded curvature; we
+# compensate by multiplying actuators.curvature by 1/K before sending it
+# through the safety rate limiter. Boost is clipped to [1.00, 1.20] for
+# safety. See tools/lateral_maneuvers/lateral_audit/EPS_MODEL_CARD.md.
+EPS_MEB_K_TABLE = (
+  # (v_low_mps, K)
+  (0.0,  0.829), (5.0,  0.937), (10.0, 0.974), (15.0, 0.966),
+  (20.0, 0.938), (25.0, 0.882), (30.0, 0.902), (36.0, 0.902),
+)
+_EPS_MEB_V = [v for v, _ in EPS_MEB_K_TABLE]
+_EPS_MEB_K = [k for _, k in EPS_MEB_K_TABLE]
+_EPS_BOOST_MIN = 1.00
+_EPS_BOOST_MAX = 1.20
+_EPS_V_BOOST_MIN = 5.0   # don't apply boost below this — low-speed already fine
+_EPS_V_BOOST_MAX = 36.0  # don't apply boost above the fit range
+
 
 class HCAMitigation:
   """
@@ -79,7 +101,15 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # EPS gain compensation (see EPS_MEB_K_TABLE above): boost the
+          # commanded curvature by 1/K(v_ego) to counter the measured
+          # under-delivery of the MEB rack at the current STEERING_POWER cap.
+          if _EPS_V_BOOST_MIN <= CS.out.vEgo <= _EPS_V_BOOST_MAX:
+            K = float(np.interp(CS.out.vEgo, _EPS_MEB_V, _EPS_MEB_K))
+            K_boost = float(np.clip(1.0 / K, _EPS_BOOST_MIN, _EPS_BOOST_MAX))
+          else:
+            K_boost = 1.0
+          apply_curvature = K_boost * actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
