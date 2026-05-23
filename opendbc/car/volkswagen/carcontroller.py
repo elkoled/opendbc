@@ -10,6 +10,23 @@ from opendbc.car.volkswagen.values import CanBus, CarControllerParams, Volkswage
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
+# MEB EPS-response gain compensation, fitted from a 9-dongle / 10-VIN
+# ID4_MK1 fleet (1662 segments, ~15 h engaged).  Pose-derived truth
+# (CC.angularVelocity[2]/vEgo) vs commanded curvature in the
+# (speed, signed-curvature) buckets where |mean(desired)| >= 5e-4.  Piecewise
+# K(v) inverted, clamped to [1.0, 1.3], with no-op below 15 m/s and a linear
+# ramp to 22.5 m/s.  Reproducible via tools/lateral_maneuvers/.
+#
+# NOTE: this compensation is NOT supported by leave-one-dongle-out
+# validation — the cross-car gain spread (0.71..1.00 at v=22.5) means a
+# fleet-wide multiplier helps the undershoot majority but degrades the
+# minority that already track at K~=1.0.  Applied here per user override
+# of the negative-result decision; see tools/lateral_maneuvers/
+# FLEET_LATERAL_README.md and the model_report.txt under
+# /home/batman/curv_analysis/eps_fleet/.
+MEB_EPS_GAIN_SPEEDS_MPS = (0.0, 5.0, 10.0, 15.0, 17.5, 20.0, 22.5, 25.0, 27.5, 30.0, 32.5, 35.0, 40.0)
+MEB_EPS_GAIN_MULT       = (1.0, 1.0, 1.0,  1.0,  1.0235, 1.0554, 1.0960, 1.1484, 1.2017, 1.2016, 1.2014, 1.2522, 1.3000)
+
 
 class HCAMitigation:
   """
@@ -79,7 +96,11 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # EPS-response gain compensation (see MEB_EPS_GAIN_* at top of file).
+          # No-op below 15 m/s; ramps in by 22.5 m/s; clamped to <=1.30.
+          # The additive (rack - VM) feedback term is intentionally left unscaled.
+          eps_gain_mult = float(np.interp(CS.out.vEgo, MEB_EPS_GAIN_SPEEDS_MPS, MEB_EPS_GAIN_MULT))
+          apply_curvature = actuators.curvature * eps_gain_mult + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
