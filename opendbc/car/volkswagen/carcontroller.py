@@ -136,13 +136,23 @@ class CarController(CarControllerBase):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
-    # Emergency Assist intervention
+    # Emergency Assist intervention — MEB only
     if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
-      # send capacitive steering wheel touched
-      # probably EA is stock activated only for cars equipped with capacitive steering wheel
-      # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      # We normally forge capacitive wheel-touch on KLR_01 to suppress VW's stock EA
+      # driver-inactivity escalation (~30 s to brake jolt).  Two MEB-only behaviors:
+      #
+      # 1. When openpilot's DM raises a take-over alert (VisualAlert.steerRequired),
+      #    STOP forging KLR so VW's stock brake jolt actually fires and physically
+      #    wakes the driver.  openpilot itself stays engaged.
+      # 2. Pre-charge VW's internal ~30 s timer by sending KLR only as a brief 0.5 s
+      #    pulse at the start of each 28 s cycle.  The timer climbs to ~27.5 s, never
+      #    crosses 30 s, and fires within ~2.5 s once we let it run for real.
+      dm_take_over = hud_control.visualAlert == VisualAlert.steerRequired
+      ea_precharge_skip = (self.frame % 2800) >= 50  # 50/2800 frames @ 100 Hz = 0.5 s pulse / 28 s cycle
+      suppress_klr = dm_take_over or ea_precharge_skip
+
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
-      if klr_send_ready:
+      if klr_send_ready and not suppress_klr:
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]

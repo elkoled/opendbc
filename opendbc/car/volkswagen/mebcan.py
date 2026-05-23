@@ -42,7 +42,7 @@ def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_p
 
   values.update({
     "LDW_Gong": sound_alert,
-    "LDW_Status_LED_gelb": 1 if lat_active and steering_pressed else 0,
+    "LDW_Status_LED_gelb": 1 if lat_active and (steering_pressed or hud_alert) else 0,
     "LDW_Status_LED_gruen": 1 if lat_active and not steering_pressed else 0,
     "LDW_Lernmodus_links": 3 + display_mode if hud_control.leftLaneDepart else 1 + hud_control.leftLaneVisible + display_mode,
     "LDW_Lernmodus_rechts": 3 + display_mode if hud_control.rightLaneDepart else 1 + hud_control.rightLaneVisible + display_mode,
