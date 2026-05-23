@@ -10,6 +10,30 @@ from opendbc.car.volkswagen.values import CanBus, CarControllerParams, Volkswage
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
+# MEB EPS per-(speed, |curvature|) compensation table. Derived from a fleet study
+# of 1,662 engaged ID4 MK1 route segments across 9 dongles (~/id4_lateral/9/).
+# Each entry is (speed_mps_anchor, kappa_lo, kappa_hi, K) where K is the cross-
+# dongle median steady-state gain (actual = K * desired) for cells whose cross-
+# dongle IQR ≤ 0.10 and whose K stays within the safe range [0.70, 1.10]. Cells
+# outside the table fall through to the existing controller line unchanged.
+# Validated on VOLKSWAGEN_ID4_MK1 only; gated by fingerprint below.
+MEB_K_TABLE = (
+    (22.22, 5.120e-04, 1.024e-03, 0.9377),  # 80 km/h, |κ|≈7.2e-04
+    (22.22, 1.024e-03, 2.048e-03, 0.9018),  # 80 km/h, |κ|≈1.5e-03
+    (22.22, 2.048e-03, 4.096e-03, 0.8748),  # 80 km/h, |κ|≈2.9e-03
+    (33.33, 2.560e-04, 5.120e-04, 0.7038),  # 120 km/h, |κ|≈3.6e-04
+)
+MEB_K_SPEED_TOL_MPS = 4.0   # match a cell if |vEgo - speed_anchor| < this
+MEB_VALIDATED_FINGERPRINTS = frozenset({"VOLKSWAGEN_ID4_MK1"})
+
+
+def meb_k_lookup(v_ego: float, abs_kappa: float) -> float:
+  """Return per-cell K, or 1.0 (pass-through) when no cell matches."""
+  for v_anchor, k_lo, k_hi, K in MEB_K_TABLE:
+    if abs(v_ego - v_anchor) < MEB_K_SPEED_TOL_MPS and k_lo <= abs_kappa < k_hi:
+      return K
+  return 1.0
+
 
 class HCAMitigation:
   """
@@ -80,6 +104,12 @@ class CarController(CarControllerBase):
         if CC.latActive:
           hca_enabled = True
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # Empirical per-cell EPS compensation for validated MEB fingerprints. Pass-through
+          # (K=1.0) when (vEgo, |apply_curvature|) does not fall in any validated cell.
+          # apply_std_curvature_limits below still enforces lat-accel/jerk/abs safety envelope.
+          if self.CP.carFingerprint in MEB_VALIDATED_FINGERPRINTS:
+            K = meb_k_lookup(CS.out.vEgo, abs(apply_curvature))
+            apply_curvature = apply_curvature / K
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
