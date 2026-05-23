@@ -5,6 +5,7 @@ from opendbc.car.lateral import apply_driver_steer_torque_limits, apply_std_curv
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.eps_correction import lookup as eps_correction_lookup
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -79,7 +80,13 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # Static EPS correction table (see opendbc/car/volkswagen/eps_correction.py
+          # and id4_lateral/1/FINDINGS.md). Adds a learned-mean projected residual
+          # in the desired direction. Capped at 50% of |curvature|.
+          # LOO validation: median +4.8% RMSE reduction, but 1 of 7 ID4_MK1
+          # dongles got -11%. Not validated on non-ID4 MEB platforms. Experimental.
+          eps_correction = eps_correction_lookup(actuators.curvature, CS.out.vEgoRaw)
+          apply_curvature = actuators.curvature + eps_correction + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
