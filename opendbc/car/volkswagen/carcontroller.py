@@ -10,6 +10,45 @@ from opendbc.car.volkswagen.values import CanBus, CarControllerParams, Volkswage
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
+# ID4 MK1 fleet-fit K(v_speed, sign) lookup, applied as inverse-K compensation to apply_curvature.
+# Source: 1662-segment fleet sweep (~/id4_lateral/5/sweep_outputs/eps_model.md), fleet model
+# pooled across 6 qualified dongles, route-wise 70/30 train/test split.
+#
+# IMPORTANT — the data does NOT support this as a generalizing fleet model. Cross-dongle holdout
+# R^2 is +0.62, +0.41, +0.37, +0.27, +0.27, and -0.215 (the last is dongle 059878a793f8f288 with
+# 123 routes / 18 791 gated samples — a major dongle). Shipping this lookup is expected to degrade
+# tracking on that dongle and any car with similar gain characteristics. Per the analysis in
+# sweep_outputs/decision_eps.md the most-defensible intervention would be a lateral-delay
+# correction in selfdrive/locationd/, not this. This implementation is applied at explicit
+# user direction overriding the analysis recommendation.
+#
+# Safety envelope kept narrow on purpose:
+#  - active only for VOLKSWAGEN_ID4_MK1 fingerprint (won't touch other MEB cars)
+#  - active only above ~14 m/s (~50 kph); low-speed tracking is reported acceptable already
+#  - compensation multiplier clipped to [1.0, 1.5] — never reduces the command, never amplifies
+#    by more than 50 % beyond what the controller already asked for
+#  - applied BEFORE apply_std_curvature_limits, so the std limit + panda safety still clamp the
+#    final value to the existing envelope (CURVATURE_MAX, lat-accel limits)
+ID4_FLEET_K_SPEED_KPH = np.array([20., 40., 60., 80., 100., 120., 140.])
+ID4_FLEET_K_POS       = np.array([0.937, 0.941, 0.921, 0.750, 0.637, 0.544, 0.680])
+ID4_FLEET_K_NEG       = np.array([1.011, 0.923, 0.960, 0.982, 0.803, 0.800, 0.782])
+ID4_FLEET_K_MIN_VEGO  = 14.0      # m/s, ~50 kph — below this, no compensation applied
+ID4_FLEET_K_COMP_MIN  = 1.0       # never reduce the command
+ID4_FLEET_K_COMP_MAX  = 1.5       # never amplify beyond 50 %
+
+
+def id4_fleet_k_compensation(v_ego: float, curvature: float) -> float:
+  """Return a multiplicative compensation factor for apply_curvature derived from the fleet K(v).
+  See module-level note for the (significant) caveats."""
+  if v_ego < ID4_FLEET_K_MIN_VEGO:
+    return 1.0
+  K_arr = ID4_FLEET_K_POS if curvature >= 0.0 else ID4_FLEET_K_NEG
+  K = float(np.interp(v_ego * CV.MS_TO_KPH, ID4_FLEET_K_SPEED_KPH, K_arr))
+  # K outside (0.5, 1.0] would mean the fleet fit is unphysical for compensation; clamp.
+  K = max(0.5, min(1.0, K))
+  comp = 1.0 / K
+  return max(ID4_FLEET_K_COMP_MIN, min(ID4_FLEET_K_COMP_MAX, comp))
+
 
 class HCAMitigation:
   """
@@ -80,6 +119,10 @@ class CarController(CarControllerBase):
         if CC.latActive:
           hca_enabled = True
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          # ID4 MK1 fleet K(v) inverse compensation. See module-level comment for caveats
+          # (the data does not support this as a fleet model; applied at user direction).
+          if self.CP.carFingerprint == "VOLKSWAGEN_ID4_MK1":
+            apply_curvature *= id4_fleet_k_compensation(CS.out.vEgoRaw, apply_curvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive, self.CCP.CURVATURE_LIMITS)
 
