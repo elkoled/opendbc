@@ -61,6 +61,7 @@ class CarController(CarControllerBase):
     self.distance_bar_frame = 0
     self.gra_acc_counter_last = None
     self.klr_counter_last = None
+    self.ea_pacify_cycle = 0
     self.hca_mitigation = HCAMitigation(self.CCP)
 
   def update(self, CC, CS, now_nanos):
@@ -135,16 +136,34 @@ class CarController(CarControllerBase):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
-    # Emergency Assist intervention
+    # Emergency Assist intervention (MEB only)
+    # The capacitive-wheel-touch override pacifies VW EA so its ~30 s hands-off
+    # timer never expires while openpilot is engaged. Two changes vs always-spam:
+    #
+    #   1. When openpilot fires its own driver-distracted warning (visualAlert ==
+    #      steerRequired) we STOP pacifying so the stock EA fires its own hands-on
+    #      warning + brake jolt and forces the driver to take over. openpilot
+    #      stays engaged throughout — only the EA-pacify CAN write stops.
+    #
+    #   2. Pre-charge: instead of resetting the EA timer every stock KLR frame
+    #      (which puts the timer at ~0 s constantly), we pacify only briefly at
+    #      the tail of each ~25 s cycle. The VW timer climbs 0 → ~25 s between
+    #      bursts (5 s safety margin vs the ~30 s fire threshold). On release the
+    #      next stock jolt arrives within seconds rather than ~30 s.
     if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
-      # send capacitive steering wheel touched
-      # probably EA is stock activated only for cars equipped with capacitive steering wheel
-      # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      EA_PACIFY_INTERVAL_FRAMES = int(25.0 / DT_CTRL)
+      EA_PACIFY_BURST_FRAMES = int(0.5 / DT_CTRL)
+
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
-      if klr_send_ready:
+      self.klr_counter_last = CS.klr_stock_values["COUNTER"]
+
+      driver_take_over_alert = hud_control.visualAlert == VisualAlert.steerRequired
+      in_pacify_burst = self.ea_pacify_cycle < EA_PACIFY_BURST_FRAMES
+      self.ea_pacify_cycle = (self.ea_pacify_cycle + 1) % EA_PACIFY_INTERVAL_FRAMES
+
+      if klr_send_ready and in_pacify_burst and not driver_take_over_alert:
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
         can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
-      self.klr_counter_last = CS.klr_stock_values["COUNTER"]
 
     # **** Acceleration Controls ******************************************** #
 
