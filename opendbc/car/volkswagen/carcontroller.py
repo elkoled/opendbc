@@ -68,6 +68,13 @@ class CarController(CarControllerBase):
     hud_control = CC.hudControl
     can_sends = []
 
+    # When openpilot is asking the driver to take over (DM distraction,
+    # unresponsive, ALC limit, LDW, etc.) we stop pacifying VW's Emergency
+    # Assist driver-inactivity detection so the stock system can actually
+    # do its brake-jolt + emergency stop sequence. openpilot itself stays
+    # engaged (controlsd handles its own escalation).
+    driver_takeover_required = hud_control.visualAlert == VisualAlert.steerRequired
+
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
@@ -132,9 +139,14 @@ class CarController(CarControllerBase):
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
         # to the greatest of actual driver input or 2x openpilot's output (1x openpilot output is not enough to
         # consistently reset inactivity detection on straight level roads). See commaai/openpilot#23274 for background.
-        ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
-        if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
+        # When openpilot is asking the driver to take over, pass the REAL driver torque through (no spoof) so EA
+        # can detect hands-off and intervene.
+        if driver_takeover_required:
           ea_simulated_torque = CS.out.steeringTorque
+        else:
+          ea_simulated_torque = float(np.clip(apply_torque * 2, -self.CCP.STEER_MAX, self.CCP.STEER_MAX))
+          if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
+            ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
 
     # Emergency Assist intervention
@@ -142,10 +154,13 @@ class CarController(CarControllerBase):
       # send capacitive steering wheel touched
       # probably EA is stock activated only for cars equipped with capacitive steering wheel
       # (also stock long does resume from stop as long as hands on is detected additionally to OP resume spam)
+      # When openpilot wants the driver to take over, suppress the hands-on spoof so the stock EA
+      # detects hands-off and runs its brake-jolt + emergency stop sequence.
       klr_send_ready = CS.klr_stock_values["COUNTER"] != self.klr_counter_last
       if klr_send_ready:
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, CC.latActive, CS.klr_stock_values))
-        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, CC.latActive, CS.klr_stock_values))
+        spoof_hands_on = CC.latActive and not driver_takeover_required
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.cam, spoof_hands_on, CS.klr_stock_values))
+        can_sends.append(mebcan.create_capacitive_wheel_touch(self.packer_pt, self.CAN.pt, spoof_hands_on, CS.klr_stock_values))
       self.klr_counter_last = CS.klr_stock_values["COUNTER"]
 
     # **** Acceleration Controls ******************************************** #
@@ -199,8 +214,17 @@ class CarController(CarControllerBase):
       hud_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
-      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
-                                                       CS.out.steeringPressed, hud_alert, hud_control))
+      if self.CP.flags & VolkswagenFlags.MEB:
+        # MEB's create_lka_hud_control exposes LDW_Gong (the stock LDW chime).
+        # carcontroller previously never passed sound_alert, so the chime
+        # never fired even when openpilot's visual takeover alert did. Fire
+        # the gong whenever we display the takeover hud_alert.
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control,
+                                                         sound_alert=driver_takeover_required))
+      else:
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, self.CAN.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control))
 
     if hud_control.leadDistanceBars != self.lead_distance_bars_last:
       self.distance_bar_frame = self.frame
