@@ -83,11 +83,36 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          error = actuators.curvature - CC.currentCurvature
-          freeze_integrator = CS.out.steeringPressed or CS.out.vEgoRaw < 5
-          pid_curvature = self.curvature_pid.update(error, speed=CS.out.vEgo, feedforward=actuators.curvature,
-                                                    freeze_integrator=freeze_integrator, override=CS.out.steeringPressed)
-          apply_curvature = pid_curvature + (CS.curvature_meas - CC.currentCurvature)
+
+          # SAFETY: blend the PID's correction toward zero across the same driver-torque ramp
+          # that already attenuates steering_power below. The stock PIDController's override=True
+          # only unwinds the integrator -- the P and F terms still fire at full magnitude. Because
+          # error = actuators.curvature - CC.currentCurvature and CC.currentCurvature tracks the
+          # actual vehicle curvature, when the driver yanks the wheel the error grows by the
+          # driver's input and the P term commands the controller to fight back in proportion to
+          # how hard the driver is pushing. The blend below caps PID influence at the same torque
+          # at which steering power begins to reduce, and releases it entirely by STEER_DRIVER_MAX,
+          # leaving only the feedforward + (curvature_meas - currentCurvature) offset (i.e. the
+          # original additive controller) when the driver is fully in control.
+          driver_torque = abs(CS.out.steeringTorque)
+          pid_scale = float(np.interp(driver_torque,
+                                      [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX],
+                                      [1.0, 0.0]))
+
+          if pid_scale > 0.0:
+            error = actuators.curvature - CC.currentCurvature
+            freeze_integrator = CS.out.steeringPressed or CS.out.vEgoRaw < 5
+            pid_curvature = self.curvature_pid.update(error, speed=CS.out.vEgo, feedforward=actuators.curvature,
+                                                      freeze_integrator=freeze_integrator, override=CS.out.steeringPressed)
+            curvature_command = pid_scale * pid_curvature + (1.0 - pid_scale) * actuators.curvature
+          else:
+            # Driver fully in control. Reset PID state so we restart cleanly on release instead
+            # of letting a stale integrator ambush them when their torque drops back through
+            # STEER_DRIVER_ALLOWANCE.
+            self.curvature_pid.reset()
+            curvature_command = actuators.curvature
+
+          apply_curvature = curvature_command + (CS.curvature_meas - CC.currentCurvature)
           apply_curvature = apply_std_curvature_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                        self.CCP.STEER_STEP, CC.latActive)
           apply_curvature = float(np.clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
