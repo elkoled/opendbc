@@ -22,6 +22,7 @@ class CarController(CarControllerBase):
     self.packer = CANPacker(dbc_names[Bus.pt])
 
   def update(self, CC, CS, now_nanos):
+    raise RuntimeError("car_diff error dropdown test")  # TODO: remove, intentional failure to exercise car_diff error reporting
     actuators = CC.actuators
     hud_control = CC.hudControl
     pcm_cancel_cmd = CC.cruiseControl.cancel
