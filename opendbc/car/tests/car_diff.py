@@ -293,8 +293,16 @@ def main(platform: str | None = None, segments_per_platform: int = 10, update_re
   icon = "⚠️" if with_diffs else "✅"
   print(f"\n{icon}  {len(with_diffs)} changed, {n_passed} passed, {len(errors)} errors")
 
-  for plat, seg, err in errors:
-    print(f"\nERROR {plat} - {seg}: {err}")
+  if errors:
+    # Group identical errors so a single bug doesn't spam the report with one traceback per segment
+    by_err: dict[str, list[str]] = defaultdict(list)
+    for plat, seg, err in errors:
+      by_err[err].append(f"{plat} - {seg}")
+    print("<details><summary><b>Show errors</b></summary>\n\n```")
+    for err, segs in sorted(by_err.items(), key=lambda kv: -len(kv[1])):
+      affected = ", ".join(segs[:3]) + (f" (+{len(segs) - 3} more)" if len(segs) > 3 else "")
+      print(f"\nERROR ({len(segs)}x) {affected}:\n{err.rstrip()}")
+    print("```\n</details>")
 
   if with_diffs:
     print("<details><summary><b>Show changes</b></summary>\n\n```")
