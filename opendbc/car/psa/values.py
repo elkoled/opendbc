@@ -42,6 +42,11 @@ class CAR(Platforms):
     [PSACarDocs("Peugeot 508 2019-23")],
     CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6),
   )
+  PSA_PEUGEOT_3008 = PSAPlatformConfig(
+    [PSACarDocs("PEUGEOT 3008 2016-29")],
+    # https://www.auto-data.net/en/peugeot-3008-ii-phase-i-2016-1.6-puretech-180hp-automatic-s-s-34446#google_vignette
+    CarSpecs(mass=1577, wheelbase=2.675, steerRatio=17.69, tireStiffnessFactor=0.996044 ),
+  )
 
 
 PSA_DIAG_REQ  = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, 0x01])
@@ -51,6 +56,15 @@ PSA_SERIAL_REQ = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER,  0xF1, 0x8C])
 PSA_SERIAL_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF1, 0x8C])
 
 PSA_RX_OFFSET = -0x20
+
+class LKAS_LIMITS:
+  # Peugeot 3008
+  # STEER_THRESHOLD: torque (deci-Nm) to detect driver input (steeringPressed)
+  # DISABLE/ENABLE_SPEED: LKA hysteresis in km/h
+  STEER_THRESHOLD = 5
+  DISABLE_SPEED = 50    # kph
+  ENABLE_SPEED = 50     # kph
+
 
 FW_QUERY_CONFIG = FwQueryConfig(
   requests=[

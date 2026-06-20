@@ -2,6 +2,7 @@ import copy
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
+from opendbc.car.mazda.values import LKAS_LIMITS
 from opendbc.car.psa.values import CAR, DBC, CarControllerParams
 from opendbc.car.interfaces import CarStateBase
 
@@ -27,23 +28,52 @@ class CarState(CarStateBase):
     ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
-    ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
+    # gas
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      ret.gasPressed = cp.vl['Dyn5_CMM']['P334_ACCPed_Position'] > 0
+    else:
+      ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
 
     # brake
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
+    # brake pressure
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      raw = cp.vl["Dyn2_FRE"]["BRAKE_PRESSURE"]
+      ret.brake = max(0.0, float(raw) - 550.0)  # clamp a 0
+
     # steering wheel
     STEERING_ALT_BUS = {
       CAR.PSA_PEUGEOT_208: cp.vl,
       CAR.PSA_PEUGEOT_508: cp_cam.vl,
+      CAR.PSA_PEUGEOT_3008: cp.vl,
+
     }
     bus = STEERING_ALT_BUS[self.CP.carFingerprint]
     ret.steeringAngleDeg = bus['STEERING_ALT']['ANGLE'] # EPS
-    ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN']) # convert [0,1] to [1,-1] EPS: rot. speed * rot. sign
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      # PSA EPS encodes the steering rotation direction bit inverted from the driver's perspective:
+      #   RATE_SIGN = 0 → clockwise (right turn)
+      #   RATE_SIGN = 1 → anticlockwise (left turn)
+      # Invert the sign to match OpenPilot's convention: right = positive, left = negative.
+      ret.steeringRateDeg = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN'])
+    else:
+      # Convert EPS direction bit [0,1] to signed multiplier [-1,+1]
+      # Standard convention: 0 → left (negative), 1 → right (positive)
+     ret.steeringRateDeg  = bus['STEERING_ALT']['RATE'] * (1 - 2 * bus['STEERING_ALT']['RATE_SIGN']) # convert [0,1] to [1,-1] EPS: rot. speed * rot. sign
+
     ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
     ret.steeringTorqueEps = cp.vl['IS_DAT_DIRA']['EPS_TORQUE']
-    ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+        # Peugeot 3008: EPS_TORQUE represents only driver-applied torque (no motor assist).
+        # The signal is already smoothed by the EPS ECU, so update_steering_pressed is unnecessary.
+        ret.steeringPressed = abs(ret.steeringTorque) > LKAS_LIMITS.STEER_THRESHOLD
+    else:
+        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
+
+    # ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
     self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
 
     # cruise
@@ -64,8 +94,22 @@ class CarState(CarStateBase):
 
     # blinkers
     blinker = cp_cam.vl['HS2_DAT7_BSI_612']['CDE_CLG_ET_HDC']
-    ret.leftBlinker = blinker == 1
-    ret.rightBlinker = blinker == 2
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      ret.leftBlinker = blinker == 2
+      ret.rightBlinker = blinker == 1
+    else:
+      ret.leftBlinker = blinker == 1
+      ret.rightBlinker = blinker == 2
+
+    # Blind sensor ( there is not left and right )
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      ret.leftBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
+      ret.rightBlindspot = cp_adas.vl["HS2_DYN_MDD_ETAT_2F6"]["BLIND_SENSOR"] != 0
+
+    # Auto Braking in progress
+    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
+      ret.stockAeb = cp_adas.vl["HS2_DYN1_MDD_ETAT_2B6"]["AUTO_BRAKING_STATUS"] == 1
+
 
     # lock info
     ret.doorOpen = any((cp_cam.vl['Dat_BSI']['DRIVER_DOOR'], cp_cam.vl['Dat_BSI']['PASSENGER_DOOR']))
