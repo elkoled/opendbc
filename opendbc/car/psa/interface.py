@@ -27,13 +27,19 @@ class CarInterface(CarInterfaceBase):
       ret.steerControlType = structs.CarParams.SteerControlType.torque
       ret.minSteerSpeed = LKAS_LIMITS.DISABLE_SPEED * CV.KPH_TO_MS
       ret.steerActuatorDelay = 0.376803
-      ret.steerLimitTimer = 1
+      ret.steerLimitTimer = 0.1
       ret.steerAtStandstill = False
+      ret.openpilotLongitudinalControl = False
     else:
       ret.steerAtStandstill = True
+      ret.steerLimitTimer = 0.1
+      ret.steerControlType = structs.CarParams.SteerControlType.angle
 
     ret.radarUnavailable = True
 
     ret.alphaLongitudinalAvailable = False
+    ret.openpilotLongitudinalControl = alpha_long
+    ret.startingState = True
+    ret.startAccel = 1.0
 
     return ret

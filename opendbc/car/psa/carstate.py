@@ -39,7 +39,9 @@ class CarState(CarStateBase):
       cp.vl['Dyn4_FRE']['P266_VehV_VPsvValWhlBckR'],
     )
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
-    ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
+    # versione cristian ret.standstill = cp.vl['Dyn4_FRE']['P263_VehV_VPsvValWhlFrtL'] < 0.1
+    # versione elkoled 
+    ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
     # gas
     if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
@@ -51,9 +53,6 @@ class CarState(CarStateBase):
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
 
     # brake pressure
-    if self.CP.carFingerprint == CAR.PSA_PEUGEOT_3008:
-      raw = cp.vl["Dyn2_FRE"]["BRAKE_PRESSURE"]
-      ret.brake = max(0.0, float(raw) - 550.0)  # clamp a 0
 
     # parking brake
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
@@ -107,7 +106,8 @@ class CarState(CarStateBase):
     ret.cruiseState.nonAdaptive = False # not available for CC-only
 
     ret.cruiseState.standstill = False # not available for CC-only
-    ret.accFaulted = False # not available for CC-only
+    ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3
+    self.hs2_dat_mdd_cmd_452 = copy.copy(cp_adas.vl['HS2_DAT_MDD_CMD_452'])
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
