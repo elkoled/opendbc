@@ -14,16 +14,6 @@ TransmissionType = structs.CarParams.TransmissionType
 
 
 class CarState(CarStateBase):
-  def __init__(self, CP):
-    super().__init__(CP)
-    # --- driver torque filtering state (Toyota-style) ---
-    # self._drv_lp = FirstOrderFilter(0.0, DT_CTRL, 0.25)  # tau=0.25 s
-    # self._drv_deadband = 0.3                             # Nm, snap-to-zero
-    # self._drv_press_thr = 1.0                            # Nm, pressed threshold
-    # self._drv_press_ms = 200                             # ms, debounce
-    # self._drv_press_frames = max(1, int(self._drv_press_ms / (DT_CTRL * 1000)))
-    # self._drv_press_cnt = 0
-
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
