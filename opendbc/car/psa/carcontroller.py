@@ -190,6 +190,7 @@ class CarController(CarControllerBase):
     # #  ELKOLED LONGITUDINAL CONTROL
 
 
+
     # if self.car_fingerprint in (CAR.PSA_PEUGEOT_3008,):
     #   if not CC.latActive:
     #     self.driver_torque_counter = 0
