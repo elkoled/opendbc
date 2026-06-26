@@ -8,7 +8,10 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "NISSAN_ROGUE" = [nan, 1.5, nan]
 
 # PSA angle based controllers
-"PSA_PEUGEOT_208" = [nan, 2.0, nan]
+"PSA_PEUGEOT_208" = [2.6, 2.0, 0.15]
+"PSA_PEUGEOT_508" = [2.6, 2.0, 0.15]
+# PSA torque based controllers
+"PSA_PEUGEOT_3008" = [2.538214, 2.767198, 0.210548]
 
 # New subarus angle based controllers
 "SUBARU_FORESTER_2022" = [nan, 3.0, nan]
@@ -24,6 +27,8 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "TESLA_MODEL_X" = [nan, 2.5, nan]
 
 # Guess
+"VOLKSWAGEN_ID4_MK1" = [nan, 2.5, nan]
+"CUPRA_BORN_MK1" = [nan, 2.5, nan]
 "FORD_BRONCO_SPORT_MK1" = [nan, 1.5, nan]
 "FORD_ESCAPE_MK4" = [nan, 1.5, nan]
 "FORD_ESCAPE_MK4_5" = [nan, 1.5, nan]
