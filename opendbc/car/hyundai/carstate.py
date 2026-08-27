@@ -272,7 +272,11 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       left_blinker_sig, right_blinker_sig = "LEFT_LAMP_ALT", "RIGHT_LAMP_ALT"
     ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
                                                                       cp.vl["BLINKERS"][right_blinker_sig])
-    if self.CP.enableBsm:
+    # On HDA2 LKA-steering cars, enabling openpilot longitudinal control disables
+    # the ADAS ECU. ADAS_CMD_50_50ms (which carries these BSM indications) then
+    # intentionally disappears, so don't require/read it while the ECU is off.
+    if self.CP.enableBsm and not (self.CP.openpilotLongitudinalControl and
+                                  self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG):
       ret.leftBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_LtIndSta"])
       ret.rightBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_RtIndSta"])
 
