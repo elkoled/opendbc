@@ -197,9 +197,9 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
         addr, bus = 0x730, self.CAN.ECAN
       can_sends.append(make_tester_present_msg(addr, bus, suppress_response=True))
 
-      # for blinkers
-      if self.CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
-        can_sends.append(make_tester_present_msg(0x7b1, self.CAN.ECAN, suppress_response=True))
+    # tester present keeps the parking ECU disabled for SPAS blinker control
+    if self.frame % 100 == 0 and self.CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
+      can_sends.append(make_tester_present_msg(0x7b1, self.CAN.ECAN, suppress_response=True))
 
     # Delay the cancel button send so the brake can disengage factory SCC first.
     # Reset whenever openpilot is no longer requesting cancel.

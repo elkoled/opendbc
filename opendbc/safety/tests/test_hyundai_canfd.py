@@ -599,6 +599,48 @@ class TestHyundaiCanfdLKASteeringAltAngle(TestHyundaiCanfdAngleSteering):
     pass
 
 
+class TestHyundaiCanfdGV80AngleLongBlinkers(HyundaiLongitudinalBase, TestHyundaiCanfdLKASteeringAltAngle):
+
+  TX_MSGS = [[0x110, 0], [0x1CF, 1], [0x362, 0], [0x12A, 1], [0x1E0, 1], [0x1A0, 1],
+             [0x51, 0], [0x730, 1], [0x160, 1], [0x1EA, 1], [0x200, 1], [0x345, 1], [0x1DA, 1],
+             [0x165, 1], [0x16A, 1], [0x7B1, 1]]
+  RELAY_MALFUNCTION_ADDRS = {0: (0x110, 0x362), 1: (0x1A0,)}
+  DISABLED_ECU_UDS_MSG = (0x730, 1)
+  DISABLED_ECU_ACTUATION_MSG = (0x1A0, 1)
+
+  def setUp(self):
+    self.packer = CANPackerSafety("hyundai_canfd_generated")
+    self.safety = libsafety_py.libsafety
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, HyundaiSafetyFlags.LONG |
+                                 HyundaiSafetyFlags.CANFD_LKA_STEER_MSG | HyundaiSafetyFlags.CANFD_LKA_STEER_MSG_ALT |
+                                 HyundaiSafetyFlags.CANFD_ANGLE_STEERING | HyundaiSafetyFlags.CANFD_ENABLE_BLINKERS)
+    self.safety.init_tests()
+
+  def _accel_msg(self, accel, aeb_req=False, aeb_decel=0):
+    values = {"aReqRaw": accel, "aReqValue": accel}
+    return self.packer.make_can_msg_safety("SCC_CONTROL", self.PT_BUS, values)
+
+  def _tx_acc_state_msg(self, enable):
+    return self.packer.make_can_msg_safety("SCC_CONTROL", self.PT_BUS, {"MainMode_ACC": enable})
+
+  def test_blinker_messages_require_flag(self):
+    for msg_name in ("SPAS1", "SPAS2"):
+      msg = self.packer.make_can_msg_safety(msg_name, 1, {})
+      self.assertTrue(self._tx(msg))
+
+    tester_present = libsafety_py.make_CANPacket(0x7B1, 1, b"\x02\x3E\x80\x00\x00\x00\x00\x00")
+    self.assertTrue(self._tx(tester_present))
+
+    self.safety.set_safety_hooks(CarParams.SafetyModel.hyundaiCanfd, HyundaiSafetyFlags.LONG |
+                                 HyundaiSafetyFlags.CANFD_LKA_STEER_MSG | HyundaiSafetyFlags.CANFD_LKA_STEER_MSG_ALT |
+                                 HyundaiSafetyFlags.CANFD_ANGLE_STEERING)
+    self.safety.init_tests()
+    for msg_name in ("SPAS1", "SPAS2"):
+      msg = self.packer.make_can_msg_safety(msg_name, 1, {})
+      self.assertFalse(self._tx(msg))
+    self.assertFalse(self._tx(tester_present))
+
+
 class TestHyundaiCanfdLKASteeringLongEV(HyundaiLongitudinalBase, TestHyundaiCanfdLKASteeringEV):
 
   TX_MSGS = [[0x50, 0], [0x1CF, 1], [0x2A4, 0], [0x51, 0], [0x730, 1], [0x12a, 1], [0x160, 1],

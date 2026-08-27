@@ -46,10 +46,6 @@ class CarInterface(CarInterfaceBase):
         # this needs to be figured out for cars without an ADAS ECU
         ret.alphaLongitudinalAvailable = False
 
-      # no longitudinal for all lka_steering angle steering
-      if lka_steering and ret.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
-        ret.alphaLongitudinalAvailable = False
-
       ret.enableBsm = 0x1ba in fingerprint[CAN.ECAN]
 
       # Check if the car is hybrid. Only HEV/PHEV cars have 0xFA on E-CAN.
@@ -92,6 +88,8 @@ class CarInterface(CarInterfaceBase):
       if ret.flags & HyundaiFlags.CANFD_ANGLE_STEERING:
         ret.steerControlType = structs.CarParams.SteerControlType.angle
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_ANGLE_STEERING.value
+      if ret.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
+        ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_ENABLE_BLINKERS.value
 
     else:
       # Shared configuration for non CAN-FD cars

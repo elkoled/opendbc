@@ -72,6 +72,35 @@ class TestHyundaiFingerprint(unittest.TestCase):
       CP = CarInterface.get_params(CAR.HYUNDAI_SONATA, fingerprint, [], False, False, False)
       assert CP.radarUnavailable != radar
 
+  def test_gv80_2025_angle_longitudinal_and_blinkers(self):
+    fingerprint = gen_empty_fingerprint()
+    cam_can = CanBus(None, fingerprint).CAM
+    fingerprint[cam_can] = {0x110: 32}
+    adas_fw = CarParams.CarFw.new_message(ecu=Ecu.adas)
+
+    CP = CarInterface.get_params(CAR.GENESIS_GV80_2025, fingerprint, [adas_fw], True, False, False)
+
+    assert CP.steerControlType == CarParams.SteerControlType.angle
+    assert CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG
+    assert CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG_ALT
+    assert CP.flags & HyundaiFlags.CANFD_ANGLE_STEERING
+    assert CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS
+    assert CP.alphaLongitudinalAvailable
+    assert CP.openpilotLongitudinalControl
+    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.LONG
+    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ANGLE_STEERING
+    assert CP.safetyConfigs[-1].safetyParam & HyundaiSafetyFlags.CANFD_ENABLE_BLINKERS
+
+  def test_gv80_2025_longitudinal_requires_adas_ecu(self):
+    fingerprint = gen_empty_fingerprint()
+    cam_can = CanBus(None, fingerprint).CAM
+    fingerprint[cam_can] = {0x110: 32}
+
+    CP = CarInterface.get_params(CAR.GENESIS_GV80_2025, fingerprint, [], True, False, False)
+
+    assert not CP.alphaLongitudinalAvailable
+    assert not CP.openpilotLongitudinalControl
+
   def test_alternate_limits(self):
     # Alternate lateral control limits, for high torque cars, verify Panda safety mode flag is set
     fingerprint = gen_empty_fingerprint()
