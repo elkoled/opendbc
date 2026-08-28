@@ -272,7 +272,12 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       left_blinker_sig, right_blinker_sig = "LEFT_LAMP_ALT", "RIGHT_LAMP_ALT"
     ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
                                                                       cp.vl["BLINKERS"][right_blinker_sig])
-    if self.CP.enableBsm:
+    # ADAS_CMD_50_50ms (0x1ba) is transmitted by ADAS_DRV. Once its TX side is
+    # disabled for angle-steering longitudinal control, our spoof keeps the
+    # rest of the vehicle happy but panda TX does not loop back to CANParser.
+    # Do not lazily register 0x1ba as a required receive message in this mode.
+    angle_steering_long = self.is_canfd_angle_steering and self.CP.openpilotLongitudinalControl
+    if self.CP.enableBsm and not angle_steering_long:
       ret.leftBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_LtIndSta"])
       ret.rightBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_RtIndSta"])
 
