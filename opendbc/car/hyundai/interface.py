@@ -240,15 +240,25 @@ class CarInterface(CarInterfaceBase):
   @staticmethod
   def init(CP, CP_SP, can_recv, can_send, communication_control=None):
     # 0x80 silences response
-    if communication_control is None:
+    default_disable_request = communication_control is None
+    if default_disable_request:
       communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, 0x80 | uds.CONTROL_TYPE.DISABLE_RX_DISABLE_TX, uds.MESSAGE_TYPE.NORMAL])
+    communication_control_response = b''
+
+    # The 2025+ GV80 ADAS DRV rejects disabling both RX and TX while the engine
+    # is running with NRC 0x22. Keep RX enabled and silence TX only. Request a
+    # response so we don't mistake a rejection for a successful disable.
+    if CP.carFingerprint == CAR.GENESIS_GV80_2025 and default_disable_request:
+      communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, uds.CONTROL_TYPE.ENABLE_RX_DISABLE_TX, uds.MESSAGE_TYPE.NORMAL])
+      communication_control_response = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL + 0x40, uds.CONTROL_TYPE.ENABLE_RX_DISABLE_TX])
 
     if CP.openpilotLongitudinalControl and not ((CP.flags & (HyundaiFlags.CANFD_CAMERA_SCC | HyundaiFlags.CAMERA_SCC)) or
                                                 (CP_SP.flags & HyundaiFlagsSP.ENHANCED_SCC)):
       addr, bus = 0x7d0, CanBus(CP).ECAN if CP.flags & HyundaiFlags.CANFD else 0
       if CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG.value:
         addr, bus = 0x730, CanBus(CP).ECAN
-      disable_ecu(can_recv, can_send, bus=bus, addr=addr, com_cont_req=communication_control)
+      disable_ecu(can_recv, can_send, bus=bus, addr=addr, com_cont_req=communication_control,
+                  com_cont_resp=communication_control_response)
 
     # for blinkers
     if CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
