@@ -6,7 +6,11 @@ See the LICENSE.md file in the root directory for more details.
 """
 from abc import ABC, abstractmethod
 from opendbc.car import structs
-from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.car.hyundai.values import CAR, HyundaiFlags
+
+
+GV80_NO_LEAD_DISTANCE = 204.6
+GV80_NO_LEAD_REL_SPEED = 34.6
 
 
 class LeadData(ABC):
@@ -112,6 +116,13 @@ class LeadDataCarController:
   @property
   def lead_data(self) -> CanLeadData | CanFdLeadData:
     if self.CP.flags & HyundaiFlags.CANFD:
-      return CanFdLeadData(self.object_gap, self.lead_distance, self.lead_rel_speed, self.lead_visible)
+      lead_distance = self.lead_distance
+      lead_rel_speed = self.lead_rel_speed
+      if self.CP.carFingerprint == CAR.GENESIS_GV80_2025 and not self.lead_visible:
+        # Stock CCNC SCC uses out-of-range sentinels when no object is present.
+        # Zeroes describe an object at zero distance with zero relative speed.
+        lead_distance = GV80_NO_LEAD_DISTANCE
+        lead_rel_speed = GV80_NO_LEAD_REL_SPEED
+      return CanFdLeadData(self.object_gap, lead_distance, lead_rel_speed, self.lead_visible)
 
     return CanLeadData(self.object_gap, self.lead_distance, self.lead_rel_speed, self.lead_visible)

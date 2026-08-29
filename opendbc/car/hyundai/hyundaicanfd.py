@@ -1,8 +1,16 @@
 import numpy as np
 from opendbc.car import CanBusBase
 from opendbc.car.crc import CRC16_XMODEM
-from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.car.hyundai.values import CAR, HyundaiFlags
 from opendbc.sunnypilot.car.hyundai.lead_data_ext import CanFdLeadData
+
+
+GV80_TARGET_DISTANCE_OFFSET = 2.84
+GV80_TARGET_DISTANCE_TIME_GAP = 1.6
+
+
+def gv80_target_distance(v_ego: float) -> float:
+  return GV80_TARGET_DISTANCE_OFFSET + GV80_TARGET_DISTANCE_TIME_GAP * v_ego
 
 
 class CanBus(CanBusBase):
@@ -149,7 +157,7 @@ def create_lfahda_cluster(packer, CAN, enabled, lfa_icon):
   return packer.make_can_msg("LFAHDA_CLUSTER", CAN.ECAN, values)
 
 
-def create_acc_control(packer, CAN, enabled, accel_last, accel, stopping, gas_override, set_speed, hud_control,
+def create_acc_control(packer, CP, CAN, enabled, accel_last, accel, stopping, gas_override, set_speed, v_ego, hud_control,
                        lead_data: CanFdLeadData, main_cruise_enabled, tuning):
   jerk = 5
   jn = jerk / 50
@@ -169,7 +177,7 @@ def create_acc_control(packer, CAN, enabled, accel_last, accel, stopping, gas_ov
     "JerkLowerLimit": tuning.jerk_lower,
     "JerkUpperLimit": tuning.jerk_upper,
 
-    "ACC_ObjDist": int(lead_data.lead_distance),
+    "ACC_ObjDist": lead_data.lead_distance,
     "ACC_ObjRelSpd": lead_data.lead_rel_speed,
     "ObjValid": int(not lead_data.lead_visible),
     "SCC_ObjSta": 0 if not (enabled and lead_data.lead_visible) else (1 if gas_override else 2),
@@ -178,6 +186,10 @@ def create_acc_control(packer, CAN, enabled, accel_last, accel, stopping, gas_ov
     "SET_ME_TMP_64": 0x64,
     "DISTANCE_SETTING": hud_control.leadDistanceBars,
   }
+
+  if CP.carFingerprint == CAR.GENESIS_GV80_2025:
+    # Stock CCNC SCC sends a speed-dependent target distance even with no lead.
+    values["NEW_SIGNAL_15"] = gv80_target_distance(v_ego)
 
   return packer.make_can_msg("SCC_CONTROL", CAN.ECAN, values)
 

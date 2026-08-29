@@ -1,17 +1,21 @@
 import unittest
+from types import SimpleNamespace
 
+from opendbc.can import CANPacker
+from opendbc.can.parser import CANParser
 from opendbc.car import gen_empty_fingerprint
 from opendbc.car.structs import CarParams
 from opendbc.car.fw_versions import build_fw_dict
 from opendbc.car.hyundai.interface import CarInterface
-from opendbc.car.hyundai.hyundaicanfd import CanBus
+from opendbc.car.hyundai.hyundaicanfd import CanBus, create_acc_control, gv80_target_distance
 from opendbc.car.hyundai.radar_interface import RADAR_START_ADDR
 from opendbc.car.hyundai.values import CAR, DATE_FW_ECUS, \
                                          FW_QUERY_CONFIG, CANFD_FUZZY_WHITELIST, \
                                          PLATFORM_CODE_ECUS, HYUNDAI_VERSION_REQUEST_LONG, \
                                          HyundaiFlags, get_platform_codes, HyundaiSafetyFlags, \
-                                         NON_SCC_CAR
+                                         DBC, NON_SCC_CAR
 from opendbc.car.hyundai.fingerprints import FW_VERSIONS
+from opendbc.sunnypilot.car.hyundai.lead_data_ext import CanFdLeadData
 from opendbc.testing import fuzzy_test
 
 Ecu = CarParams.Ecu
@@ -54,6 +58,25 @@ def cars_with(flags):
 
 
 class TestHyundaiFingerprint(unittest.TestCase):
+  def test_gv80_target_distance(self):
+    self.assertAlmostEqual(gv80_target_distance(4.1), 9.4, places=2)
+    self.assertAlmostEqual(gv80_target_distance(6.0), 12.44, places=2)
+    self.assertAlmostEqual(gv80_target_distance(8.0), 15.64, places=2)
+
+    dbc = DBC[CAR.GENESIS_GV80_2025]["pt"]
+    packer = CANPacker(dbc)
+    parser = CANParser(dbc, [("SCC_CONTROL", 0)], 1)
+    msg = create_acc_control(
+      packer, SimpleNamespace(carFingerprint=CAR.GENESIS_GV80_2025), SimpleNamespace(ECAN=1),
+      True, 0.0, 1.5, False, False, 20.0, 4.1, SimpleNamespace(leadDistanceBars=3),
+      CanFdLeadData(0, 204.6, 34.6, False), True,
+      SimpleNamespace(stopping=False, actual_accel=1.5, jerk_lower=5.0, jerk_upper=3.0),
+    )
+    parser.update([0, [msg]])
+    self.assertAlmostEqual(parser.vl["SCC_CONTROL"]["ACC_ObjDist"], 204.6)
+    self.assertAlmostEqual(parser.vl["SCC_CONTROL"]["ACC_ObjRelSpd"], 34.6)
+    self.assertAlmostEqual(parser.vl["SCC_CONTROL"]["NEW_SIGNAL_15"], 9.4)
+
   def test_feature_detection(self):
     # LKA steering
     for lka_steering in (True, False):

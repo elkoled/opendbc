@@ -3,12 +3,12 @@ from enum import IntFlag
 
 from opendbc.sunnypilot.car.hyundai.lead_data_ext import LeadDataCarController, CanLeadData, CanFdLeadData
 from opendbc.car import structs
-from opendbc.car.hyundai.values import HyundaiFlags
+from opendbc.car.hyundai.values import CAR, HyundaiFlags
 
 
-def make_carparams(flags: IntFlag = HyundaiFlags.LEGACY):
+def make_carparams(flags: IntFlag = HyundaiFlags.LEGACY, fingerprint="HYUNDAI_SONATA"):
   cp = structs.CarParams()
-  cp.carFingerprint = "HYUNDAI_SONATA"
+  cp.carFingerprint = fingerprint
   cp.flags = flags.value
   return cp
 
@@ -76,3 +76,10 @@ class TestLeadDataCarController(unittest.TestCase):
     ld = ctrl.lead_data
     self.assertIsInstance(ld, CanFdLeadData)
     self.assertEqual(ld.object_rel_gap, 1)
+
+  def test_gv80_no_lead_sentinels(self):
+    ctrl = LeadDataCarController(make_carparams(HyundaiFlags.CANFD, CAR.GENESIS_GV80_2025))
+    ld = ctrl.lead_data
+    self.assertFalse(ld.lead_visible)
+    self.assertEqual(ld.lead_distance, 204.6)
+    self.assertEqual(ld.lead_rel_speed, 34.6)
