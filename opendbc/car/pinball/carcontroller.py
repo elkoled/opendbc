@@ -14,10 +14,10 @@ class CarController(CarControllerBase):
     right = 0
     start = 0
 
-    if CC.enabled:
-      left = int(CC.actuators.gas > 0.5)
-      right = int(CC.actuators.brake > 0.5)
-      start = int(CC.actuators.accel > 0.5)
+    # Pinball controls are direct button states, independent of car engagement.
+    left = int(CC.actuators.gas > 0.5)
+    right = int(CC.actuators.brake > 0.5)
+    start = int(CC.actuators.accel > 0.5)
 
     can_sends = [pinballcan.create_solenoid_cmd(self.packer, left, right, start, self.frame)]
 
