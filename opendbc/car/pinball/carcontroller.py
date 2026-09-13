@@ -15,13 +15,11 @@ class CarController(CarControllerBase):
     start = 0
 
     if CC.enabled:
-      # Separate joystick axes allow both flippers at once; negative accel starts.
-      left = int(CC.actuators.accel > 0.5)    # W key → left flipper
-      right = int(CC.actuators.torque > 0.5)  # A key → right flipper
-      start = int(CC.actuators.accel < -0.5)  # S key → start button
-      # Keyboard axes accumulate with each key press; R resets all outputs.
+      left = int(CC.actuators.gas > 0.5)
+      right = int(CC.actuators.brake > 0.5)
+      start = int(CC.actuators.accel > 0.5)
 
-    can_sends = [pinballcan.create_solenoid_cmd(self.packer, left, right, start)]
+    can_sends = [pinballcan.create_solenoid_cmd(self.packer, left, right, start, self.frame)]
 
     new_actuators = CC.actuators.as_builder()
     self.frame += 1
