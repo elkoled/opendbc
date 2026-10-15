@@ -111,7 +111,10 @@ class CarControllerParams:
       self.STEERING_POWER_STEP = 2        # HCA_03 steering power counter steps
 
       self.CURVATURE_MAX = 0.195          # Max curvature for steering command, m^-1
-      self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)
+      self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX, EPS_CURVATURE_FACTOR=([17., 30., 37.], [1.0, 1.45, 1.9]))
+      self.CURVATURE_KP = 1.5             # feedback on the current curvature error
+      self.CURVATURE_KI = 0.5             # 1/s
+      self.CURVATURE_I_MAX = 0.05         # m^-1
 
       # Longitudinal constants
       self.ACCEL_INACTIVE = 3.01  # m/s^2

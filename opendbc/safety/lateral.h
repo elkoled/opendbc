@@ -249,6 +249,7 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
   static const float MAX_LATERAL_JERK = 3.0 + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^3
 
   const float fudged_speed = SAFETY_MAX((vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0, 1.0);
+  const float eps_factor = safety_interpolate(limits.eps_curvature_factor, fudged_speed);
   bool violation = false;
 
   speed_mismatch_check((float)vehicle_speed_2.values[0] / VEHICLE_SPEED_FACTOR);
@@ -258,12 +259,12 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
     violation |= safety_max_limit_check(desired_curvature, limits.max_curvature, -limits.max_curvature);
 
     // *** ISO lateral accel limit ***
-    const float max_curvature = MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
+    const float max_curvature = eps_factor * MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
     const int max_curvature_can = (max_curvature * limits.curvature_to_can) + 1.;
     violation |= safety_max_limit_check(desired_curvature, max_curvature_can, -max_curvature_can);
 
     // *** ISO lateral jerk limit ***
-    const float max_curvature_rate_sec = MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
+    const float max_curvature_rate_sec = eps_factor * MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
     const float max_curvature_delta = max_curvature_rate_sec / (float)limits.frequency;
     const int max_curvature_delta_can = (max_curvature_delta * limits.curvature_to_can) + 1.;
 

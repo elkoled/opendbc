@@ -37,6 +37,7 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
   MAX_POWER = 125
   MAX_POWER_TEST = 50
   SEND_RATE = 0.02
+  EPS_CURVATURE_FACTOR = ([17., 30., 37.], [1.0, 1.45, 1.9])
   LATERAL_FREQUENCY = 50  # Hz
 
   cnt_curvature_cmd = 0

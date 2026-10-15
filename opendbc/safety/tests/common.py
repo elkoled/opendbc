@@ -810,6 +810,10 @@ class CurvatureSteeringSafetyTest(VehicleSpeedSafetyTest):
   MAX_CURVATURE_TEST: float
   CURVATURE_TO_CAN: float
   SEND_RATE: float
+  EPS_CURVATURE_FACTOR: tuple[list[float], list[float]] = ([0.], [1.])
+
+  def _eps_factor(self, v: float) -> float:
+    return float(np.interp(max(v - 1, 1), *self.EPS_CURVATURE_FACTOR))
 
   @abc.abstractmethod
   def _curvature_cmd_msg(self, curvature: float, steer_req: bool):
@@ -859,11 +863,11 @@ class CurvatureSteeringSafetyTest(VehicleSpeedSafetyTest):
       self.assertFalse(self._tx(self._curvature_cmd_msg(max_curvature + max_curvature_delta, True)), f"{v} {max_curvature} {max_curvature_delta}")
 
   def test_iso_accel_limit(self):
-    speeds = [2., 5., 10., 15., 50.]
+    speeds = [2., 5., 10., 15., 25., 33., 50.]
     for v in speeds:
       for sign in (1, -1):
-        max_curvature = np.clip(((MAX_LATERAL_ACCEL / (v - 1)**2) * sign), -self.MAX_CURVATURE_TEST, self.MAX_CURVATURE_TEST)
-        max_curvature_rate = MAX_LATERAL_JERK / (v - 1)**2
+        max_curvature = np.clip(((self._eps_factor(v) * MAX_LATERAL_ACCEL / (v - 1)**2) * sign), -self.MAX_CURVATURE_TEST, self.MAX_CURVATURE_TEST)
+        max_curvature_rate = self._eps_factor(v) * MAX_LATERAL_JERK / (v - 1)**2
         max_curvature_delta = max_curvature_rate * self.SEND_RATE * sign
 
         self._reset_speed_measurement(v)
@@ -882,9 +886,9 @@ class CurvatureSteeringSafetyTest(VehicleSpeedSafetyTest):
         self.assertFalse(self._tx(self._curvature_cmd_msg(max_curvature + max_curvature_delta, True)), f"{v} {max_curvature} {max_curvature_delta}")
 
   def test_iso_jerk_limit(self):
-    speeds = [2., 5., 10., 15., 50.]
+    speeds = [2., 5., 10., 15., 25., 33., 50.]
     for v in speeds:
-      max_curvature_rate = MAX_LATERAL_JERK / (v - 1)**2
+      max_curvature_rate = self._eps_factor(v) * MAX_LATERAL_JERK / (v - 1)**2
       max_curvature_delta = max_curvature_rate * self.SEND_RATE
 
       self._reset_speed_measurement(v)

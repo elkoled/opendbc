@@ -256,6 +256,8 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       .max_curvature_error = 0,          // disabled, MEB doesn't track rack
       .curvature_error_min_speed = 0.0,  // disabled
       .max_steer_power = 125,
+      // the EPS curvature reads high of the real curvature at highway speed
+      .eps_curvature_factor = {.x = {17., 30., 37.}, .y = {1.0, 1.45, 1.9}},
     };
 
     int desired_curvature_raw = GET_BYTES_LE(msg, 3, 2) & 0x7FFFU;

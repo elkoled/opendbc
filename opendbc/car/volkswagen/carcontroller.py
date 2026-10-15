@@ -54,6 +54,7 @@ class CarController(CarControllerBase):
     self.apply_torque_last = 0
     self.apply_curvature_last = 0.
     self.steering_power_last = 0
+    self.curvature_error_i = 0.
     self.accel_last = 0.
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
@@ -77,8 +78,18 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
+          # the EPS lags and settles short of the command at low speed, so close the loop on the current curvature
+          # off while the driver steers, it would fight them
+          curvature_error = actuators.curvature - CC.currentCurvature
+          if CS.out.steeringPressed:
+            self.curvature_error_i = 0.
+            feedback = 0.
+          else:
+            self.curvature_error_i = float(np.clip(self.curvature_error_i + self.CCP.CURVATURE_KI * curvature_error * self.CCP.STEER_STEP * DT_CTRL,
+                                                   -self.CCP.CURVATURE_I_MAX, self.CCP.CURVATURE_I_MAX))
+            feedback = self.CCP.CURVATURE_KP * curvature_error + self.curvature_error_i
           # compensate the gap between measured and current curvature
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature)
+          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                                    CC.latActive, self.CCP.STEER_STEP)
 
@@ -90,6 +101,7 @@ class CarController(CarControllerBase):
           steering_power = min(max(target_power, min_power), max_power)
 
         else:
+          self.curvature_error_i = 0.
           if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
             apply_curvature = float(np.clip(CS.curvature_meas, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))

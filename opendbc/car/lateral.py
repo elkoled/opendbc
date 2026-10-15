@@ -45,18 +45,22 @@ class CurvatureSteeringLimits:
   CURVATURE_MAX: float
   MAX_LATERAL_ACCEL: float = MAX_LATERAL_ACCEL
   MAX_LATERAL_JERK: float = MAX_LATERAL_JERK
+  # EPS curvature over real curvature by speed, matches safety
+  EPS_CURVATURE_FACTOR: tuple[list[float], list[float]] = ([0.], [1.])
 
   def apply_limits(self, apply_curvature: float, apply_curvature_last: float, v_ego: float, curvature: float,
                    lat_active: bool, steer_step: int) -> float:
     """Apply accel and jerk constraints to curvature."""
+    # safety evaluates the factor 1 m/s low
+    eps_factor = float(np.interp(max(v_ego - 1, 1), *self.EPS_CURVATURE_FACTOR))
     v_ego = max(v_ego, 1)
 
     # *** max lateral accel limit ***
-    max_curvature = self.MAX_LATERAL_ACCEL / (v_ego ** 2)
+    max_curvature = eps_factor * self.MAX_LATERAL_ACCEL / (v_ego ** 2)
     new_apply_curvature = float(np.clip(apply_curvature, -max_curvature, max_curvature))
 
     # *** max lateral jerk limit ***
-    max_jerk = (self.MAX_LATERAL_JERK / (v_ego ** 2)) * (steer_step * DT_CTRL)
+    max_jerk = (eps_factor * self.MAX_LATERAL_JERK / (v_ego ** 2)) * (steer_step * DT_CTRL)
     new_apply_curvature = float(np.clip(new_apply_curvature, apply_curvature_last - max_jerk, apply_curvature_last + max_jerk))
 
     # curvature is current curvature when inactive
