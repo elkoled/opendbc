@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
 from opendbc.car.lateral import EpsCurvatureRatio, apply_driver_steer_torque_limits
@@ -56,6 +57,8 @@ class CarController(CarControllerBase):
     self.steering_power_last = 0
     self.curvature_error_i = 0.
     self.eps_curvature_ratio = EpsCurvatureRatio()
+    self.desired_curvature_hist = deque([0.] * 20, maxlen=20)
+    self.desired_curvature_rate = 0.
     self.accel_last = 0.
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
@@ -71,6 +74,7 @@ class CarController(CarControllerBase):
 
     if self.CP.flags & VolkswagenFlags.MEB:
       self.eps_curvature_ratio.update(CS.curvature_meas, CS.out.yawRate, CS.out.vEgoRaw)
+      self.desired_curvature_hist.append(actuators.curvature if CC.latActive else CS.curvature_meas)
 
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
@@ -88,13 +92,18 @@ class CarController(CarControllerBase):
           driver_torque = abs(CS.out.steeringTorque)
           if driver_torque >= self.CCP.STEER_DRIVER_MAX:
             self.curvature_error_i = 0.
-          elif not CS.out.steeringPressed:
+          elif not CS.out.steeringPressed and abs(self.apply_curvature_last - CS.curvature_meas) < self.CCP.CURVATURE_I_MAX_LAG:
             self.curvature_error_i = float(np.clip(self.curvature_error_i + self.CCP.CURVATURE_KI * curvature_error * self.CCP.STEER_STEP * DT_CTRL,
                                                    -self.CCP.CURVATURE_I_MAX, self.CCP.CURVATURE_I_MAX))
           feedback_gain = float(np.interp(driver_torque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX], [1., 0.]))
-          feedback = feedback_gain * (self.CCP.CURVATURE_KP * curvature_error + self.curvature_error_i)
+          kp = float(np.interp(CS.out.vEgo, self.CCP.CURVATURE_KP_BP, self.CCP.CURVATURE_KP_V))
+          feedback = feedback_gain * (kp * curvature_error + self.curvature_error_i)
+          # the plan updates at 20 Hz, smooth its rate so the lead doesn't step
+          desired_rate = (self.desired_curvature_hist[-1] - self.desired_curvature_hist[0]) / ((len(self.desired_curvature_hist) - 1) * DT_CTRL)
+          self.desired_curvature_rate += self.CCP.CURVATURE_LEAD_SMOOTH * (desired_rate - self.desired_curvature_rate)
+          lead = float(np.interp(CS.out.vEgo, self.CCP.CURVATURE_LEAD_BP, self.CCP.CURVATURE_LEAD_V)) * self.desired_curvature_rate
           # compensate the gap between measured and current curvature
-          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
+          apply_curvature = actuators.curvature + lead + (CS.curvature_meas - CC.currentCurvature) + feedback
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                                    CC.latActive, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
 
