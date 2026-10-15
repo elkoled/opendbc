@@ -108,7 +108,7 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
 
     rng = random.Random(0)
     eps_curvature, desired, sent, seen = 0., 0., [0.] * (self.EPS_DELAY + 1), []
-    max_accel = 0.
+    max_accel, t_reach = 0., float('inf')
     for frame in range(int(seconds / DT_CTRL)):
       t = frame * DT_CTRL
       safety.set_timer(int(t * 1e6))
@@ -142,7 +142,9 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
           sent.pop(0)
       eps_curvature += DT_CTRL / self.EPS_TAU * (0.95 * sent[0] - eps_curvature)
       max_accel = max(max_accel, abs(curvature) * v ** 2)
-    return max_accel
+      if max_accel >= 2.85:
+        t_reach = min(t_reach, t)
+    return max_accel, t_reach
 
   def test_never_blocked(self):
     # the carcontroller stays inside the safety limit, also where it allows the EPS curvature above the yaw rate curvature
@@ -159,8 +161,10 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
     self._drive(True, lambda t: 30., lambda t: 4.5 * np.sin(2 * np.pi * t / 4.), 1.5, 0.1, 2)
 
   def test_reaches_lateral_accel(self):
-    # with the EPS curvature reading high, the car still reaches the ISO lateral accel the plan asks for
-    for ratio in (1.0, 1.3, 1.75):
+    # with the EPS curvature reading high, the car still reaches the ISO lateral accel the plan asks for, about as fast
+    _, t_base = self._drive(True, lambda t: 33., lambda t: 3. if t > 1. else 0., 1.0, 0.05, 1)
+    for ratio in (1.3, 1.75):
       with self.subTest(ratio=ratio):
-        reached = self._drive(True, lambda t: 33., lambda t: 3. if t > 1. else 0., ratio, 0.05, 1)
+        reached, t_reach = self._drive(True, lambda t: 33., lambda t: 3. if t > 1. else 0., ratio, 0.05, 1)
         assert reached > 2.85, f"{ratio=} {reached=}"
+        assert t_reach - t_base < 1.0, f"{ratio=} {t_reach=} {t_base=}"

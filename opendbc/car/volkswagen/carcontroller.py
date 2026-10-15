@@ -1,7 +1,7 @@
 import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import Bus, DT_CTRL, structs
-from opendbc.car.lateral import CurvatureExcess, apply_driver_steer_torque_limits
+from opendbc.car.lateral import EpsCurvatureRatio, apply_driver_steer_torque_limits
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
@@ -55,7 +55,7 @@ class CarController(CarControllerBase):
     self.apply_curvature_last = 0.
     self.steering_power_last = 0
     self.curvature_error_i = 0.
-    self.curvature_excess = CurvatureExcess()
+    self.eps_curvature_ratio = EpsCurvatureRatio()
     self.accel_last = 0.
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
@@ -70,7 +70,7 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.CP.flags & VolkswagenFlags.MEB:
-      self.curvature_excess.update(CS.curvature_meas, CS.out.yawRate, CS.out.vEgoRaw)
+      self.eps_curvature_ratio.update(CS.curvature_meas, CS.out.yawRate, CS.out.vEgoRaw)
 
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
@@ -95,11 +95,8 @@ class CarController(CarControllerBase):
           feedback = feedback_gain * (self.CCP.CURVATURE_KP * curvature_error + self.curvature_error_i)
           # compensate the gap between measured and current curvature
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
-          # safety allows the EPS curvature that reads above the yaw rate curvature, keep two jerk steps of margin
-          jerk_step = self.CCP.CURVATURE_LIMITS.MAX_LATERAL_JERK / max(CS.out.vEgoRaw - 1., 1.) ** 2 * self.CCP.STEER_STEP * DT_CTRL
-          excess = self.curvature_excess.get(2 * jerk_step + self.CCP.CURVATURE_EXCESS_MARGIN)
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
-                                                                   CC.latActive, self.CCP.STEER_STEP, excess)
+                                                                   CC.latActive, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
 
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MAX)

@@ -143,7 +143,7 @@ typedef struct {
   const int max_curvature_error;         // rad/m * curvature_to_can, max deviation from measured curvature (0 disables)
   const float curvature_error_min_speed; // min speed for the curvature error check [m/s]
   const int max_steer_power;             // max steer power if EPS supports it (0 disables)
-  const float yaw_rate_to_rad;           // yaw rate CAN units to rad/s, allows the EPS curvature measured above the yaw rate curvature (0 disables)
+  const float yaw_rate_to_rad;           // yaw rate CAN units to rad/s, scales limits by the EPS over yaw rate curvature (0 disables)
 } CurvatureSteeringLimits;
 
 // parameters for lateral accel/jerk angle limiting using a simple vehicle model
@@ -303,6 +303,8 @@ typedef struct {
   int steer_power_last;
   struct sample_t meas;          // last 6 steer curvatures
   struct sample_t yaw_rate;      // last 6 yaw rates
+  float eps_ratio_excess_pos;    // EPS over yaw rate curvature less 1, turning positive
+  float eps_ratio_excess_neg;    // EPS over yaw rate curvature less 1, turning negative
 } CurvatureSteeringState;
 extern CurvatureSteeringState curvature_state;
 

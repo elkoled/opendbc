@@ -247,11 +247,34 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
   static const float MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^2
   // Lower than ISO 11270 lateral jerk limit, which is 5.0 m/s^3
   static const float MAX_LATERAL_JERK = 3.0 + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^3
+  // per message, half of the smallest jerk step as a fraction of the lateral accel limit at 50 Hz
+  static const float EPS_RATIO_FALL = 0.01;
 
   const float fudged_speed = SAFETY_MAX((vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0, 1.0);
   bool violation = false;
 
   speed_mismatch_check((float)vehicle_speed_2.values[0] / VEHICLE_SPEED_FACTOR);
+
+  // some EPSs measure curvature from the steering angle without the understeer the car has at speed, so their
+  // curvature reads high of the curvature the car drives. while the car turns enough to measure it, scale the
+  // lateral accel limit on that side and the jerk limit by that ratio, at most 2x so a low reading yaw rate can't allow more.
+  // the ratio falls slowly, by a fraction of the jerk limit, so a noisy sample can't drop the limit below the last command
+  if (limits.yaw_rate_to_rad > 0.) {
+    const float yaw_rate_to_curvature_can = limits.yaw_rate_to_rad * limits.curvature_to_can / fudged_speed;
+    const int yaw_curvature_min = (int)((float)curvature_state.yaw_rate.min * yaw_rate_to_curvature_can);
+    const int yaw_curvature_max = (int)((float)curvature_state.yaw_rate.max * yaw_rate_to_curvature_can);
+    const int ratio_min_curvature = SAFETY_MAX((int)(0.3f / (fudged_speed * fudged_speed) * limits.curvature_to_can), 1);
+    float eps_ratio_excess_pos = 0.0f;
+    float eps_ratio_excess_neg = 0.0f;
+    if ((curvature_state.meas.min > 0) && (yaw_curvature_min >= ratio_min_curvature)) {
+      eps_ratio_excess_pos = SAFETY_CLAMP(((float)curvature_state.meas.min / (float)yaw_curvature_max) - 1.0f, 0.0f, 1.0f);
+    }
+    if ((curvature_state.meas.max < 0) && (yaw_curvature_max <= -ratio_min_curvature)) {
+      eps_ratio_excess_neg = SAFETY_CLAMP(((float)curvature_state.meas.max / (float)yaw_curvature_min) - 1.0f, 0.0f, 1.0f);
+    }
+    curvature_state.eps_ratio_excess_pos = SAFETY_MAX(eps_ratio_excess_pos, curvature_state.eps_ratio_excess_pos - EPS_RATIO_FALL);
+    curvature_state.eps_ratio_excess_neg = SAFETY_MAX(eps_ratio_excess_neg, curvature_state.eps_ratio_excess_neg - EPS_RATIO_FALL);
+  }
 
   if (controls_allowed && steer_control_enabled) {
     // *** absolute curvature cap ***
@@ -259,28 +282,12 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
 
     // *** ISO lateral accel limit ***
     const float max_curvature = MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
-    const int max_curvature_can = (max_curvature * limits.curvature_to_can) + 1.;
-
-    // some EPSs measure curvature from the steering angle without the understeer the car has at speed, so their
-    // curvature reads high of the curvature the car drives. allow that measured excess while the car turns that way
-    int excess_pos = 0;
-    int excess_neg = 0;
-    if (limits.yaw_rate_to_rad > 0.) {
-      const float yaw_rate_to_curvature_can = limits.yaw_rate_to_rad * limits.curvature_to_can / fudged_speed;
-      const int yaw_curvature_min = (int)((float)curvature_state.yaw_rate.min * yaw_rate_to_curvature_can);
-      const int yaw_curvature_max = (int)((float)curvature_state.yaw_rate.max * yaw_rate_to_curvature_can);
-      // at most half the measured curvature, so a low reading yaw rate can't allow more than twice the limit
-      if ((curvature_state.meas.min > 0) && (yaw_curvature_min > 0)) {
-        excess_pos = SAFETY_CLAMP(curvature_state.meas.min - yaw_curvature_max, 0, curvature_state.meas.min / 2);
-      }
-      if ((curvature_state.meas.max < 0) && (yaw_curvature_max < 0)) {
-        excess_neg = SAFETY_CLAMP(yaw_curvature_min - curvature_state.meas.max, 0, -curvature_state.meas.max / 2);
-      }
-    }
-    violation |= safety_max_limit_check(desired_curvature, max_curvature_can + excess_pos, -max_curvature_can - excess_neg);
+    const int max_curvature_pos_can = ((1.0f + curvature_state.eps_ratio_excess_pos) * max_curvature * limits.curvature_to_can) + 1.;
+    const int max_curvature_neg_can = ((1.0f + curvature_state.eps_ratio_excess_neg) * max_curvature * limits.curvature_to_can) + 1.;
+    violation |= safety_max_limit_check(desired_curvature, max_curvature_pos_can, -max_curvature_neg_can);
 
     // *** ISO lateral jerk limit ***
-    const float max_curvature_rate_sec = MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
+    const float max_curvature_rate_sec = (1.0f + SAFETY_MAX(curvature_state.eps_ratio_excess_pos, curvature_state.eps_ratio_excess_neg)) * MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
     const float max_curvature_delta = max_curvature_rate_sec / (float)limits.frequency;
     const int max_curvature_delta_can = (max_curvature_delta * limits.curvature_to_can) + 1.;
 

@@ -116,7 +116,6 @@ class CarControllerParams:
       self.CURVATURE_KP = 1.5             # feedback on the current curvature error
       self.CURVATURE_KI = 0.5             # 1/s
       self.CURVATURE_I_MAX = 0.05         # m^-1
-      self.CURVATURE_EXCESS_MARGIN = 3e-5  # m^-1, a few CAN units
 
       # Longitudinal constants
       self.ACCEL_INACTIVE = 3.01  # m/s^2

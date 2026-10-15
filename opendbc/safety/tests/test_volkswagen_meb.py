@@ -2,7 +2,7 @@
 import numpy as np
 import unittest
 
-from opendbc.car.lateral import MAX_LATERAL_ACCEL
+from opendbc.car.lateral import MAX_LATERAL_ACCEL, MAX_LATERAL_JERK
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.values import VolkswagenSafetyFlags
 import opendbc.safety.tests.common as common
@@ -249,31 +249,61 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
     # prev should be reset to 0
     self.assertEqual(0, self.safety.get_desired_curvature_last())
 
-  def test_yaw_rate_excess(self):
-    # the EPS curvature that reads above the yaw rate curvature is allowed on top of the lateral accel limit,
-    # only while both turn the same way and at most half the measured curvature
-    margin = 3 / self.CURVATURE_TO_CAN
+  def _eps_ratio_setup(self, v, meas, yaw_curvature):
+    self._reset_safety_hooks()
+    self._reset_speed_measurement(v)
+    self._reset_curvature_measurement(meas)
+    self._reset_yaw_rate_measurement(yaw_curvature * (v - 1))
+    self.safety.set_controls_allowed(True)
+
+  def test_eps_ratio_lat_accel_limit(self):
+    # the lateral accel limit on the side the car turns scales by the EPS over yaw rate curvature, at most 2x,
+    # once the car turns at 0.3 m/s^2. CAN resolution moves the measured ratio by up to about 1%
     for v in (15., 25., 35.):
-      fudged_speed = v - 1
-      max_curvature = MAX_LATERAL_ACCEL / fudged_speed ** 2
+      max_curvature = MAX_LATERAL_ACCEL / (v - 1) ** 2
       for sign in (1, -1):
         for yaw_sign in (1, 0, -1):
-          for eps_ratio in (0.8, 1.0, 1.3, 1.8, 2.5):
-            yaw_curvature = sign * 2.5 / v ** 2
-            meas = eps_ratio * yaw_curvature
-            self._reset_speed_measurement(v)
-            self._reset_curvature_measurement(meas)
-            self._reset_yaw_rate_measurement(yaw_sign * abs(yaw_curvature) * fudged_speed * np.sign(yaw_curvature))
+          for lat_accel in (0.2, 2.5):
+            for eps_ratio in (0.8, 1.0, 1.3, 1.8, 2.5):
+              yaw_curvature = yaw_sign * sign * lat_accel / (v - 1) ** 2
+              meas = eps_ratio * sign * lat_accel / (v - 1) ** 2
+              ratio = float(np.clip(eps_ratio, 1., 2.)) if yaw_sign == 1 and lat_accel > 0.3 else 1.
+              for side in (sign, -sign):
+                limit = (ratio if side == sign else 1.) * max_curvature
+                margin = max(0.015 * limit, 3 / self.CURVATURE_TO_CAN)
+                for cmd, allowed in ((limit - margin, True), (limit + margin, False)):
+                  self._eps_ratio_setup(v, meas, yaw_curvature)
+                  self._set_prev_desired_curvature(side * cmd)
+                  self.assertEqual(allowed, self._tx(self._curvature_cmd_msg(side * cmd, steer_req=True)),
+                                   f"{v=} {sign=} {side=} {yaw_sign=} {lat_accel=} {eps_ratio=} {cmd=}")
 
-            excess = 0.
-            if yaw_sign == 1:
-              excess = float(np.clip(abs(meas) - abs(yaw_curvature), 0, abs(meas) / 2))
-            limit = max_curvature + excess
-            self.safety.set_controls_allowed(True)
-            for cmd, allowed in ((limit - margin, True), (limit + margin, False)):
-              self._set_prev_desired_curvature(sign * cmd)
-              self.assertEqual(allowed, self._tx(self._curvature_cmd_msg(sign * cmd, steer_req=True)),
-                               f"{v=} {sign=} {yaw_sign=} {eps_ratio=} {cmd=}")
+  def test_eps_ratio_jerk_limit(self):
+    # the jerk limit scales by the same ratio
+    v = 30.
+    for eps_ratio in (1.0, 1.5, 2.0):
+      max_curvature_delta = eps_ratio * MAX_LATERAL_JERK / (v - 1) ** 2 * self.SEND_RATE
+      margin = max(0.01 * max_curvature_delta, 2 / self.CURVATURE_TO_CAN)
+      for delta, allowed in ((max_curvature_delta - margin, True), (max_curvature_delta + margin, False)):
+        self._eps_ratio_setup(v, eps_ratio * 2.5 / (v - 1) ** 2, 2.5 / (v - 1) ** 2)
+        self._set_prev_desired_curvature(0.)
+        self.assertEqual(allowed, self._tx(self._curvature_cmd_msg(delta, steer_req=True)), f"{eps_ratio=} {delta=}")
+
+  def test_eps_ratio_falls_slowly(self):
+    # once measured, the ratio falls by 0.01 per message, so a noisy sample can't drop the limit below the last command
+    v = 30.
+    max_curvature = MAX_LATERAL_ACCEL / (v - 1) ** 2
+    self._eps_ratio_setup(v, 1.8 * 2.5 / (v - 1) ** 2, 2.5 / (v - 1) ** 2)
+    self._tx(self._curvature_cmd_msg(0., steer_req=True))
+    # the yaw rate now reads the same as the EPS
+    self._reset_yaw_rate_measurement(1.8 * 2.5 / (v - 1) ** 2 * (v - 1))
+    msgs = 0
+    while msgs < 100:
+      for cmd_ratio, allowed in ((0.985, True), (1.015, False)):
+        msgs += 1
+        limit = (1. + max(0.8 - 0.01 * msgs, 0.)) * max_curvature
+        self.safety.set_controls_allowed(True)
+        self._set_prev_desired_curvature(cmd_ratio * limit)
+        self.assertEqual(allowed, self._tx(self._curvature_cmd_msg(cmd_ratio * limit, steer_req=True)), f"{msgs=}")
 
   def test_curvature_cmd_when_not_steering(self):
     # Tests that only a zero curvature is allowed while the steer
