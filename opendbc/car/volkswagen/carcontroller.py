@@ -83,15 +83,16 @@ class CarController(CarControllerBase):
         if CC.latActive:
           hca_enabled = True
           # the EPS lags and settles short of the command at low speed, so close the loop on the current curvature
-          # off while the driver steers, it would fight them
+          # it holds the car against light driver touches and fades out as the driver takes over
           curvature_error = actuators.curvature - CC.currentCurvature
-          if CS.out.steeringPressed:
+          driver_torque = abs(CS.out.steeringTorque)
+          if driver_torque >= self.CCP.STEER_DRIVER_MAX:
             self.curvature_error_i = 0.
-            feedback = 0.
-          else:
+          elif not CS.out.steeringPressed:
             self.curvature_error_i = float(np.clip(self.curvature_error_i + self.CCP.CURVATURE_KI * curvature_error * self.CCP.STEER_STEP * DT_CTRL,
                                                    -self.CCP.CURVATURE_I_MAX, self.CCP.CURVATURE_I_MAX))
-            feedback = self.CCP.CURVATURE_KP * curvature_error + self.curvature_error_i
+          feedback_gain = float(np.interp(driver_torque, [self.CCP.STEER_DRIVER_ALLOWANCE, self.CCP.STEER_DRIVER_MAX], [1., 0.]))
+          feedback = feedback_gain * (self.CCP.CURVATURE_KP * curvature_error + self.curvature_error_i)
           # compensate the gap between measured and current curvature
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
           # safety allows the EPS curvature that reads above the yaw rate curvature, keep two jerk steps of margin
