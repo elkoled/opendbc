@@ -94,7 +94,6 @@ static const CurvatureSteeringLimits FORD_STEERING_LIMITS = {
   .max_curvature_error = 100,         // 0.002 rad/m * curvature_to_can
   .curvature_error_min_speed = 10.0,  // m/s
   .max_steer_power = 0,               // disabled, Ford has no steed power signal
-  .eps_curvature_factor = {.x = {0., 1., 2.}, .y = {1., 1., 1.}},
 };
 
 static void ford_rx_hook(const CANPacket_t *msg) {

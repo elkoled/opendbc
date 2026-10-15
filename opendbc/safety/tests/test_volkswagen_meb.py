@@ -2,6 +2,7 @@
 import numpy as np
 import unittest
 
+from opendbc.car.lateral import MAX_LATERAL_ACCEL
 from opendbc.car.structs import CarParams
 from opendbc.car.volkswagen.values import VolkswagenSafetyFlags
 import opendbc.safety.tests.common as common
@@ -37,7 +38,6 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
   MAX_POWER = 125
   MAX_POWER_TEST = 50
   SEND_RATE = 0.02
-  EPS_CURVATURE_FACTOR = ([17., 30., 37.], [1.0, 1.45, 1.9])
   LATERAL_FREQUENCY = 50  # Hz
 
   cnt_curvature_cmd = 0
@@ -120,6 +120,14 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
   def _curvature_meas_msg(self, curvature):
     values = {"Curvature": abs(curvature), "Curvature_VZ": curvature > 0}
     return self.packer.make_can_msg_safety("QFK_01", 0, values)
+
+  def _yaw_rate_msg(self, yaw_rate):
+    values = {"Yaw_Rate": abs(np.degrees(yaw_rate)), "Yaw_Rate_Sign": yaw_rate > 0}
+    return self.packer.make_can_msg_safety("ESC_50", 0, values)
+
+  def _reset_yaw_rate_measurement(self, yaw_rate):
+    for _ in range(common.MAX_SAMPLE_VALS):
+      self.assertTrue(self._rx(self._yaw_rate_msg(yaw_rate)))
 
   def _curvature_cmd_msg(self, curvature, steer_req=1, power=50, increment_timer=True):
     if increment_timer:
@@ -240,6 +248,32 @@ class TestVolkswagenMebSafetyBase(common.CarSafetyTest, common.CurvatureSteering
 
     # prev should be reset to 0
     self.assertEqual(0, self.safety.get_desired_curvature_last())
+
+  def test_yaw_rate_excess(self):
+    # the EPS curvature that reads above the yaw rate curvature is allowed on top of the lateral accel limit,
+    # only while both turn the same way and at most half the measured curvature
+    margin = 3 / self.CURVATURE_TO_CAN
+    for v in (15., 25., 35.):
+      fudged_speed = v - 1
+      max_curvature = MAX_LATERAL_ACCEL / fudged_speed ** 2
+      for sign in (1, -1):
+        for yaw_sign in (1, 0, -1):
+          for eps_ratio in (0.8, 1.0, 1.3, 1.8, 2.5):
+            yaw_curvature = sign * 2.5 / v ** 2
+            meas = eps_ratio * yaw_curvature
+            self._reset_speed_measurement(v)
+            self._reset_curvature_measurement(meas)
+            self._reset_yaw_rate_measurement(yaw_sign * abs(yaw_curvature) * fudged_speed * np.sign(yaw_curvature))
+
+            excess = 0.
+            if yaw_sign == 1:
+              excess = float(np.clip(abs(meas) - abs(yaw_curvature), 0, abs(meas) / 2))
+            limit = max_curvature + excess
+            self.safety.set_controls_allowed(True)
+            for cmd, allowed in ((limit - margin, True), (limit + margin, False)):
+              self._set_prev_desired_curvature(sign * cmd)
+              self.assertEqual(allowed, self._tx(self._curvature_cmd_msg(sign * cmd, steer_req=True)),
+                               f"{v=} {sign=} {yaw_sign=} {eps_ratio=} {cmd=}")
 
   def test_curvature_cmd_when_not_steering(self):
     # Tests that only a zero curvature is allowed while the steer

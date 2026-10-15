@@ -249,7 +249,6 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
   static const float MAX_LATERAL_JERK = 3.0 + (EARTH_G * AVERAGE_ROAD_ROLL);  // ~3.6 m/s^3
 
   const float fudged_speed = SAFETY_MAX((vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0, 1.0);
-  const float eps_factor = safety_interpolate(limits.eps_curvature_factor, fudged_speed);
   bool violation = false;
 
   speed_mismatch_check((float)vehicle_speed_2.values[0] / VEHICLE_SPEED_FACTOR);
@@ -259,12 +258,29 @@ bool steer_curvature_cmd_checks(int desired_curvature, int steer_power, bool ste
     violation |= safety_max_limit_check(desired_curvature, limits.max_curvature, -limits.max_curvature);
 
     // *** ISO lateral accel limit ***
-    const float max_curvature = eps_factor * MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
+    const float max_curvature = MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
     const int max_curvature_can = (max_curvature * limits.curvature_to_can) + 1.;
-    violation |= safety_max_limit_check(desired_curvature, max_curvature_can, -max_curvature_can);
+
+    // some EPSs measure curvature from the steering angle without the understeer the car has at speed, so their
+    // curvature reads high of the curvature the car drives. allow that measured excess while the car turns that way
+    int excess_pos = 0;
+    int excess_neg = 0;
+    if (limits.yaw_rate_to_rad > 0.) {
+      const float yaw_rate_to_curvature_can = limits.yaw_rate_to_rad * limits.curvature_to_can / fudged_speed;
+      const int yaw_curvature_min = (int)((float)curvature_state.yaw_rate.min * yaw_rate_to_curvature_can);
+      const int yaw_curvature_max = (int)((float)curvature_state.yaw_rate.max * yaw_rate_to_curvature_can);
+      // at most half the measured curvature, so a low reading yaw rate can't allow more than twice the limit
+      if ((curvature_state.meas.min > 0) && (yaw_curvature_min > 0)) {
+        excess_pos = SAFETY_CLAMP(curvature_state.meas.min - yaw_curvature_max, 0, curvature_state.meas.min / 2);
+      }
+      if ((curvature_state.meas.max < 0) && (yaw_curvature_max < 0)) {
+        excess_neg = SAFETY_CLAMP(yaw_curvature_min - curvature_state.meas.max, 0, -curvature_state.meas.max / 2);
+      }
+    }
+    violation |= safety_max_limit_check(desired_curvature, max_curvature_can + excess_pos, -max_curvature_can - excess_neg);
 
     // *** ISO lateral jerk limit ***
-    const float max_curvature_rate_sec = eps_factor * MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
+    const float max_curvature_rate_sec = MAX_LATERAL_JERK / (fudged_speed * fudged_speed);
     const float max_curvature_delta = max_curvature_rate_sec / (float)limits.frequency;
     const int max_curvature_delta_can = (max_curvature_delta * limits.curvature_to_can) + 1.;
 

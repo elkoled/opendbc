@@ -4,6 +4,7 @@
 #include "opendbc/safety/modes/volkswagen_common.h"
 
 #define MSG_ESC_51           0xFCU    // RX, for wheel speeds
+#define MSG_ESC_50           0x102U   // RX, for yaw rate
 #define MSG_ACC_18           0x14DU   // TX by OP, ACC control instructions to the drivetrain coordinator
 #define MSG_ESP_21           0xFDU    // RX, redundant vehicle speed source
 #define MSG_HCA_03           0x303U
@@ -30,7 +31,8 @@ static bool volkswagen_meb_alt_crc = false;
   {.msg = {{MSG_MOTOR_14, 0, 8, 10U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
   {.msg = {{MSG_GRA_ACC_01, 0, 8, 33U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
   {.msg = {{MSG_QFK_01, 0, 32, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
-  {.msg = {{MSG_ESP_21, 0, 8, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+  {.msg = {{MSG_ESP_21, 0, 8, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}}, \
+  {.msg = {{MSG_ESC_50, 0, 48, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},
 
 static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   uint8_t salt = 0;
@@ -53,6 +55,9 @@ static uint32_t volkswagen_meb_compute_crc(const CANPacket_t *msg) {
   if (msg->addr == MSG_ESP_21) {
     salt = (uint8_t[]){0xB4, 0xEF, 0xF8, 0x49, 0x1E, 0xE5, 0xC2, 0xC0, 0x97, 0x19, 0x3C, 0xC9, 0xF1, 0x98, 0xD6, 0x61}[counter];
   }
+  if (msg->addr == MSG_ESC_50) {
+    salt = (uint8_t[]){0xD7, 0x12, 0x85, 0x7E, 0x0B, 0x34, 0xFA, 0x16, 0x7A, 0x25, 0x2D, 0x8F, 0x04, 0x8E, 0x5D, 0x35}[counter];
+  }
   if (msg->addr == MSG_Motor_51) {
     salt = (uint8_t[]){0x77, 0x5C, 0xA0, 0x89, 0x4B, 0x7C, 0xBB, 0xD6, 0x1F, 0x6C, 0x4F, 0xF6, 0x20, 0x2B, 0x43, 0xDD}[counter];
   }
@@ -69,6 +74,9 @@ static uint32_t volkswagen_meb_alt_crc_compute(const CANPacket_t *msg) {
     if (msg->addr == MSG_ESC_51) {
       len = 60;
     }
+    if (msg->addr == MSG_ESC_50) {
+      len = 44;
+    }
     if (msg->addr == MSG_Motor_51) {
       len = 44;
     }
@@ -82,6 +90,9 @@ static uint32_t volkswagen_meb_alt_crc_compute(const CANPacket_t *msg) {
     }
     if (msg->addr == MSG_ESC_51) {
       salt = (uint8_t[]){0x69, 0xDC, 0xF9, 0x64, 0x6A, 0xCE, 0x55, 0x2C, 0xC4, 0x38, 0x8F, 0xD1, 0xC6, 0x43, 0xB4, 0xB1}[counter];
+    }
+    if (msg->addr == MSG_ESC_50) {
+      salt = (uint8_t[]){0xD7, 0x12, 0x85, 0x7E, 0x0B, 0x34, 0xFA, 0x16, 0x7A, 0x25, 0x2D, 0x8F, 0x04, 0x8E, 0x5D, 0x35}[counter];
     }
     if (msg->addr == MSG_Motor_51) {
       salt = (uint8_t[]){0x2C, 0xB1, 0x1A, 0x75, 0xBB, 0x65, 0x79, 0x47, 0x81, 0x2B, 0xCC, 0x96, 0x17, 0xDB, 0xC0, 0x94}[counter];
@@ -147,6 +158,13 @@ static void volkswagen_meb_rx_hook(const CANPacket_t *msg) {
     // Signal: ESP_v_Signal
     float esp_speed = ((msg->data[5] << 8) | msg->data[4]) * 0.01 * KPH_TO_MS;
     UPDATE_VEHICLE_SPEED_2(esp_speed);
+  }
+
+  if (msg_matches(msg, MSG_ESC_50, 0U)) {
+    // Signal: ESC_50.Yaw_Rate, ESC_50.Yaw_Rate_Sign
+    int yaw_rate = ((msg->data[6] & 0x3FU) << 8) | msg->data[5];
+    yaw_rate *= GET_BIT(msg, 54U) ? 1 : -1;
+    update_sample(&curvature_state.yaw_rate, yaw_rate);
   }
 
   if (msg_matches(msg, MSG_QFK_01, 0U)) {
@@ -256,8 +274,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       .max_curvature_error = 0,          // disabled, MEB doesn't track rack
       .curvature_error_min_speed = 0.0,  // disabled
       .max_steer_power = 125,
-      // the EPS curvature reads high of the real curvature at highway speed
-      .eps_curvature_factor = {.x = {17., 30., 37.}, .y = {1.0, 1.45, 1.9}},
+      .yaw_rate_to_rad = 0.000174533f,  // ESC_50 yaw rate, 0.01 deg/s
     };
 
     int desired_curvature_raw = GET_BYTES_LE(msg, 3, 2) & 0x7FFFU;

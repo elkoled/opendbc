@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from collections import deque
 from dataclasses import dataclass
 from opendbc.car import structs, rate_limit, DT_CTRL, ACCELERATION_DUE_TO_GRAVITY
 from opendbc.car.vehicle_model import VehicleModel
@@ -45,22 +46,18 @@ class CurvatureSteeringLimits:
   CURVATURE_MAX: float
   MAX_LATERAL_ACCEL: float = MAX_LATERAL_ACCEL
   MAX_LATERAL_JERK: float = MAX_LATERAL_JERK
-  # EPS curvature over real curvature by speed, matches safety
-  EPS_CURVATURE_FACTOR: tuple[list[float], list[float]] = ([0.], [1.])
 
   def apply_limits(self, apply_curvature: float, apply_curvature_last: float, v_ego: float, curvature: float,
-                   lat_active: bool, steer_step: int) -> float:
+                   lat_active: bool, steer_step: int, excess: tuple[float, float] = (0., 0.)) -> float:
     """Apply accel and jerk constraints to curvature."""
-    # safety evaluates the factor 1 m/s low
-    eps_factor = float(np.interp(max(v_ego - 1, 1), *self.EPS_CURVATURE_FACTOR))
     v_ego = max(v_ego, 1)
 
     # *** max lateral accel limit ***
-    max_curvature = eps_factor * self.MAX_LATERAL_ACCEL / (v_ego ** 2)
-    new_apply_curvature = float(np.clip(apply_curvature, -max_curvature, max_curvature))
+    max_curvature = self.MAX_LATERAL_ACCEL / (v_ego ** 2)
+    new_apply_curvature = float(np.clip(apply_curvature, -max_curvature - excess[1], max_curvature + excess[0]))
 
     # *** max lateral jerk limit ***
-    max_jerk = (eps_factor * self.MAX_LATERAL_JERK / (v_ego ** 2)) * (steer_step * DT_CTRL)
+    max_jerk = (self.MAX_LATERAL_JERK / (v_ego ** 2)) * (steer_step * DT_CTRL)
     new_apply_curvature = float(np.clip(new_apply_curvature, apply_curvature_last - max_jerk, apply_curvature_last + max_jerk))
 
     # curvature is current curvature when inactive
@@ -69,6 +66,37 @@ class CurvatureSteeringLimits:
 
     # prevent fault
     return float(np.clip(new_apply_curvature, -self.CURVATURE_MAX, self.CURVATURE_MAX))
+
+
+class CurvatureExcess:
+  """Mirrors the safety allowance for EPS curvature measured above the yaw rate curvature, conservatively."""
+  # 0.25 s at 100 Hz covers the last 6 samples safety holds
+  WINDOW = 25
+
+  def __init__(self):
+    self.meas: deque[float] = deque(maxlen=self.WINDOW)
+    self.yaw_rate: deque[float] = deque(maxlen=self.WINDOW)
+    self.v_ego: deque[float] = deque(maxlen=self.WINDOW)
+
+  def update(self, curvature_meas: float, yaw_rate: float, v_ego: float) -> None:
+    self.meas.append(curvature_meas)
+    self.yaw_rate.append(yaw_rate)
+    self.v_ego.append(v_ego)
+
+  def get(self, margin: float) -> tuple[float, float]:
+    """Allowed curvature beyond the lateral accel limit, positive and negative side, less a margin for samples safety sees first."""
+    if not self.meas:
+      return 0., 0.
+    # safety divides by its slowest speed sample less 1 m/s, the yaw rate curvature only reads higher here
+    v = max(min(self.v_ego) - 1.5, 1.)
+    meas_min, meas_max = min(self.meas), max(self.meas)
+    yaw_min, yaw_max = min(self.yaw_rate) / v, max(self.yaw_rate) / v
+    excess_pos = excess_neg = 0.
+    if meas_min > 0 and yaw_min > 0:
+      excess_pos = max(min(meas_min - yaw_max, meas_min / 2) - margin, 0.)
+    if meas_max < 0 and yaw_max < 0:
+      excess_neg = max(min(yaw_min - meas_max, -meas_max / 2) - margin, 0.)
+    return excess_pos, excess_neg
 
 
 def apply_driver_steer_torque_limits(apply_torque: int, apply_torque_last: int, driver_torque: float, LIMITS, steer_max: int | None = None):
