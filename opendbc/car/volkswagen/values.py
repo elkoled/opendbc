@@ -118,7 +118,7 @@ class CarControllerParams:
       self.CURVATURE_KP_V = [0.3, 1.5]
       self.CURVATURE_KI = 0.5             # 1/s
       self.CURVATURE_SMOOTH_BP = [3., 10., 25.]  # m/s
-      self.CURVATURE_SMOOTH_V = [0.2, 0.13, 0.08]  # s, per stage, about Tesla lag and smoothness
+      self.CURVATURE_SMOOTH_V = [0.1, 0.065, 0.04]  # s, per stage
       self.CURVATURE_I_MAX = 0.05         # m^-1
       self.CURVATURE_I_MAX_LAG = 0.01     # m^-1, integrate only while the EPS keeps up with the command
 
