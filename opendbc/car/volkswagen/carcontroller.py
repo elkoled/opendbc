@@ -64,8 +64,6 @@ class CarController(CarControllerBase):
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.brake_pressed_last = False
     self.brake_exit = False
-    self.desired_curvature_lp = 0.
-    self.desired_curvature = 0.
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -96,12 +94,7 @@ class CarController(CarControllerBase):
           hca_enabled = True
           # the EPS lags and settles short of the command at low speed, so close the loop on the current curvature
           # it holds the car against light driver touches and fades out as the driver takes over
-          # the EPS passes plan noise straight through, filter it in two stages for a steep cut at the same lag
-          smooth_tau = float(np.interp(CS.out.vEgo, self.CCP.CURVATURE_SMOOTH_BP, self.CCP.CURVATURE_SMOOTH_V))
-          alpha = 1. - np.exp(-self.CCP.STEER_STEP * DT_CTRL / smooth_tau)
-          self.desired_curvature_lp += alpha * (actuators.curvature - self.desired_curvature_lp)
-          self.desired_curvature += alpha * (self.desired_curvature_lp - self.desired_curvature)
-          curvature_error = self.desired_curvature - CC.currentCurvature
+          curvature_error = actuators.curvature - CC.currentCurvature
           driver_torque = abs(CS.out.steeringTorque)
           if driver_torque >= self.CCP.STEER_DRIVER_MAX:
             self.curvature_error_i = 0.
@@ -112,7 +105,7 @@ class CarController(CarControllerBase):
           kp = float(np.interp(CS.out.vEgo, self.CCP.CURVATURE_KP_BP, self.CCP.CURVATURE_KP_V))
           feedback = feedback_gain * (kp * curvature_error + self.curvature_error_i)
           # compensate the gap between measured and current curvature
-          apply_curvature = self.desired_curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
+          apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
                                                                    lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
 
@@ -125,8 +118,6 @@ class CarController(CarControllerBase):
 
         else:
           self.curvature_error_i = 0.
-          self.desired_curvature_lp = actuators.curvature
-          self.desired_curvature = actuators.curvature
           if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
             apply_curvature = float(np.clip(CS.curvature_meas, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
