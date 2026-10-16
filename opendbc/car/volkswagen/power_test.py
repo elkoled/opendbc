@@ -34,9 +34,11 @@ STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 RELEASE = (10, 10)  # steering messages holding the base curvature before each maneuver, at standstill and rolling
 
 # rolling bands drive a left circle, steps go on top of it
-CIRCLE_RADIUS = 10.  # m
+CIRCLE_RADIUS = 12.  # m, leaves room for the turn steps up to full lock
 CIRCLE_LAT_ACCEL = 2.  # m/s^2, a larger circle at speed
 MAX_LAT_ACCEL = 3.  # m/s^2, circle and step together
+CURVATURE_MAX = 0.19  # m^-1, just under full lock
+REPEATS = 3  # of every step, for a solid model
 
 # the test drives the speed: to each band, then to a stop and a hold
 SPEED_GAIN = 1.  # 1/s
@@ -60,6 +62,7 @@ FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 DOUBLETS = {
   "small": (0.02, 50, 25),  # about 50 deg of wheel, the wheel moves slowest at standstill
   "big": (0.05, 100, 30),  # about 130 deg, long enough to settle and to reach the EPS rate limit
+  "turn": (0.11, 100, 50),  # about 290 deg, a tight 90 degree turn, as fast as the safety limits allow
 }
 TAIL = 20
 EDGE = 5
@@ -67,22 +70,24 @@ DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
   "big": "big step",
+  "turn": "turn",
 }
 
 
 def plan() -> list[tuple[str, int, int | None, str]]:
   # each step: (phase, target power, ramp per message or None for an instant jump, maneuver)
-  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, m) for level in LEVELS for m in ("small", "big")]
+  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, m) for level in LEVELS for m in ("small", "big", "turn") for _ in range(REPEATS)]
   for jump in JUMPS:
-    steps.append(("settle", STOCK_POWER, RAMP, "hold"))
-    steps.append(("jump", STOCK_POWER + jump, None, "big"))
+    for _ in range(REPEATS):
+      steps.append(("settle", STOCK_POWER, RAMP, "hold"))
+      steps.append(("jump", STOCK_POWER + jump, None, "big"))
   steps.append(("settle", STOCK_POWER, RAMP, "hold"))
   return steps
 
 
 def plan_id() -> str:
   # progress from a different plan doesn't carry over
-  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE))
+  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS))
 
 
 def maneuver_length(maneuver: str, band: int) -> int:
@@ -107,7 +112,7 @@ def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
   if band == 0:
     half = half_standstill
   else:
-    amp = min(amp, MAX_LAT_ACCEL / BANDS[band][0] ** 2 - base)
+    amp = min(amp, MAX_LAT_ACCEL / BANDS[band][0] ** 2 - base, CURVATURE_MAX - base)
   # ramped edges keep the wheel's inertia from reading as driver torque
   return base + float(np.interp(k, [0, EDGE, half, half + 2 * EDGE, 2 * half + EDGE, 2 * half + 2 * EDGE], [0., amp, amp, -amp, -amp, 0.]))
 

@@ -38,6 +38,7 @@ def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000
   CP.openpilotLongitudinalControl = False
   cc = CarController(DBC[PLATFORM], CP)
   eps, hist, power, faulted, blocked, statuses = 0., [0.] * 5, 0, False, 0, []
+  engage_frame = 0
   for frame in range(int(max_s / DT_CTRL)):
     t = frame * DT_CTRL
     band = next((i for i, d in enumerate(cc.power_test.done) if not d and power_test.BANDS[i][0] <= max(speeds)), None)
@@ -51,9 +52,10 @@ def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000
       rate = 230. * power / 50. / DEG_PER_CURVATURE
       eps += float(np.clip(DT_CTRL / 0.15 * (0.95 * c - eps), -rate * DT_CTRL, rate * DT_CTRL))
     if faulted and cc.steering_power_last == 0:
-      # power cycle
+      # power cycle, then engaged again a second later
       faulted = False
       cc = CarController(DBC[PLATFORM], CP)
+      engage_frame = frame + 50
 
     safety.set_timer(int(t * 1e6))
     rx("ESC_51", {f"{w}_Radgeschw": v * 3.6 for w in ("HL", "HR", "VL", "VR")})
@@ -61,7 +63,7 @@ def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000
     rx("ESC_50", {"Yaw_Rate": abs(math.degrees(eps * v)), "Yaw_Rate_Sign": eps * v > 0})
     rx("QFK_01", {"Curvature": abs(eps), "Curvature_VZ": eps > 0})
 
-    CC = structs.CarControl(latActive=not faulted, enabled=True)
+    CC = structs.CarControl(latActive=not faulted and frame >= engage_frame, enabled=True)
     CC.currentCurvature = eps
     CS = SimpleNamespace(out=structs.CarState(vEgo=v, vEgoRaw=v, yawRate=eps * v, steeringAngleDeg=eps * DEG_PER_CURVATURE, standstill=v == 0.),
                          curvature_meas=eps, eps_stock_values=defaultdict(int), klr_stock_values=defaultdict(int), acc_type=0,
@@ -104,7 +106,7 @@ class TestPowerTest:
 def power_test_fit_runs(tmp_path):
   from opendbc.car.volkswagen.power_test_fit import load
   for run in load([str(tmp_path / "logs")]):
-    rows = [r for r in run if r["maneuver"] in ("small", "big") and r["power_sent"] == r["target_power"]]
+    rows = [r for r in run if r["maneuver"] in ("small", "big", "turn") and r["power_sent"] == r["target_power"]]
     if len(rows) >= 25:
       yield (float(rows[0]["band"]), int(rows[0]["target_power"]), np.array([float(r["curvature_sent"]) for r in rows]),
              np.array([float(r["curvature_meas"]) for r in rows]))

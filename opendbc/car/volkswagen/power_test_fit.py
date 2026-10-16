@@ -84,7 +84,7 @@ def main():
       r = run[-1]
       faults.append(f"band {r['band']} m/s {r['phase']} {r['maneuver']} power {r['power_sent']}: {r['hca_status']}")
     # only the maneuver itself at its target power, recentering and ramps excluded
-    rows = [r for r in run if r["maneuver"] in ("small", "big") and r["power_sent"] == r["target_power"]]
+    rows = [r for r in run if r["maneuver"] in ("small", "big", "turn") and r["power_sent"] == r["target_power"]]
     if len(rows) < 25:
       continue
     cmd = np.array([float(r["curvature_sent"]) for r in rows])
