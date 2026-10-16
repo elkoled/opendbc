@@ -65,6 +65,7 @@ class CarController(CarControllerBase):
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.brake_pressed_last = False
     self.brake_exit = False
+    self.desired_curvature_lp = 0.
     self.desired_curvature = 0.
 
   def update(self, CC, CS, now_nanos):
@@ -99,10 +100,11 @@ class CarController(CarControllerBase):
           hca_enabled = True
           # the EPS lags and settles short of the command at low speed, so close the loop on the current curvature
           # it holds the car against light driver touches and fades out as the driver takes over
-          # the plan steps at model rate, smooth the steps at low speed where they are felt most
+          # the EPS passes plan noise straight through, filter it in two stages for a steep cut at the same lag
           smooth_tau = float(np.interp(CS.out.vEgo, self.CCP.CURVATURE_SMOOTH_BP, self.CCP.CURVATURE_SMOOTH_V))
-          alpha = 1. - np.exp(-self.CCP.STEER_STEP * DT_CTRL / smooth_tau) if smooth_tau > 0. else 1.
-          self.desired_curvature = float(alpha * actuators.curvature + (1. - alpha) * self.desired_curvature)
+          alpha = 1. - np.exp(-self.CCP.STEER_STEP * DT_CTRL / smooth_tau)
+          self.desired_curvature_lp += alpha * (actuators.curvature - self.desired_curvature_lp)
+          self.desired_curvature += alpha * (self.desired_curvature_lp - self.desired_curvature)
           curvature_error = self.desired_curvature - CC.currentCurvature
           driver_torque = abs(CS.out.steeringTorque)
           if driver_torque >= self.CCP.STEER_DRIVER_MAX:
@@ -132,10 +134,12 @@ class CarController(CarControllerBase):
                                                                      lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
             steering_power = test[1]
             self.curvature_error_i = 0.
+            self.desired_curvature_lp = actuators.curvature
             self.desired_curvature = actuators.curvature
 
         else:
           self.curvature_error_i = 0.
+          self.desired_curvature_lp = actuators.curvature
           self.desired_curvature = actuators.curvature
           if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
