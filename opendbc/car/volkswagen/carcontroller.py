@@ -61,6 +61,8 @@ class CarController(CarControllerBase):
     self.distance_bar_frame = 0
     self.gra_acc_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
+    self.brake_pressed_last = False
+    self.brake_exit = False
 
   def update(self, CC, CS, now_nanos):
     actuators = CC.actuators
@@ -71,16 +73,23 @@ class CarController(CarControllerBase):
 
     if self.CP.flags & VolkswagenFlags.MEB:
       self.eps_curvature_ratio.update(CS.curvature_meas, CS.out.yawRate, CS.out.vEgoRaw)
+      # the panda exits controls on the brake a frame before openpilot does, stop actuating on the same frame
+      if CS.out.brakePressed and (not self.brake_pressed_last or not CS.out.standstill):
+        self.brake_exit = True
+      elif not CC.enabled:
+        self.brake_exit = False
+      self.brake_pressed_last = CS.out.brakePressed
 
     if self.frame % self.CCP.STEER_STEP == 0:
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
+        lat_active = CC.latActive and not self.brake_exit
         # Logic to avoid HCA refused state:
         #   * steering power as counter and near zero before OP lane assist deactivation
         # MEB rack can be used continuously without time limits
         # maximum real steering angle change ~ 120-130 deg/s
 
-        if CC.latActive:
+        if lat_active:
           hca_enabled = True
           # the EPS lags and settles short of the command at low speed, so close the loop on the current curvature
           # it holds the car against light driver touches and fades out as the driver takes over
@@ -97,7 +106,7 @@ class CarController(CarControllerBase):
           # compensate the gap between measured and current curvature
           apply_curvature = actuators.curvature + (CS.curvature_meas - CC.currentCurvature) + feedback
           apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(apply_curvature, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
-                                                                   CC.latActive, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
+                                                                   lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
 
           power_max = self.CCP.STEERING_POWER_MAX
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
@@ -157,8 +166,8 @@ class CarController(CarControllerBase):
       if self.frame % self.CCP.ACC_CONTROL_STEP == 0:
         if self.CP.flags & VolkswagenFlags.MEB:
           accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
-          accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = self.meb_long_state.update(CS, CC, accel)
-          can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CCP, CS.acc_type, CC.enabled,
+          accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = self.meb_long_state.update(CS, CC, accel, self.brake_exit)
+          can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CCP, CS.acc_type, CC.enabled and not self.brake_exit,
                                                            accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available))
 

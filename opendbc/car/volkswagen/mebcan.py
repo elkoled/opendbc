@@ -82,19 +82,19 @@ class MebLongStateMachine:
     self.prev_acc_hold_type = self.acc_hold_type_vals['KEINE_ANFORDERUNG']  # no request
     self.acc_status = self.acc_status_vals['ACC_OFF_HAUPTSCHALTER_AUS']  # last acc status, read by HUD msg
 
-  def _get_acc_status(self, CS, CC) -> int:
+  def _get_acc_status(self, CS, CC, exiting) -> int:
     # stateless
     # NOTE: stock TSK and camera goes to 5 on disengage independently which we don't model, but hasn't been shown to fault without it
     if CS.out.accFaulted:
       return self.acc_status_vals['REVERSIBLER_FEHLER_IM_ACC_SYSTEM']
-    elif CC.enabled:
+    elif CC.enabled and not exiting:
       return self.acc_status_vals['ACC_OVERRIDE' if CC.cruiseControl.override else 'ACC_AKTIV_REGELT']
     elif CS.out.cruiseState.available:
       return self.acc_status_vals['ACC_STANDBY']
     else:
       return self.acc_status_vals['ACC_OFF_HAUPTSCHALTER_AUS']  # disabled
 
-  def _get_hold_type(self, CS, CC) -> int:
+  def _get_hold_type(self, CS, CC, exiting) -> int:
     # warning: car is reacting to hold mechanic even with long control off
     # HALTEN -> KEINE_ANFORDERUNG causes the car to fault into park, so both branches below put a ramp in
     # between: disengaging always ramps, and while engaged a release ramps until 5 kph
@@ -104,7 +104,7 @@ class MebLongStateMachine:
     # HMS_Status leaves holding as soon as we send anfahren, so keep driving off until we leave standstill
     driving_off = self.prev_acc_hold_type == self.acc_hold_type_vals['ANFAHREN'] and CS.esp_standstill
     starting = CC.actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or driving_off)
-    long_active = CC.longActive and not CS.out.accFaulted  # catches it one frame earlier, not sure if needed
+    long_active = CC.longActive and not CS.out.accFaulted and not exiting  # catches it one frame earlier
 
     if not long_active:
       # Stock goes to RAMP for as long as TSK_Status is 5 usually, 100ms seems fine to mimic that behavior.
@@ -137,14 +137,14 @@ class MebLongStateMachine:
 
     return acc_hold_type
 
-  def update(self, CS, CC, accel) -> tuple[float, int, int, bool, bool]:
-    acc_status = self._get_acc_status(CS, CC)
-    acc_hold_type = self._get_hold_type(CS, CC)
+  def update(self, CS, CC, accel, exiting=False) -> tuple[float, int, int, bool, bool]:
+    acc_status = self._get_acc_status(CS, CC, exiting)
+    acc_hold_type = self._get_hold_type(CS, CC, exiting)
 
     # transition to inactive accel and jerks as soon as we enter ESP standstill
     requesting_hold = acc_hold_type == self.acc_hold_type_vals['HALTEN']
     held = requesting_hold and CS.esp_hold_confirmation
-    if not CC.enabled or held:
+    if not CC.enabled or exiting or held:
       accel = self.CCP.ACCEL_INACTIVE
 
     # hold requested but the car hasn't reached standstill yet

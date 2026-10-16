@@ -168,3 +168,56 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
         reached, t_reach = self._drive(True, lambda t: 33., lambda t: 3. if t > 1. else 0., ratio, 0.05, 1)
         assert reached > 2.85, f"{ratio=} {reached=}"
         assert t_reach - t_base < 1.0, f"{ratio=} {t_reach=} {t_base=}"
+
+  def test_brake_disengage_not_blocked(self):
+    # the panda exits controls on the brake a few frames before openpilot catches up, nothing it sends then may be blocked
+    from collections import defaultdict
+    from types import SimpleNamespace
+    from opendbc.can import CANPacker
+    from opendbc.car import structs
+    from opendbc.car.volkswagen.carcontroller import CarController
+    from opendbc.car.volkswagen.interface import CarInterface
+    from opendbc.car.volkswagen.values import DBC, VolkswagenSafetyFlags
+    from opendbc.safety.tests.libsafety import libsafety_py
+
+    platform = CAR.VOLKSWAGEN_ID4_MK2
+    packer = CANPacker(DBC[platform][Bus.pt])
+    safety = libsafety_py.libsafety
+
+    def rx(name, values):
+      addr, dat, _ = packer.make_can_msg(name, 0, values)
+      safety.safety_rx_hook(libsafety_py.make_CANPacket(addr, 0, dat))
+
+    for v in (0., 8., 25.):
+      for lag in (1, 2, 3):
+        for brake_frame in (200, 201):
+          with self.subTest(v=v, lag=lag, brake_frame=brake_frame):
+            CP = CarInterface.get_non_essential_params(platform)
+            CP.openpilotLongitudinalControl = True
+            cc = CarController(DBC[platform], CP)
+            safety.set_safety_hooks(CarParams.SafetyModel.volkswagenMeb, VolkswagenSafetyFlags.MEB_ALT_CRC | VolkswagenSafetyFlags.LONG_CONTROL)
+            safety.init_tests()
+            safety.set_controls_allowed(True)
+
+            for frame in range(400):
+              t = frame * DT_CTRL
+              safety.set_timer(int(t * 1e6))
+              brake = frame >= brake_frame
+              rx("Motor_14", {"MO_Fahrer_bremst": brake})
+              rx("ESC_51", {f"{w}_Radgeschw": v * 3.6 for w in ("HL", "HR", "VL", "VR")})
+              rx("ESP_21", {"ESP_v_Signal": v * 3.6})
+              engaged = frame < brake_frame + lag
+              CC = structs.CarControl(latActive=engaged, longActive=engaged, enabled=engaged)
+              CC.actuators.curvature = 0.01
+              CC.actuators.accel = 0.5
+              CC.currentCurvature = 0.01
+              CS = SimpleNamespace(out=structs.CarState(vEgo=v, vEgoRaw=v, yawRate=0.01 * v, brakePressed=brake, standstill=v == 0.),
+                                   curvature_meas=0.01, eps_stock_values=defaultdict(int), klr_stock_values=defaultdict(int), acc_type=0,
+                                   gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0,
+                                   esp_hold_confirmation=False, esp_standstill=v == 0., travel_assist_available=False)
+              CS.out.cruiseState.available = True
+              _, sends = cc.update(CC.as_reader(), CS, int(t * 1e9))
+              for addr, dat, bus in sends:
+                if bus == 0:
+                  assert safety.safety_tx_hook(libsafety_py.make_CANPacket(addr, 0, dat)), f"{addr=:#x} blocked at {frame=}"
+            assert not safety.get_controls_allowed()
