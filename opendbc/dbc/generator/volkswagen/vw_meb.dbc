@@ -46,8 +46,8 @@ BO_ 267 Motor_51: 32 XXX
  SG_ TSK_Limiter_ausgewaehlt : 95|1@1+ (1,0) [0|3] "" XXX
 
 BO_ 496 EA_02: 8 Gateway
- SG_ EA_02_CRC : 0|8@1+ (1,0) [0|255] "" Vector__XXX
- SG_ EA_02_BZ : 8|4@1+ (1,0) [0|15] "" Vector__XXX
+ SG_ CHECKSUM : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ COUNTER : 8|4@1+ (1,0) [0|15] "" Vector__XXX
  SG_ EA_Texte : 12|4@1+ (1,0) [0|15] "" ZR_High
  SG_ ACF_Lampe_Hands_Off : 16|2@1+ (1,0) [0|3] "" Vector__XXX
  SG_ EA_Infotainment_Anf : 22|2@1+ (1,0) [0|3] "" ZR_High,ZR_LIMU,ZR_MIB_TOP_ab_Gen3,ZR_Standard
