@@ -108,3 +108,15 @@ def power_test_fit_runs(tmp_path):
     if len(rows) >= 25:
       yield (float(rows[0]["band"]), int(rows[0]["target_power"]), np.array([float(r["curvature_sent"]) for r in rows]),
              np.array([float(r["curvature_meas"]) for r in rows]))
+
+
+def test_accel_limit_holds_band_speed(tmp_path, monkeypatch):
+  monkeypatch.setattr(power_test, "ARM_FILE", str(tmp_path / "arm"))
+  monkeypatch.setattr(power_test, "LOG_DIR", str(tmp_path / "logs"))
+  t = power_test.MebPowerTest()
+  assert t.accel_limit(0.) is None
+  (tmp_path / "arm").write_text("")
+  assert t.accel_limit(0.) == power_test.SPEED_ACCEL
+  assert t.accel_limit(2.) < 0.
+  t.done = [False, True, True, True]
+  assert t.accel_limit(0.) is None

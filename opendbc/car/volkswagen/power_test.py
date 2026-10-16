@@ -9,6 +9,7 @@ import numpy as np
 # Arm by creating ARM_FILE on the device. While engaged and hands off, whichever unfinished speed band matches the current
 # speed runs its small steps, a few seconds per band. Each step starts over if interrupted. Leaving the band or touching the
 # wheel pauses it. An EPS fault at a power skips that band's remaining steps at or above it. Progress survives restarts.
+# The test sets the speed of the rolling bands, a standstill band runs whenever the car is stopped.
 # Between steps openpilot steers as usual, at the test power. Rolling steps are sized to drift the car about DRIFT sideways.
 # ARM_FILE may hold "max_speed=3" to skip faster bands in a small lot. When every band is done ARM_FILE is renamed.
 # Status for the onroad UI goes to STATUS_FILE.
@@ -35,6 +36,10 @@ STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
 DRIFT = 0.5  # m, sideways from a rolling doublet
 RELEASE = (10, 10)  # steering messages of openpilot steering before each maneuver, at standstill and rolling
+
+# the test holds each rolling band's speed by capping openpilot's accel, it only ever slows openpilot down
+SPEED_GAIN = 1.  # 1/s
+SPEED_ACCEL = 1.  # m/s^2
 
 MAX_DRIVER_TORQUE = 150  # 1.5 Nm, the fast swings themselves show up as some torque
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
@@ -165,6 +170,15 @@ class MebPowerTest:
 
   def _next_band(self) -> int | None:
     return next((i for i in range(len(BANDS)) if self._wanted(i)), None)
+
+  def accel_limit(self, v_ego: float) -> float | None:
+    """Caps openpilot's accel to hold the speed of the next rolling band, None when the test doesn't need a speed."""
+    if self.finished or not os.path.exists(ARM_FILE):
+      return None
+    b = self.band if self.band is not None and self.band != 0 else next((i for i in range(1, len(BANDS)) if self._wanted(i)), None)
+    if b is None:
+      return None
+    return min(max(SPEED_GAIN * (BANDS[b][0] - v_ego), -SPEED_ACCEL), SPEED_ACCEL)
 
   def _read_arm_file(self):
     try:
