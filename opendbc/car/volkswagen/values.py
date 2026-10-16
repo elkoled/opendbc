@@ -115,7 +115,7 @@ class CarControllerParams:
       self.CURVATURE_LIMITS = CurvatureSteeringLimits(self.CURVATURE_MAX)
       # feedback on the current curvature error
       self.CURVATURE_KP_BP = [3., 15.]    # m/s
-      self.CURVATURE_KP_V = [0.6, 1.5]
+      self.CURVATURE_KP_V = [0.3, 1.5]
       self.CURVATURE_KI = 0.5             # 1/s
       self.CURVATURE_I_MAX = 0.05         # m^-1
       self.CURVATURE_I_MAX_LAG = 0.01     # m^-1, integrate only while the EPS keeps up with the command
