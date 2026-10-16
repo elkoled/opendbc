@@ -47,7 +47,10 @@ def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000
     v = power_test.BANDS[band][0]
     hist.append(cc.apply_curvature_last if power > 0 else eps)
     c = hist.pop(0)
-    faulted |= power >= fault_power
+    # the simulated EPS faults on test steps from fault_power, normal driving at full power is fine as on the car
+    t_band = cc.power_test.band
+    faulted |= (power >= fault_power and t_band is not None and
+                cc.power_test.steps[cc.power_test.step_idx[t_band]][1] >= fault_power)
     if not faulted and power > 0:
       rate = 230. * power / 50. / DEG_PER_CURVATURE
       eps += float(np.clip(DT_CTRL / 0.15 * (0.95 * c - eps), -rate * DT_CTRL, rate * DT_CTRL))

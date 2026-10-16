@@ -125,9 +125,8 @@ class CarController(CarControllerBase):
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           # after the power test, come down from above the max in steps too
           max_power = max(min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, power_max), min_power)
-          target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_POWER_START, self.CCP.STEER_DRIVER_MAX],
-                                                                          [power_max, self.CCP.STEERING_POWER_MIN]))
-          target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
+          target_power = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_POWER_START, self.CCP.STEER_DRIVER_MAX],
+                                                                   [power_max, self.CCP.STEERING_POWER_MIN]))
           steering_power = min(max(target_power, min_power), max_power)
 
           if test is not None:
