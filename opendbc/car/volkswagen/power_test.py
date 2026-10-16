@@ -10,7 +10,7 @@ import numpy as np
 # speed runs its small steps, a few seconds per band. Each step starts over if interrupted. Leaving the band or touching the
 # wheel pauses it. An EPS fault at a power skips that band's remaining steps at or above it. Progress survives restarts.
 # The test sets the speed of the rolling bands, a standstill band runs whenever the car is stopped.
-# Between steps openpilot steers as usual, at the test power. Rolling steps are sized to drift the car about DRIFT sideways.
+# Between steps openpilot steers as usual, at the test power. Rolling steps are sized to drift the car about a meter at most.
 # ARM_FILE may hold "max_speed=3" to skip faster bands in a small lot. When every band is done ARM_FILE is renamed.
 # Status for the onroad UI goes to STATUS_FILE.
 ARM_FILE = "/data/meb_power_test"
@@ -26,15 +26,12 @@ RAMP = 5  # percent per steering message, like stock
 BANDS = ((0., 0.3), (1.5, 0.7), (3., 0.8), (5., 1.))
 DT = 0.02  # steering message period
 
-CURVATURE_SMALL = 0.02  # m^-1, about 50 deg of wheel
-
 # stock power EPS, fitted from normal driving (tools/lateral_maneuvers/meb_eps_fit.py), the screen draws it against the live response
 STOCK_EPS_V = (3.5, 6.5, 10., 16., 25., 37.5)  # m/s
 STOCK_EPS_DELAY = (0.04, 0.04, 0., 0., 0., 0.)  # s
 STOCK_EPS_TAU = (0.172, 0.159, 0.401, 0.635, 0.588, 0.545)  # s
 STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
-DRIFT = 0.5  # m, sideways from a rolling doublet
 RELEASE = (10, 10)  # steering messages of openpilot steering before each maneuver, at standstill and rolling
 
 # the test holds each rolling band's speed by capping openpilot's accel, it only ever slows openpilot down
@@ -46,43 +43,60 @@ MAX_DRIVER_TORQUE_STEP = 300  # during a step the wheel's own motion reads up to
 HANDS_ON = 15  # steering messages over the limit before it counts as hands on
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
 STATUS_EVERY = 5  # steering messages, 10 Hz
+DONE_SHOW_S = 10.
 
 LOG_COLUMNS = ("t", "band", "step", "phase", "maneuver", "frame", "target_power", "power", "curvature_req", "curvature_sent", "power_sent",
                "curvature_meas", "steering_angle", "steering_rate", "yaw_rate", "hca_status", "driver_torque", "v_ego")
 FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 
-# small doublet: + then - for HALF, then zero for TAIL, edges ramped over EDGE, in steering messages
-HALF = 25
+# doublet: + then - for half, then zero for TAIL, edges ramped over EDGE, in steering messages
+# (curvature, half at standstill, half rolling, sideways drift budget while rolling in m)
+DOUBLETS = {
+  "small": (0.02, 50, 25, 0.5),  # about 50 deg of wheel, the wheel moves slowest at standstill
+  "big": (0.05, 100, 30, 1.),  # about 130 deg, long enough to settle and to reach the EPS rate limit
+}
 TAIL = 20
 EDGE = 5
 DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
+  "big": "big step",
 }
 
 
 def plan() -> list[tuple[str, int, int | None, str]]:
   # each step: (phase, target power, ramp per message or None for an instant jump, maneuver)
-  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, "small") for level in LEVELS]
+  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, m) for level in LEVELS for m in ("small", "big")]
   for jump in JUMPS:
     steps.append(("settle", STOCK_POWER, RAMP, "hold"))
-    steps.append(("jump", STOCK_POWER + jump, None, "small"))
+    steps.append(("jump", STOCK_POWER + jump, None, "big"))
   steps.append(("settle", STOCK_POWER, RAMP, "hold"))
   return steps
 
 
+def plan_id() -> str:
+  # progress from a different plan doesn't carry over
+  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE))
+
+
 def maneuver_length(maneuver: str, band: int) -> int:
-  return 2 * HALF + TAIL if maneuver == "small" else 0
+  if maneuver not in DOUBLETS:
+    return 0
+  return 2 * DOUBLETS[maneuver][1 if band == 0 else 2] + TAIL
 
 
 def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
-  if maneuver != "small":
+  if maneuver not in DOUBLETS:
     return 0.
+  amp, half_standstill, half, drift = DOUBLETS[maneuver]
   v = BANDS[band][0]
-  # a doublet moves the car about curvature * (v * half time)^2 sideways
-  amp = min(CURVATURE_SMALL, DRIFT / max(v * HALF * DT, 1e-3) ** 2)
+  if band == 0:
+    half = half_standstill
+  else:
+    # a doublet moves the car about curvature * (v * half time)^2 sideways
+    amp = min(amp, drift / (v * half * DT) ** 2)
   # ramped edges keep the wheel's inertia from reading as driver torque
-  return float(np.interp(k, [0, EDGE, HALF, HALF + 2 * EDGE, 2 * HALF + EDGE, 2 * HALF + 2 * EDGE], [0., amp, amp, -amp, -amp, 0.]))
+  return float(np.interp(k, [0, EDGE, half, half + 2 * EDGE, 2 * half + EDGE, 2 * half + 2 * EDGE], [0., amp, amp, -amp, -amp, 0.]))
 
 
 class MebPowerTest:
@@ -102,6 +116,7 @@ class MebPowerTest:
     self.curvature = 0.
     self.log = None
     self.finished = False
+    self.finished_t = 0.
     self.frame = 0
     self.note = ""
     self.trace: list[tuple[float, float]] = []
@@ -124,7 +139,7 @@ class MebPowerTest:
     try:
       with open(os.path.join(LOG_DIR, STATE_FILE)) as f:
         state = json.load(f)
-      if len(state["done"]) == len(BANDS) and state["steps"] == len(self.steps):
+      if len(state["done"]) == len(BANDS) and state["plan"] == plan_id():
         self.done, self.step_idx = state["done"], state["step_idx"]
         self.level_cap, self.jump_cap = state["level_cap"], state["jump_cap"]
         self.faults = state.get("faults", [])
@@ -136,7 +151,7 @@ class MebPowerTest:
       os.makedirs(LOG_DIR, exist_ok=True)
       with open(os.path.join(LOG_DIR, STATE_FILE), "w") as f:
         json.dump({"done": self.done, "step_idx": self.step_idx, "level_cap": self.level_cap, "jump_cap": self.jump_cap,
-                   "faults": self.faults, "steps": len(self.steps)}, f)
+                   "faults": self.faults, "plan": plan_id()}, f)
     except OSError:
       pass
 
@@ -210,7 +225,14 @@ class MebPowerTest:
     self.quiet = 0
     if all(self.done):
       self.finished = True
+      self.finished_t = time.monotonic()
+      self.note = "test done"
       self._result("all bands done")
+      # the next arm starts a fresh run
+      try:
+        os.remove(os.path.join(LOG_DIR, STATE_FILE))
+      except OSError:
+        pass
       if self.log is not None:
         self.log.close()
         self.log = None
@@ -278,7 +300,16 @@ class MebPowerTest:
              curvature_meas: float, steering_angle: float, steering_rate: float, yaw_rate: float,
              curvature_last: float, power_last: int) -> tuple[float | None, int] | None:
     """Call once per steering message. Returns (curvature, power) while the test runs, curvature None while openpilot steers, else None."""
-    if self.finished or not os.path.exists(ARM_FILE):
+    if self.finished and os.path.exists(ARM_FILE):
+      # armed again, fresh run
+      self.__init__()
+    if self.finished:
+      # keep "test done" on the screen for a moment
+      self.frame += 1
+      if time.monotonic() - self.finished_t < DONE_SHOW_S:
+        self._status(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, power_last, curvature_last)
+      return None
+    if not os.path.exists(ARM_FILE):
       return None
     if self.frame % 50 == 0:
       self._read_arm_file()
