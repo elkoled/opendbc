@@ -3,6 +3,8 @@ import math
 import os
 import time
 
+import numpy as np
+
 # Local only. Maps the MEB EPS response (delay, lag, gain, rate limit and frequency response) at HCA_03 steering powers past
 # stock, and which powers it accepts. Arm by creating ARM_FILE on the device. While engaged and hands off, whichever
 # unfinished speed band matches the current speed runs its next maneuver. Every maneuver is short (3 s at most) and starts
@@ -31,6 +33,12 @@ LAT_ACCEL_SMALL = 0.5
 SWEEP_JERK = 3.  # m/s^3 at the top sweep frequency, under the jerk limit
 SWEEP_F = (0.5, 3.)  # Hz, below that the doublets cover it
 SWEEP_LEVELS = (50, 100)
+
+# stock power EPS, fitted from normal driving (tools/lateral_maneuvers/meb_eps_fit.py), the screen draws it against the live response
+STOCK_EPS_V = (3.5, 6.5, 10., 16., 25., 37.5)  # m/s
+STOCK_EPS_DELAY = (0.04, 0.04, 0., 0., 0., 0.)  # s
+STOCK_EPS_TAU = (0.172, 0.159, 0.401, 0.635, 0.588, 0.545)  # s
+STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
 # steer back to the start line of the pass between maneuvers
 RECENTER_LOOKAHEAD = 2.  # s
@@ -273,6 +281,8 @@ class MebPowerTest:
       "jump_cap": self.jump_cap,
       "faults": self.faults[-3:],
       "progress": progress,
+      "stock_eps": {"delay": float(np.interp(v_ego, STOCK_EPS_V, STOCK_EPS_DELAY)), "tau": float(np.interp(v_ego, STOCK_EPS_V, STOCK_EPS_TAU)),
+                    "gain": float(np.interp(v_ego, STOCK_EPS_V, STOCK_EPS_GAIN))},
       "trace": self.trace,
     }
     self.trace = []
