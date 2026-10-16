@@ -119,9 +119,8 @@ class CarController(CarControllerBase):
           power_max = int(np.interp(CS.out.vEgo, self.CCP.STEERING_POWER_MAX_BP, self.CCP.STEERING_POWER_MAX_V))
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
           max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, power_max)
-          target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_POWER_START, self.CCP.STEER_DRIVER_MAX],
-                                                                          [power_max, self.CCP.STEERING_POWER_MIN]))
-          target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
+          target_power = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_POWER_START, self.CCP.STEER_DRIVER_MAX],
+                                                                   [power_max, self.CCP.STEERING_POWER_MIN]))
           steering_power = min(max(target_power, min_power), max_power)
 
         else:
