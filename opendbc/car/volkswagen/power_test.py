@@ -6,10 +6,11 @@ import time
 import numpy as np
 
 # Local only. Maps the MEB EPS response (delay, lag, gain) at HCA_03 steering powers past stock, and which powers it accepts.
-# Arm by creating ARM_FILE on the device, then engage at a stop in an empty lot. The test drives itself: it runs the
-# standstill band, drives off on a left circle of about CIRCLE_RADIUS, runs each speed band on the circle and stops and
-# holds at the end until disengaged. Gas, brake or a hand on the wheel take over as usual. Each step starts over if
-# interrupted. An EPS fault at a power skips that band's remaining steps at or above it. Progress survives restarts.
+# Arm by creating ARM_FILE on the device, then engage at a stop, on a straight road. The test drives itself: it runs the
+# standstill band with steps to both end stops, then drives off and runs each speed band with small steps on top of
+# openpilot's own steering, so the car keeps its lane, and stops and holds at the end until disengaged. Gas, brake or a
+# hand on the wheel take over as usual. Each step starts over if interrupted. An EPS fault at a power skips that band's
+# remaining steps at or above it. Progress survives restarts.
 # ARM_FILE may hold "max_speed=3" to skip faster bands. When every band is done ARM_FILE is renamed.
 # Status for the onroad UI goes to STATUS_FILE.
 ARM_FILE = "/data/meb_power_test"
@@ -33,10 +34,9 @@ STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
 RELEASE = (10, 10)  # steering messages holding the base curvature before each maneuver, at standstill and rolling
 
-# rolling bands drive a left circle, steps go on top of it
-CIRCLE_RADIUS = 12.  # m, leaves room for the turn steps up to full lock
-CIRCLE_LAT_ACCEL = 2.  # m/s^2, a larger circle at speed
-MAX_LAT_ACCEL = 3.  # m/s^2, circle and step together
+# rolling steps go on top of openpilot's steering, sized to move the car at most DRIFT sideways
+DRIFT = 0.3  # m
+MAX_LAT_ACCEL = 3.  # m/s^2, openpilot's steering and the step together
 CURVATURE_MAX = 0.19  # m^-1, just under full lock
 REPEATS = 3  # of every step, for a solid model
 
@@ -74,6 +74,7 @@ SWEEP_JERK = 3.  # m/s^3 at the top frequency while rolling, under the jerk limi
 SWEEP_LEVELS = (50, 100)
 SWEEP_REPEATS = 2
 
+STANDSTILL_ONLY = ("turn", "lock", "stairs")
 # standstill only, the full range to both end stops: (power, maneuver)
 STANDSTILL_STEPS = ((50, "lock"), (75, "lock"), (100, "lock"), (50, "stairs"), (100, "stairs"))
 LOCK = CURVATURE_MAX  # the ID.4 turns about 5.1 m at full lock, so this reaches the end stops
@@ -127,7 +128,7 @@ def plan() -> list[tuple[str, int, int | None, str]]:
 
 def plan_id() -> str:
   # progress from a different plan doesn't carry over
-  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS, SWEEP_F, SWEEP_LENGTH, SWEEP_LEVELS, SWEEP_REPEATS,
+  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, DRIFT, SWEEP_F, SWEEP_LENGTH, SWEEP_LEVELS, SWEEP_REPEATS,
                STANDSTILL_STEPS, LOCK, LOCK_HOLDS, STAIRS, STAIR_HOLD))
 
 
@@ -141,16 +142,8 @@ def maneuver_length(maneuver: str, band: int) -> int:
   return 2 * DOUBLETS[maneuver][1 if band == 0 else 2] + TAIL
 
 
-def circle_curvature(v: float) -> float:
-  return min(1. / CIRCLE_RADIUS, CIRCLE_LAT_ACCEL / max(v, 0.1) ** 2)
-
-
-def base_curvature(band: int) -> float:
-  return 0. if band == 0 else circle_curvature(BANDS[band][0])
-
-
-def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
-  base = base_curvature(band)
+def maneuver_curvature(maneuver: str, k: int, band: int, base: float = 0.) -> float:
+  # base is openpilot's own steering while rolling, zero at standstill
   if maneuver == "sweep":
     v = BANDS[band][0]
     amp = SWEEP_CURVATURE if band == 0 else min(SWEEP_CURVATURE, SWEEP_JERK / (2 * math.pi * SWEEP_F[1] * v ** 2))
@@ -167,7 +160,9 @@ def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
   if band == 0:
     half = half_standstill
   else:
-    amp = min(amp, MAX_LAT_ACCEL / BANDS[band][0] ** 2 - base, CURVATURE_MAX - base)
+    # a doublet moves the car about curvature * (v * half time)^2 sideways
+    v = BANDS[band][0]
+    amp = max(min(amp, DRIFT / (v * half * DT) ** 2, MAX_LAT_ACCEL / v ** 2 - abs(base), CURVATURE_MAX - abs(base)), 0.)
   # ramped edges keep the wheel's inertia from reading as driver torque
   return base + float(np.interp(k, [0, EDGE, half, half + 2 * EDGE, 2 * half + EDGE, 2 * half + 2 * EDGE], [0., amp, amp, -amp, -amp, 0.]))
 
@@ -192,6 +187,7 @@ class MebPowerTest:
     self.finished_t = 0.
     self.holding = False  # the test has the pedals, kept after the end to hold the car until disengaged
     self.v_ego = 0.
+    self.plan_curvature = 0.
     self.frame = 0
     self.note = ""
     self.trace: list[tuple[float, float]] = []
@@ -230,8 +226,8 @@ class MebPowerTest:
     except OSError:
       pass
 
-  def _skipped(self, b: int, phase: str, target: int) -> bool:
-    if phase == "standstill" and b != 0:
+  def _skipped(self, b: int, phase: str, target: int, maneuver: str) -> bool:
+    if b != 0 and maneuver in STANDSTILL_ONLY:
       return True
     caps = [self.level_cap[b]] + ([self.jump_cap[b]] if phase == "jump" else [])
     return phase != "settle" and any(cap is not None and target >= cap for cap in caps)
@@ -241,7 +237,7 @@ class MebPowerTest:
     self.step_frame = 0
     self.release = 0
     self.step_idx[b] += 1
-    while self.step_idx[b] < len(self.steps) and self._skipped(b, *self.steps[self.step_idx[b]][:2]):
+    while self.step_idx[b] < len(self.steps) and self._skipped(b, *self.steps[self.step_idx[b]][:2], self.steps[self.step_idx[b]][3]):
       self.step_idx[b] += 1
     if self.step_idx[b] >= len(self.steps):
       self.done[b] = True
@@ -285,17 +281,12 @@ class MebPowerTest:
       return STOP_ACCEL, True
     return min(max(SPEED_GAIN * (target - v_ego), SPEED_ACCEL[0]), SPEED_ACCEL[1]), False
 
-  def turn_signal_left(self) -> bool:
-    # signal the left circle while the test drives, which also tests the turn signal on the car
-    return self.holding and not self.finished and self.v_ego > STOP_SPEED
+  def _base(self, b: int) -> float:
+    return 0. if b == 0 else self.plan_curvature
 
-  def _between_bands(self, lat_active: bool, v_ego: float) -> tuple[float, int] | None:
-    # keep on the circle while driving to the next band or to the stop
-    if not lat_active or (v_ego < STOP_SPEED and self._target_speed() == 0.):
-      return None
-    self.power += max(min(STOCK_POWER - self.power, RAMP), -RAMP)
-    self.curvature = circle_curvature(v_ego)
-    return self.curvature, int(self.power)
+  def turn_signal_left(self) -> bool:
+    # signal left through the standstill band, which tests the turn signal on the car
+    return self.band == 0 and not self.finished
 
   def _read_arm_file(self):
     try:
@@ -394,9 +385,10 @@ class MebPowerTest:
 
   def update(self, lat_active: bool, v_ego: float, driver_torque: float, hca_status: str | None, steering_pressed: bool,
              curvature_meas: float, steering_angle: float, steering_rate: float, yaw_rate: float,
-             curvature_last: float, power_last: int) -> tuple[float, int] | None:
+             curvature_last: float, power_last: int, plan_curvature: float = 0.) -> tuple[float, int] | None:
     """Call once per steering message. Returns (curvature, power) while the test steers, else None."""
     self.v_ego = v_ego
+    self.plan_curvature = plan_curvature
     if self.finished and os.path.exists(ARM_FILE):
       # armed again, fresh run
       self.__init__()
@@ -405,8 +397,7 @@ class MebPowerTest:
       self.frame += 1
       if time.monotonic() - self.finished_t < DONE_SHOW_S:
         self._status(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, power_last, curvature_last)
-      # stay on the circle until stopped
-      return self._between_bands(lat_active, v_ego) if self.holding else None
+      return None
     if not os.path.exists(ARM_FILE):
       return None
     if self.frame % 50 == 0:
@@ -443,7 +434,7 @@ class MebPowerTest:
       else:
         self.note = "starting"
       if self.quiet < QUIET_BEFORE_START:
-        return self._between_bands(lat_active, v_ego) if hands_off and not fault else None
+        return None
       self.band = band
       self.power = power_last
       self.release = 0
@@ -469,17 +460,17 @@ class MebPowerTest:
     if not lat_active or not hands_off or abs(v_ego - center) > tol:
       reason = "disengaged" if not lat_active else "hands on the wheel" if not hands_off else f"left the band at {v_ego:.1f} m/s"
       self._pause(reason)
-      return self._between_bands(lat_active, v_ego) if hands_off else None
+      return None
 
     # hold the base curvature while the power ramps to the target and for a moment after, a jump happens as the maneuver starts
     if ramp is not None and self.power != target:
       self.power += max(min(target - self.power, ramp), -ramp)
     if self.step_frame == 0 and (self.release < RELEASE[b != 0] or (ramp is not None and self.power != target)):
       self.release += 1
-      self.curvature = base_curvature(b)
+      self.curvature = self._base(b)
     else:
       self.power = target
-      self.curvature = maneuver_curvature(maneuver, self.step_frame, b)
+      self.curvature = maneuver_curvature(maneuver, self.step_frame, b, self._base(b))
       self.step_frame += 1
 
     label = maneuver if self.step_frame > 0 else "hold"

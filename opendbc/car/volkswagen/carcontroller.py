@@ -91,7 +91,7 @@ class CarController(CarControllerBase):
         lat_active = CC.latActive and not self.brake_exit
         test = self.power_test.update(lat_active, CS.out.vEgo, CS.out.steeringTorque, getattr(CS, "hca_status", None), CS.out.steeringPressed,
                                       CS.curvature_meas, CS.out.steeringAngleDeg, CS.out.steeringRateDeg, CS.out.yawRate,
-                                      self.apply_curvature_last, self.steering_power_last)
+                                      self.apply_curvature_last, self.steering_power_last, actuators.curvature)
         # Logic to avoid HCA refused state:
         #   * steering power as counter and near zero before OP lane assist deactivation
         # MEB rack can be used continuously without time limits
