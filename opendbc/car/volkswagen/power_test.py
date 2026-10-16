@@ -231,8 +231,9 @@ class MebPowerTest:
         pass
 
   def _status(self, lat_active: bool, v_ego: float, driver_torque: float, hca_status: str | None, curvature_meas: float,
-              steering_angle: float, power_last: int, force: bool = False):
-    self.trace.append((self.curvature, curvature_meas))
+              steering_angle: float, power_last: int, curvature_last: float, force: bool = False):
+    # what was sent, after the safety limits, against what the EPS measured
+    self.trace.append((curvature_last, curvature_meas))
     if not force and self.frame % STATUS_EVERY != 0:
       return
     b = self.band if self.band is not None else self._next_band()
@@ -295,7 +296,7 @@ class MebPowerTest:
                        curvature_last, power_last)
     if out is None:
       self.curvature = 0.
-    self._status(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, power_last)
+    self._status(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, power_last, curvature_last)
     return out
 
   def _update(self, lat_active: bool, v_ego: float, driver_torque: float, hca_status: str | None, curvature_meas: float,

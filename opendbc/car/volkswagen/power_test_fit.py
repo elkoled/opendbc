@@ -50,12 +50,13 @@ def simulate(cmd: np.ndarray, meas0: float, delay: int, tau: np.ndarray, gain: n
   return y
 
 
-def fit(segments: list[tuple[np.ndarray, np.ndarray]]) -> dict | None:
+def fit(segments: list[tuple[np.ndarray, np.ndarray]], rate: float | None = None) -> dict | None:
   if not segments or sum(len(c) for c, _ in segments) < 50:
     return None
-  dy = np.concatenate([np.diff(m) / DT for _, m in segments])
-  # the rate limit shows as the top of the measured rate
-  rate = float(np.percentile(np.abs(dy), 99.5)) * 1.02
+  if rate is None:
+    # the rate limit shows as the top of the measured rate
+    dy = np.concatenate([np.diff(m) / DT for _, m in segments])
+    rate = float(np.percentile(np.abs(dy), 99.5)) * 1.02
   tau, gain = np.meshgrid(TAUS, GAINS, indexing="ij")
   tot = sum(float(np.sum((m - m.mean()) ** 2)) for _, m in segments)
   best = None
