@@ -17,7 +17,7 @@ PLATFORM = CAR.VOLKSWAGEN_ID4_MK2
 DEG_PER_CURVATURE = 2600.
 
 
-def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000, max_s: float = 300.) -> tuple[CarController, int, list[dict]]:
+def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000, max_s: float = 900.) -> tuple[CarController, int, list[dict]]:
   # closed loop: car controller with the power test, panda safety and a rate limited first order EPS, at each speed in turn
   monkeypatch.setattr(power_test, "ARM_FILE", str(tmp_path / "arm"))
   monkeypatch.setattr(power_test, "LOG_DIR", str(tmp_path / "logs"))
@@ -106,7 +106,7 @@ class TestPowerTest:
 def power_test_fit_runs(tmp_path):
   from opendbc.car.volkswagen.power_test_fit import load
   for run in load([str(tmp_path / "logs")]):
-    rows = [r for r in run if r["maneuver"] in ("small", "big", "turn", "sweep") and r["power_sent"] == r["target_power"]]
+    rows = [r for r in run if r["maneuver"] in ("small", "big", "turn", "sweep", "lock", "stairs") and r["power_sent"] == r["target_power"]]
     if len(rows) >= 25:
       yield (float(rows[0]["band"]), int(rows[0]["target_power"]), np.array([float(r["curvature_sent"]) for r in rows]),
              np.array([float(r["curvature_meas"]) for r in rows]))

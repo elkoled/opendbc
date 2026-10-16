@@ -73,12 +73,40 @@ SWEEP_CURVATURE = 0.01  # m^-1, about 25 deg of wheel
 SWEEP_JERK = 3.  # m/s^3 at the top frequency while rolling, under the jerk limit
 SWEEP_LEVELS = (50, 100)
 SWEEP_REPEATS = 2
+
+# standstill only, the full range to both end stops: (power, maneuver)
+STANDSTILL_STEPS = ((50, "lock"), (75, "lock"), (100, "lock"), (50, "stairs"), (100, "stairs"))
+LOCK = CURVATURE_MAX  # the ID.4 turns about 5.1 m at full lock, so this reaches the end stops
+# lock to lock: left, right, back to center, held this long in steering messages
+LOCK_HOLDS = (400, 600, 300)
+# staircase from right lock to left lock and back, STAIRS levels held STAIR_HOLD each
+STAIRS = 13
+STAIR_HOLD = 75
+
+
+def _profile(levels: list[float], holds: list[int]) -> tuple[np.ndarray, np.ndarray]:
+  # piecewise constant curvature with ramped edges, starting at center
+  t, c, k = [0], [0.], 0
+  for level, hold in zip(levels, holds, strict=True):
+    t += [k + EDGE, k + hold]
+    c += [level, level]
+    k += hold
+  return np.array(t, float), np.array(c)
+
+
+_stairs = list(np.linspace(-LOCK, LOCK, STAIRS))
+PROFILES = {
+  "lock": _profile([LOCK, -LOCK, 0.], list(LOCK_HOLDS)),
+  "stairs": _profile([-LOCK] + _stairs[1:] + _stairs[-2::-1] + [0.], [200] + [STAIR_HOLD] * (2 * STAIRS - 2) + [150]),
+}
 DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
   "big": "big step",
   "turn": "turn",
   "sweep": "sweep",
+  "lock": "lock to lock",
+  "stairs": "angle steps",
 }
 
 
@@ -92,18 +120,22 @@ def plan() -> list[tuple[str, int, int | None, str]]:
     for _ in range(REPEATS):
       steps.append(("settle", STOCK_POWER, RAMP, "hold"))
       steps.append(("jump", STOCK_POWER + jump, None, "big"))
+  steps += [("standstill", power, RAMP, m) for power, m in STANDSTILL_STEPS]
   steps.append(("settle", STOCK_POWER, RAMP, "hold"))
   return steps
 
 
 def plan_id() -> str:
   # progress from a different plan doesn't carry over
-  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS, SWEEP_F, SWEEP_LENGTH, SWEEP_LEVELS, SWEEP_REPEATS))
+  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS, SWEEP_F, SWEEP_LENGTH, SWEEP_LEVELS, SWEEP_REPEATS,
+               STANDSTILL_STEPS, LOCK, LOCK_HOLDS, STAIRS, STAIR_HOLD))
 
 
 def maneuver_length(maneuver: str, band: int) -> int:
   if maneuver == "sweep":
     return SWEEP_LENGTH
+  if maneuver in PROFILES:
+    return int(PROFILES[maneuver][0][-1])
   if maneuver not in DOUBLETS:
     return 0
   return 2 * DOUBLETS[maneuver][1 if band == 0 else 2] + TAIL
@@ -127,6 +159,8 @@ def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
     phase = 2 * math.pi * SWEEP_F[0] * (math.exp(rate * t) - 1) / rate
     # tapered over the first and last 0.25 s
     return base + amp * min(1., t / 0.25, (length - t) / 0.25) * math.sin(phase)
+  if maneuver in PROFILES:
+    return base + float(np.interp(k, *PROFILES[maneuver]))
   if maneuver not in DOUBLETS:
     return base
   amp, half_standstill, half = DOUBLETS[maneuver]
@@ -196,6 +230,8 @@ class MebPowerTest:
       pass
 
   def _skipped(self, b: int, phase: str, target: int) -> bool:
+    if phase == "standstill" and b != 0:
+      return True
     caps = [self.level_cap[b]] + ([self.jump_cap[b]] if phase == "jump" else [])
     return phase != "settle" and any(cap is not None and target >= cap for cap in caps)
 
