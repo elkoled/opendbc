@@ -133,7 +133,7 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
       CC.currentCurvature = float(cs_curvature)
       CS = SimpleNamespace(out=structs.CarState(vEgo=float(cs_v), vEgoRaw=float(cs_v), yawRate=cs_yaw), curvature_meas=float(cs_eps),
                            eps_stock_values=defaultdict(int), klr_stock_values=defaultdict(int), acc_type=0,
-                           gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0)
+                           gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0, ea_stock_values={})
       _, sends = cc.update(CC.as_reader(), CS, int(t * 1e9))
       for addr, dat, _ in sends:
         if addr == 0x303:
@@ -213,7 +213,7 @@ class TestVolkswagenMebCurvatureSafety(unittest.TestCase):
               CC.currentCurvature = 0.01
               CS = SimpleNamespace(out=structs.CarState(vEgo=v, vEgoRaw=v, yawRate=0.01 * v, brakePressed=brake, standstill=v == 0.),
                                    curvature_meas=0.01, eps_stock_values=defaultdict(int), klr_stock_values=defaultdict(int), acc_type=0,
-                                   gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0,
+                                   gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0, ea_stock_values={},
                                    esp_hold_confirmation=False, esp_standstill=v == 0., travel_assist_available=False)
               CS.out.cruiseState.available = True
               _, sends = cc.update(CC.as_reader(), CS, int(t * 1e9))

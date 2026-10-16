@@ -67,7 +67,7 @@ def run_test(tmp_path, monkeypatch, speeds: list[float], fault_power: int = 1000
     CC.currentCurvature = eps
     CS = SimpleNamespace(out=structs.CarState(vEgo=v, vEgoRaw=v, yawRate=eps * v, steeringAngleDeg=eps * DEG_PER_CURVATURE, standstill=v == 0.),
                          curvature_meas=eps, eps_stock_values=defaultdict(int), klr_stock_values=defaultdict(int), acc_type=0,
-                         gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0,
+                         gra_stock_values=defaultdict(int), ldw_stock_values=defaultdict(int), gra_stock_counter=0, ea_stock_values={},
                          hca_status="FAULT" if faulted else "ACTIVE" if power else "READY")
     _, sends = cc.update(CC.as_reader(), CS, int(t * 1e9))
     for addr, dat, bus in sends:

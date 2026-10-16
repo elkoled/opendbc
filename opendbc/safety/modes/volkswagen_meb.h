@@ -12,6 +12,7 @@
 #define MSG_QFK_01           0x13DU
 #define MSG_Motor_51         0x10BU   // RX for TSK state and accel pedal
 #define MSG_KLR_01           0x25DU   // TX, for capacitive steering wheel
+#define MSG_EA_02            0x1F0U   // TX by OP, Emergency Assist, passed through with a turn signal request
 #define MSG_TA_01            0x26BU   // TX by OP, Travel Assist status
 
 // ACC_18.ACC_Anforderung_HMS, the states openpilot is allowed to request
@@ -115,6 +116,7 @@ static safety_config volkswagen_meb_init(uint16_t param) {
     {MSG_ACC_19, 0, 48, .check_relay = true},
     {MSG_ACC_18, 0, 32, .check_relay = true},
     {MSG_TA_01, 0, 8, .check_relay = true},
+    {MSG_EA_02, 0, 8, .check_relay = true},
   };
 
   volkswagen_common_init();

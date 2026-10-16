@@ -62,6 +62,7 @@ class CarController(CarControllerBase):
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
     self.gra_acc_counter_last = None
+    self.ea_counter_last = None
     self.hca_mitigation = HCAMitigation(self.CCP)
     self.brake_pressed_last = False
     self.brake_exit = False
@@ -176,6 +177,12 @@ class CarController(CarControllerBase):
         if abs(CS.out.steeringTorque) > abs(ea_simulated_torque):
           ea_simulated_torque = CS.out.steeringTorque
         can_sends.append(self.CCS.create_eps_update(self.packer_pt, self.CAN.cam, CS.eps_stock_values, ea_simulated_torque))
+
+    # turn signal through the camera's Emergency Assist message, sent as each one arrives
+    if self.CP.flags & VolkswagenFlags.MEB and CS.ea_stock_values:
+      if CS.ea_stock_values["COUNTER"] != self.ea_counter_last:
+        can_sends.append(mebcan.create_ea_blinker(self.packer_pt, self.CAN.pt, CS.ea_stock_values, CC.leftBlinker, CC.rightBlinker))
+      self.ea_counter_last = CS.ea_stock_values["COUNTER"]
 
     # Emergency Assist intervention
     if self.CP.flags & VolkswagenFlags.MEB and self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT:
