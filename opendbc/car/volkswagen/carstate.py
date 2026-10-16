@@ -262,6 +262,7 @@ class CarState(CarStateBase):
     in_drive = ret.gearShifter == GearShifter.drive
 
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["QFK_01"]["LatCon_HCA_Status"])
+    self.hca_status = hca_status
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status, in_drive)
 
     ret.carFaultedNonCritical = cam_cp.vl["EA_01"]["EA_Funktionsstatus"] in (3, 4, 5, 6)

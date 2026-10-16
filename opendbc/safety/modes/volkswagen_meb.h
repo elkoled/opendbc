@@ -273,7 +273,7 @@ static bool volkswagen_meb_tx_hook(const CANPacket_t *msg) {
       .frequency = 50,                   // Hz
       .max_curvature_error = 0,          // disabled, MEB doesn't track rack
       .curvature_error_min_speed = 0.0,  // disabled
-      .max_steer_power = 125,
+      .max_steer_power = 250,  // local power test only
       .yaw_rate_to_rad = 0.000174533f,  // ESC_50 yaw rate, 0.01 deg/s
     };
 

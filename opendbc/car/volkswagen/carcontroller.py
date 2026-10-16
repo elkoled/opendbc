@@ -5,6 +5,7 @@ from opendbc.car.lateral import EpsCurvatureRatio, apply_driver_steer_torque_lim
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.volkswagen import mebcan, mlbcan, mqbcan, pqcan
+from opendbc.car.volkswagen.power_test import MebPowerTest
 from opendbc.car.volkswagen.values import CanBus, CarControllerParams, VolkswagenFlags
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -56,6 +57,7 @@ class CarController(CarControllerBase):
     self.steering_power_last = 0
     self.curvature_error_i = 0.
     self.eps_curvature_ratio = EpsCurvatureRatio()
+    self.power_test = MebPowerTest()
     self.accel_last = 0.
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
@@ -85,6 +87,9 @@ class CarController(CarControllerBase):
       apply_torque = 0
       if self.CP.flags & VolkswagenFlags.MEB:
         lat_active = CC.latActive and not self.brake_exit
+        test = self.power_test.update(lat_active, CS.out.vEgo, CS.out.steeringTorque, getattr(CS, "hca_status", None), CS.out.steeringPressed,
+                                      CS.curvature_meas, CS.out.steeringAngleDeg, CS.out.steeringRateDeg, CS.out.yawRate,
+                                      self.apply_curvature_last, self.steering_power_last)
         # Logic to avoid HCA refused state:
         #   * steering power as counter and near zero before OP lane assist deactivation
         # MEB rack can be used continuously without time limits
@@ -115,18 +120,28 @@ class CarController(CarControllerBase):
 
           power_max = self.CCP.STEERING_POWER_MAX
           min_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, self.CCP.STEERING_POWER_MIN)
-          max_power = min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, power_max)
+          # after the power test, come down from above the max in steps too
+          max_power = max(min(self.steering_power_last + self.CCP.STEERING_POWER_STEP, power_max), min_power)
           target_power_driver = int(np.interp(abs(CS.out.steeringTorque), [self.CCP.STEER_DRIVER_POWER_START, self.CCP.STEER_DRIVER_MAX],
                                                                           [power_max, self.CCP.STEERING_POWER_MIN]))
           target_power = int(np.interp(CS.out.vEgo, [0., 0.5], [self.CCP.STEERING_POWER_MIN, target_power_driver]))
           steering_power = min(max(target_power, min_power), max_power)
+
+          if test is not None:
+            apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(test[0], self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
+                                                                     lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
+            steering_power = test[1]
+            self.curvature_error_i = 0.
+            self.desired_curvature = actuators.curvature
 
         else:
           self.curvature_error_i = 0.
           self.desired_curvature = actuators.curvature
           if self.steering_power_last > 0:  # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
-            apply_curvature = float(np.clip(CS.curvature_meas, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX))
+            # move to the measured curvature within the jerk limit, the panda may still allow controls after an EPS fault
+            apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(CS.curvature_meas, self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
+                                                                     True, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
             steering_power = max(self.steering_power_last - self.CCP.STEERING_POWER_STEP, 0)
           else:
             hca_enabled = False
