@@ -107,7 +107,9 @@ class CarControllerParams:
       self.STEER_DRIVER_ALLOWANCE = 100   # Driver torque 1.0 Nm, steering pressed
       self.STEER_DRIVER_POWER_START = 150  # Driver torque 1.5 Nm, begin steering power reduction from MAX
       self.STEER_DRIVER_MAX = 300         # Driver torque 3.0 Nm, stop steering reduction at MIN
-      self.STEERING_POWER_MAX = 50        # HCA_03 maximum steering power, percentage, stock never sends more
+      # HCA_03 maximum steering power, percentage, stock never sends more than 50, full power below 10 m/s for tight turns
+      self.STEERING_POWER_MAX_BP = [10., 12.]  # m/s
+      self.STEERING_POWER_MAX_V = [100, 50]
       self.STEERING_POWER_MIN = 4         # HCA_03 minimum steering power, percentage
       self.STEERING_POWER_STEP = 4        # HCA_03 steering power counter steps, stock changes it by up to 5
 
