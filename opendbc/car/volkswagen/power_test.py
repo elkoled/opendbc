@@ -191,6 +191,7 @@ class MebPowerTest:
     self.finished = False
     self.finished_t = 0.
     self.holding = False  # the test has the pedals, kept after the end to hold the car until disengaged
+    self.v_ego = 0.
     self.frame = 0
     self.note = ""
     self.trace: list[tuple[float, float]] = []
@@ -283,6 +284,10 @@ class MebPowerTest:
     if target == 0. and v_ego < STOP_SPEED:
       return STOP_ACCEL, True
     return min(max(SPEED_GAIN * (target - v_ego), SPEED_ACCEL[0]), SPEED_ACCEL[1]), False
+
+  def turn_signal_left(self) -> bool:
+    # signal the left circle while the test drives, which also tests the turn signal on the car
+    return self.holding and not self.finished and self.v_ego > STOP_SPEED
 
   def _between_bands(self, lat_active: bool, v_ego: float) -> tuple[float, int] | None:
     # keep on the circle while driving to the next band or to the stop
@@ -391,6 +396,7 @@ class MebPowerTest:
              curvature_meas: float, steering_angle: float, steering_rate: float, yaw_rate: float,
              curvature_last: float, power_last: int) -> tuple[float, int] | None:
     """Call once per steering message. Returns (curvature, power) while the test steers, else None."""
+    self.v_ego = v_ego
     if self.finished and os.path.exists(ARM_FILE):
       # armed again, fresh run
       self.__init__()

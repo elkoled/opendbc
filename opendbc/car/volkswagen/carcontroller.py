@@ -181,7 +181,8 @@ class CarController(CarControllerBase):
     # turn signal through the camera's Emergency Assist message, sent as each one arrives
     if self.CP.flags & VolkswagenFlags.MEB and CS.ea_stock_values:
       if CS.ea_stock_values["COUNTER"] != self.ea_counter_last:
-        can_sends.append(mebcan.create_ea_blinker(self.packer_pt, self.CAN.pt, CS.ea_stock_values, CC.leftBlinker, CC.rightBlinker))
+        left = CC.leftBlinker or self.power_test.turn_signal_left()
+        can_sends.append(mebcan.create_ea_blinker(self.packer_pt, self.CAN.pt, CS.ea_stock_values, left, CC.rightBlinker and not left))
       self.ea_counter_last = CS.ea_stock_values["COUNTER"]
 
     # Emergency Assist intervention
