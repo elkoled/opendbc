@@ -41,7 +41,9 @@ RELEASE = (10, 10)  # steering messages of openpilot steering before each maneuv
 SPEED_GAIN = 1.  # 1/s
 SPEED_ACCEL = 1.  # m/s^2
 
-MAX_DRIVER_TORQUE = 150  # 1.5 Nm, the fast swings themselves show up as some torque
+MAX_DRIVER_TORQUE = 150  # 1.5 Nm
+MAX_DRIVER_TORQUE_STEP = 300  # during a step the wheel's own motion reads up to about 3 Nm
+HANDS_ON = 15  # steering messages over the limit before it counts as hands on
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
 STATUS_EVERY = 5  # steering messages, 10 Hz
 
@@ -49,9 +51,10 @@ LOG_COLUMNS = ("t", "band", "step", "phase", "maneuver", "frame", "target_power"
                "curvature_meas", "steering_angle", "steering_rate", "yaw_rate", "hca_status", "driver_torque", "v_ego")
 FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 
-# small doublet: + then - for HALF, then zero for TAIL, in steering messages
-HALF = 15
-TAIL = 10
+# small doublet: + then - for HALF, then zero for TAIL, edges ramped over EDGE, in steering messages
+HALF = 25
+TAIL = 20
+EDGE = 5
 DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
@@ -78,7 +81,8 @@ def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
   v = BANDS[band][0]
   # a doublet moves the car about curvature * (v * half time)^2 sideways
   amp = min(CURVATURE_SMALL, DRIFT / max(v * HALF * DT, 1e-3) ** 2)
-  return amp if k < HALF else -amp if k < 2 * HALF else 0.
+  # ramped edges keep the wheel's inertia from reading as driver torque
+  return float(np.interp(k, [0, EDGE, HALF, HALF + 2 * EDGE, 2 * HALF + EDGE, 2 * HALF + 2 * EDGE], [0., amp, amp, -amp, -amp, 0.]))
 
 
 class MebPowerTest:
@@ -103,6 +107,7 @@ class MebPowerTest:
     self.trace: list[tuple[float, float]] = []
     self.max_speed = float("inf")
     self.release = 0  # steering messages openpilot has steered before this maneuver
+    self.torque_frames = 0
 
   def _write(self, line: str):
     if self.log is None:
@@ -289,7 +294,9 @@ class MebPowerTest:
               steering_angle: float, steering_rate: float, yaw_rate: float, curvature_last: float,
               power_last: int) -> tuple[float | None, int] | None:
     fault = hca_status in FAULT_STATUSES
-    hands_off = abs(driver_torque) < MAX_DRIVER_TORQUE
+    limit = MAX_DRIVER_TORQUE_STEP if self.band is not None and self.step_frame > 0 else MAX_DRIVER_TORQUE
+    self.torque_frames = self.torque_frames + 1 if abs(driver_torque) > limit else 0
+    hands_off = self.torque_frames < HANDS_ON
 
     if self.band is None:
       band = self._matching_band(v_ego)
