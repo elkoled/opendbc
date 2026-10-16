@@ -94,16 +94,20 @@ class MebLongStateMachine:
     else:
       return self.acc_status_vals['ACC_OFF_HAUPTSCHALTER_AUS']  # disabled
 
-  def _get_hold_type(self, CS, CC, exiting) -> int:
+  def _get_hold_type(self, CS, CC, exiting, stopping_override=None) -> int:
     # warning: car is reacting to hold mechanic even with long control off
     # HALTEN -> KEINE_ANFORDERUNG causes the car to fault into park, so both branches below put a ramp in
     # between: disengaging always ramps, and while engaged a release ramps until 5 kph
     # NOTE: ANFAHREN faults TSK if the hold manager isn't holding
     # TODO: camera can send 7 on disengage at a stop which we don't fully understand yet
-    stopping = CC.actuators.longControlState == LongCtrlState.stopping
+    if stopping_override is None:
+      stopping = CC.actuators.longControlState == LongCtrlState.stopping
+      wants_to_go = CC.actuators.longControlState == LongCtrlState.pid
+    else:
+      stopping, wants_to_go = stopping_override, not stopping_override
     # HMS_Status leaves holding as soon as we send anfahren, so keep driving off until we leave standstill
     driving_off = self.prev_acc_hold_type == self.acc_hold_type_vals['ANFAHREN'] and CS.esp_standstill
-    starting = CC.actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or driving_off)
+    starting = wants_to_go and (CS.esp_hold_confirmation or driving_off)
     long_active = CC.longActive and not CS.out.accFaulted and not exiting  # catches it one frame earlier
 
     if not long_active:
@@ -137,9 +141,9 @@ class MebLongStateMachine:
 
     return acc_hold_type
 
-  def update(self, CS, CC, accel, exiting=False) -> tuple[float, int, int, bool, bool]:
+  def update(self, CS, CC, accel, exiting=False, stopping=None) -> tuple[float, int, int, bool, bool]:
     acc_status = self._get_acc_status(CS, CC, exiting)
-    acc_hold_type = self._get_hold_type(CS, CC, exiting)
+    acc_hold_type = self._get_hold_type(CS, CC, exiting, stopping)
 
     # transition to inactive accel and jerks as soon as we enter ESP standstill
     requesting_hold = acc_hold_type == self.acc_hold_type_vals['HALTEN']

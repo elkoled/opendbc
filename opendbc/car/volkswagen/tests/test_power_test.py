@@ -110,13 +110,25 @@ def power_test_fit_runs(tmp_path):
              np.array([float(r["curvature_meas"]) for r in rows]))
 
 
-def test_accel_limit_holds_band_speed(tmp_path, monkeypatch):
+def test_long_command_drives_the_test(tmp_path, monkeypatch):
   monkeypatch.setattr(power_test, "ARM_FILE", str(tmp_path / "arm"))
   monkeypatch.setattr(power_test, "LOG_DIR", str(tmp_path / "logs"))
   t = power_test.MebPowerTest()
-  assert t.accel_limit(0.) is None
+  assert t.long_command(0., True) is None
   (tmp_path / "arm").write_text("")
-  assert t.accel_limit(0.) == power_test.SPEED_ACCEL
-  assert t.accel_limit(2.) < 0.
-  t.done = [False, True, True, True]
-  assert t.accel_limit(0.) is None
+  # standstill band first: hold
+  assert t.long_command(0., True) == (power_test.STOP_ACCEL, True)
+  # then drive to the next band
+  t.done = [True, False, False, False]
+  accel, stopping = t.long_command(0., True)
+  assert accel > 0. and not stopping
+  # a gas override hands the pedals back
+  assert t.long_command(1., False) is None
+  assert t.long_command(3., True) is not None
+  # finished: stop and hold until disengaged
+  t.done = [True] * 4
+  t.finished = True
+  assert t.long_command(2., True) == (power_test.SPEED_ACCEL[0], False)
+  assert t.long_command(0., True) == (power_test.STOP_ACCEL, True)
+  assert t.long_command(0., False) is None
+  assert t.long_command(0., True) is None

@@ -192,11 +192,11 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl:
       if self.frame % self.CCP.ACC_CONTROL_STEP == 0:
         if self.CP.flags & VolkswagenFlags.MEB:
-          accel = float(np.clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
-          # only while openpilot has the pedals, a brake request under a gas override faults the ACC
-          if CC.longActive and (accel_limit := self.power_test.accel_limit(CS.out.vEgo)) is not None:
-            accel = min(accel, accel_limit)
-          accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = self.meb_long_state.update(CS, CC, accel, self.brake_exit)
+          # the EPS test drives the speed itself, only while openpilot has the pedals, a brake request under a gas override faults the ACC
+          test_long = self.power_test.long_command(CS.out.vEgo, CC.longActive)
+          accel = float(np.clip(actuators.accel if test_long is None else test_long[0], self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX))
+          accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill = self.meb_long_state.update(
+            CS, CC, accel, self.brake_exit, None if test_long is None else test_long[1])
           can_sends.extend(mebcan.create_acc_accel_control(self.packer_pt, self.CAN.pt, self.CCP, CS.acc_type, CC.enabled and not self.brake_exit,
                                                            accel, acc_status, acc_hold_type, braking_to_stop, leaving_standstill,
                                                            CS.out.vEgoRaw * CV.MS_TO_KPH, CS.travel_assist_available))
