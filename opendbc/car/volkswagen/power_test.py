@@ -47,7 +47,7 @@ STOP_SPEED = 0.3  # m/s
 STOP_ACCEL = -0.5  # m/s^2, while holding
 
 MAX_DRIVER_TORQUE = 150  # 1.5 Nm
-MAX_DRIVER_TORQUE_STEP = 300  # during a step the wheel's own motion reads up to about 3 Nm
+MAX_DRIVER_TORQUE_STEP = 400  # during a step the wheel's own fast motion reads up to about 3 Nm
 HANDS_ON = 15  # steering messages over the limit before it counts as hands on
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
 STATUS_EVERY = 5  # steering messages, 10 Hz
@@ -62,7 +62,7 @@ FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 DOUBLETS = {
   "small": (0.02, 50, 25),  # about 50 deg of wheel, the wheel moves slowest at standstill
   "big": (0.05, 100, 30),  # about 130 deg, long enough to settle and to reach the EPS rate limit
-  "turn": (0.11, 100, 50),  # about 290 deg, a tight 90 degree turn, as fast as the safety limits allow
+  "turn": (0.11, 100, 100),  # about 290 deg, a tight 90 degree turn as fast as the safety limits allow, held to see how far it gets
 }
 TAIL = 20
 EDGE = 5
