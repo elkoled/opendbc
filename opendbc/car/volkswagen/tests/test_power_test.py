@@ -90,7 +90,7 @@ class TestPowerTest:
       groups[(run[0], run[1])].append(run[2:])
     from opendbc.car.volkswagen.power_test_fit import fit
     f = fit(groups[(1.5, 50)])
-    assert f is not None and 0.1 < f["tau"] < 0.25 and 0.85 < f["gain"] < 1.05 and abs(f["rate_deg_s"] - 230.) < 25.
+    assert f is not None and 0.1 < f["tau"] < 0.25 and 0.85 < f["gain"] < 1.05
 
   def test_fault_skips_higher_powers(self, tmp_path, monkeypatch):
     cc, blocked, _ = run_test(tmp_path, monkeypatch, [0.], fault_power=80)
@@ -104,7 +104,7 @@ class TestPowerTest:
 def power_test_fit_runs(tmp_path):
   from opendbc.car.volkswagen.power_test_fit import load
   for run in load([str(tmp_path / "logs")]):
-    rows = [r for r in run if r["maneuver"] in ("small", "big", "sweep") and r["power_sent"] == r["target_power"]]
+    rows = [r for r in run if r["maneuver"] == "small" and r["power_sent"] == r["target_power"]]
     if len(rows) >= 25:
       yield (float(rows[0]["band"]), int(rows[0]["target_power"]), np.array([float(r["curvature_sent"]) for r in rows]),
              np.array([float(r["curvature_meas"]) for r in rows]))

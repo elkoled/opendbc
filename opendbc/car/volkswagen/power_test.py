@@ -5,33 +5,27 @@ import time
 
 import numpy as np
 
-# Local only. Maps the MEB EPS response (delay, lag, gain, rate limit and frequency response) at HCA_03 steering powers past
-# stock, and which powers it accepts. Arm by creating ARM_FILE on the device. While engaged and hands off, whichever
-# unfinished speed band matches the current speed runs its next maneuver. Every maneuver is short (3 s at most) and starts
-# over if interrupted, so a band can be done over several short passes in a small lot. Leaving the band or touching the
+# Local only. Maps the MEB EPS response (delay, lag, gain) at HCA_03 steering powers past stock, and which powers it accepts.
+# Arm by creating ARM_FILE on the device. While engaged and hands off, whichever unfinished speed band matches the current
+# speed runs its small steps, a few seconds per band. Each step starts over if interrupted. Leaving the band or touching the
 # wheel pauses it. An EPS fault at a power skips that band's remaining steps at or above it. Progress survives restarts.
-# Between maneuvers openpilot steers as usual, at the test power, which brings the car back to its path. Rolling maneuvers
-# are short left-right doublets sized to drift the car about DRIFT sideways, so a small lot is enough.
+# Between steps openpilot steers as usual, at the test power. Rolling steps are sized to drift the car about DRIFT sideways.
 # ARM_FILE may hold "max_speed=3" to skip faster bands in a small lot. When every band is done ARM_FILE is renamed.
 # Status for the onroad UI goes to STATUS_FILE.
 ARM_FILE = "/data/meb_power_test"
 LOG_DIR = "/data/meb_power_test_logs"
-STATE_FILE = "state_v2.json"
+STATE_FILE = "state_v3.json"
 STATUS_FILE = "/dev/shm/meb_power_test.json"
 
 STOCK_POWER = 50
 LEVELS = (50, 75, 100)
-JUMPS = (25, 50)
-RAMP = 1  # percent per steering message, slower than stock
+JUMPS = (50,)
+RAMP = 5  # percent per steering message, like stock
 # (center speed, tolerance) in m/s, the first band is a standstill
 BANDS = ((0., 0.3), (1.5, 0.7), (3., 0.8), (5., 1.))
 DT = 0.02  # steering message period
 
-CURVATURE_BIG = 0.1  # m^-1, about 260 deg of wheel
 CURVATURE_SMALL = 0.02  # m^-1, about 50 deg of wheel
-SWEEP_JERK = 3.  # m/s^3 at the top sweep frequency, under the jerk limit
-SWEEP_F = (0.5, 3.)  # Hz, below that the doublets cover it
-SWEEP_LEVELS = (50, 100)
 
 # stock power EPS, fitted from normal driving (tools/lateral_maneuvers/meb_eps_fit.py), the screen draws it against the live response
 STOCK_EPS_V = (3.5, 6.5, 10., 16., 25., 37.5)  # m/s
@@ -40,7 +34,7 @@ STOCK_EPS_TAU = (0.172, 0.159, 0.401, 0.635, 0.588, 0.545)  # s
 STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
 DRIFT = 0.5  # m, sideways from a rolling doublet
-RELEASE = (25, 50)  # steering messages of openpilot steering before each maneuver, at standstill and rolling
+RELEASE = (10, 10)  # steering messages of openpilot steering before each maneuver, at standstill and rolling
 
 MAX_DRIVER_TORQUE = 150  # 1.5 Nm, the fast swings themselves show up as some torque
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
@@ -50,60 +44,36 @@ LOG_COLUMNS = ("t", "band", "step", "phase", "maneuver", "frame", "target_power"
                "curvature_meas", "steering_angle", "steering_rate", "yaw_rate", "hca_status", "driver_torque", "v_ego")
 FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 
-# maneuver: (half doublet at standstill, rolling, then this long at zero) in steering messages
-DOUBLETS = {
-  "small": (30, 25, 15),
-  "big": (60, 40, 25),
-}
-SWEEP_LENGTH = 150  # log chirp over SWEEP_F
+# small doublet: + then - for HALF, then zero for TAIL, in steering messages
+HALF = 15
+TAIL = 10
 DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
-  "big": "big step",
-  "sweep": "sweep",
 }
 
 
 def plan() -> list[tuple[str, int, int | None, str]]:
   # each step: (phase, target power, ramp per message or None for an instant jump, maneuver)
-  steps: list[tuple[str, int, int | None, str]] = []
-  for level in LEVELS:
-    for maneuver in ("small", "big") + (("sweep",) if level in SWEEP_LEVELS else ()):
-      steps.append(("level", level, RAMP, maneuver))
+  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, "small") for level in LEVELS]
   for jump in JUMPS:
     steps.append(("settle", STOCK_POWER, RAMP, "hold"))
-    steps.append(("jump", STOCK_POWER + jump, None, "big"))
+    steps.append(("jump", STOCK_POWER + jump, None, "small"))
   steps.append(("settle", STOCK_POWER, RAMP, "hold"))
   return steps
 
 
 def maneuver_length(maneuver: str, band: int) -> int:
-  if maneuver in DOUBLETS:
-    standstill, rolling, tail = DOUBLETS[maneuver]
-    return 2 * (standstill if band == 0 else rolling) + tail
-  return SWEEP_LENGTH if maneuver == "sweep" else 0
+  return 2 * HALF + TAIL if maneuver == "small" else 0
 
 
 def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
+  if maneuver != "small":
+    return 0.
   v = BANDS[band][0]
-  standstill = band == 0
-  if maneuver in DOUBLETS:
-    half = DOUBLETS[maneuver][0 if standstill else 1]
-    amp = CURVATURE_BIG if maneuver == "big" else CURVATURE_SMALL
-    if not standstill:
-      # a doublet moves the car about curvature * (v * half time)^2 sideways
-      amp = min(amp, DRIFT / (v * half * DT) ** 2)
-    return amp if k < half else -amp if k < 2 * half else 0.
-  if maneuver == "sweep":
-    amp = CURVATURE_SMALL if standstill else min(CURVATURE_SMALL, SWEEP_JERK / (2 * math.pi * SWEEP_F[1] * v ** 2))
-    n = SWEEP_LENGTH
-    t, length = k * DT, n * DT
-    # log chirp, tapered over the first and last 0.25 s
-    rate = math.log(SWEEP_F[1] / SWEEP_F[0]) / length
-    phase = 2 * math.pi * SWEEP_F[0] * (math.exp(rate * t) - 1) / rate
-    taper = min(1., t / 0.25, (length - t) / 0.25)
-    return amp * taper * math.sin(phase)
-  return 0.
+  # a doublet moves the car about curvature * (v * half time)^2 sideways
+  amp = min(CURVATURE_SMALL, DRIFT / max(v * HALF * DT, 1e-3) ** 2)
+  return amp if k < HALF else -amp if k < 2 * HALF else 0.
 
 
 class MebPowerTest:

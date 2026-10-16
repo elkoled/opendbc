@@ -51,7 +51,7 @@ def simulate(cmd: np.ndarray, meas0: float, delay: int, tau: np.ndarray, gain: n
 
 
 def fit(segments: list[tuple[np.ndarray, np.ndarray]], rate: float | None = None) -> dict | None:
-  if not segments or sum(len(c) for c, _ in segments) < 50:
+  if not segments or sum(len(c) for c, _ in segments) < 30:
     return None
   if rate is None:
     # the rate limit shows as the top of the measured rate
@@ -84,7 +84,7 @@ def main():
       r = run[-1]
       faults.append(f"band {r['band']} m/s {r['phase']} {r['maneuver']} power {r['power_sent']}: {r['hca_status']}")
     # only the maneuver itself at its target power, recentering and ramps excluded
-    rows = [r for r in run if r["maneuver"] in ("small", "big", "sweep") and r["power_sent"] == r["target_power"]]
+    rows = [r for r in run if r["maneuver"] == "small" and r["power_sent"] == r["target_power"]]
     if len(rows) < 25:
       continue
     cmd = np.array([float(r["curvature_sent"]) for r in rows])
