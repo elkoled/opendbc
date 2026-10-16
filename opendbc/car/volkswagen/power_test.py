@@ -66,17 +66,28 @@ DOUBLETS = {
 }
 TAIL = 20
 EDGE = 5
+# log chirp for the small signal frequency response, which more power may change
+SWEEP_F = (0.5, 3.)  # Hz
+SWEEP_LENGTH = 150  # steering messages
+SWEEP_CURVATURE = 0.01  # m^-1, about 25 deg of wheel
+SWEEP_JERK = 3.  # m/s^3 at the top frequency while rolling, under the jerk limit
+SWEEP_LEVELS = (50, 100)
+SWEEP_REPEATS = 2
 DESCRIPTION = {
   "hold": "settle",
   "small": "small step",
   "big": "big step",
   "turn": "turn",
+  "sweep": "sweep",
 }
 
 
 def plan() -> list[tuple[str, int, int | None, str]]:
   # each step: (phase, target power, ramp per message or None for an instant jump, maneuver)
-  steps: list[tuple[str, int, int | None, str]] = [("level", level, RAMP, m) for level in LEVELS for m in ("small", "big", "turn") for _ in range(REPEATS)]
+  steps: list[tuple[str, int, int | None, str]] = []
+  for level in LEVELS:
+    steps += [("level", level, RAMP, m) for m in ("small", "big", "turn") for _ in range(REPEATS)]
+    steps += [("level", level, RAMP, "sweep")] * (SWEEP_REPEATS if level in SWEEP_LEVELS else 0)
   for jump in JUMPS:
     for _ in range(REPEATS):
       steps.append(("settle", STOCK_POWER, RAMP, "hold"))
@@ -87,10 +98,12 @@ def plan() -> list[tuple[str, int, int | None, str]]:
 
 def plan_id() -> str:
   # progress from a different plan doesn't carry over
-  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS))
+  return repr((BANDS, LEVELS, JUMPS, RAMP, DOUBLETS, TAIL, EDGE, REPEATS, CIRCLE_RADIUS, SWEEP_F, SWEEP_LENGTH, SWEEP_LEVELS, SWEEP_REPEATS))
 
 
 def maneuver_length(maneuver: str, band: int) -> int:
+  if maneuver == "sweep":
+    return SWEEP_LENGTH
   if maneuver not in DOUBLETS:
     return 0
   return 2 * DOUBLETS[maneuver][1 if band == 0 else 2] + TAIL
@@ -106,6 +119,14 @@ def base_curvature(band: int) -> float:
 
 def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
   base = base_curvature(band)
+  if maneuver == "sweep":
+    v = BANDS[band][0]
+    amp = SWEEP_CURVATURE if band == 0 else min(SWEEP_CURVATURE, SWEEP_JERK / (2 * math.pi * SWEEP_F[1] * v ** 2))
+    t, length = k * DT, SWEEP_LENGTH * DT
+    rate = math.log(SWEEP_F[1] / SWEEP_F[0]) / length
+    phase = 2 * math.pi * SWEEP_F[0] * (math.exp(rate * t) - 1) / rate
+    # tapered over the first and last 0.25 s
+    return base + amp * min(1., t / 0.25, (length - t) / 0.25) * math.sin(phase)
   if maneuver not in DOUBLETS:
     return base
   amp, half_standstill, half = DOUBLETS[maneuver]
