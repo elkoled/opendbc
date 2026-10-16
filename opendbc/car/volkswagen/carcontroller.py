@@ -130,12 +130,14 @@ class CarController(CarControllerBase):
           steering_power = min(max(target_power, min_power), max_power)
 
           if test is not None:
-            apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(test[0], self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
-                                                                     lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
             steering_power = test[1]
-            self.curvature_error_i = 0.
-            self.desired_curvature_lp = actuators.curvature
-            self.desired_curvature = actuators.curvature
+            # openpilot steers between the test maneuvers
+            if test[0] is not None:
+              apply_curvature = self.CCP.CURVATURE_LIMITS.apply_limits(test[0], self.apply_curvature_last, CS.out.vEgoRaw, CS.curvature_meas,
+                                                                       lat_active, self.CCP.STEER_STEP, self.eps_curvature_ratio.get())
+              self.curvature_error_i = 0.
+              self.desired_curvature_lp = actuators.curvature
+              self.desired_curvature = actuators.curvature
 
         else:
           self.curvature_error_i = 0.

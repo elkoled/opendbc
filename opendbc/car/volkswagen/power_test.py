@@ -10,7 +10,8 @@ import numpy as np
 # unfinished speed band matches the current speed runs its next maneuver. Every maneuver is short (3 s at most) and starts
 # over if interrupted, so a band can be done over several short passes in a small lot. Leaving the band or touching the
 # wheel pauses it. An EPS fault at a power skips that band's remaining steps at or above it. Progress survives restarts.
-# While rolling, the car steers back to the line it started the pass on before each maneuver, so it doesn't wander off.
+# Between maneuvers openpilot steers as usual, at the test power, which brings the car back to its path. Rolling maneuvers
+# are short left-right doublets sized to drift the car about DRIFT sideways, so a small lot is enough.
 # ARM_FILE may hold "max_speed=3" to skip faster bands in a small lot. When every band is done ARM_FILE is renamed.
 # Status for the onroad UI goes to STATUS_FILE.
 ARM_FILE = "/data/meb_power_test"
@@ -19,8 +20,8 @@ STATE_FILE = "state_v2.json"
 STATUS_FILE = "/dev/shm/meb_power_test.json"
 
 STOCK_POWER = 50
-LEVELS = (50, 65, 80, 100)
-JUMPS = (15, 30, 50)
+LEVELS = (50, 75, 100)
+JUMPS = (25, 50)
 RAMP = 1  # percent per steering message, slower than stock
 # (center speed, tolerance) in m/s, the first band is a standstill
 BANDS = ((0., 0.3), (1.5, 0.7), (3., 0.8), (5., 1.))
@@ -28,8 +29,6 @@ DT = 0.02  # steering message period
 
 CURVATURE_BIG = 0.1  # m^-1, about 260 deg of wheel
 CURVATURE_SMALL = 0.02  # m^-1, about 50 deg of wheel
-LAT_ACCEL_BIG = 2.5  # m/s^2 while rolling
-LAT_ACCEL_SMALL = 0.5
 SWEEP_JERK = 3.  # m/s^3 at the top sweep frequency, under the jerk limit
 SWEEP_F = (0.5, 3.)  # Hz, below that the doublets cover it
 SWEEP_LEVELS = (50, 100)
@@ -40,11 +39,8 @@ STOCK_EPS_DELAY = (0.04, 0.04, 0., 0., 0., 0.)  # s
 STOCK_EPS_TAU = (0.172, 0.159, 0.401, 0.635, 0.588, 0.545)  # s
 STOCK_EPS_GAIN = (0.94, 0.95, 0.92, 0.91, 0.9, 0.92)
 
-# steer back to the start line of the pass between maneuvers
-RECENTER_LOOKAHEAD = 2.  # s
-RECENTER_LAT_ACCEL = 1.  # m/s^2
-RECENTER_DONE = (0.5, 0.03)  # m, rad
-RECENTER_MAX = 100  # steering messages
+DRIFT = 0.5  # m, sideways from a rolling doublet
+RELEASE = (25, 50)  # steering messages of openpilot steering before each maneuver, at standstill and rolling
 
 MAX_DRIVER_TORQUE = 150  # 1.5 Nm, the fast swings themselves show up as some torque
 QUIET_BEFORE_START = 25  # steering messages engaged, in band, hands off and without a fault before (re)starting
@@ -54,15 +50,14 @@ LOG_COLUMNS = ("t", "band", "step", "phase", "maneuver", "frame", "target_power"
                "curvature_meas", "steering_angle", "steering_rate", "yaw_rate", "hca_status", "driver_torque", "v_ego")
 FAULT_STATUSES = ("FAULT", "REJECTED", "PREEMPTED", "DISABLED")
 
-# maneuver: (name, length in steering messages at standstill, rolling)
-MANEUVERS = {
-  "hold": (50, 50),
-  "small": (80, 80),  # doublet: +, -, 0 for 30, 30, 20 messages
-  "big": (145, 125),  # doublet: +, -, 0 for 60/50, 60/50, 25 messages
-  "sweep": (150, 150),  # log chirp over SWEEP_F
+# maneuver: (half doublet at standstill, rolling, then this long at zero) in steering messages
+DOUBLETS = {
+  "small": (30, 25, 15),
+  "big": (60, 40, 25),
 }
+SWEEP_LENGTH = 150  # log chirp over SWEEP_F
 DESCRIPTION = {
-  "hold": "hold center",
+  "hold": "settle",
   "small": "small step",
   "big": "big step",
   "sweep": "sweep",
@@ -83,22 +78,25 @@ def plan() -> list[tuple[str, int, int | None, str]]:
 
 
 def maneuver_length(maneuver: str, band: int) -> int:
-  return MANEUVERS[maneuver][0 if band == 0 else 1]
+  if maneuver in DOUBLETS:
+    standstill, rolling, tail = DOUBLETS[maneuver]
+    return 2 * (standstill if band == 0 else rolling) + tail
+  return SWEEP_LENGTH if maneuver == "sweep" else 0
 
 
 def maneuver_curvature(maneuver: str, k: int, band: int) -> float:
   v = BANDS[band][0]
   standstill = band == 0
-  if maneuver == "small":
-    amp = CURVATURE_SMALL if standstill else min(CURVATURE_SMALL, LAT_ACCEL_SMALL / v ** 2)
-    return amp if k < 30 else -amp if k < 60 else 0.
-  if maneuver == "big":
-    amp = CURVATURE_BIG if standstill else min(CURVATURE_BIG, LAT_ACCEL_BIG / v ** 2)
-    half = 60 if standstill else 50
+  if maneuver in DOUBLETS:
+    half = DOUBLETS[maneuver][0 if standstill else 1]
+    amp = CURVATURE_BIG if maneuver == "big" else CURVATURE_SMALL
+    if not standstill:
+      # a doublet moves the car about curvature * (v * half time)^2 sideways
+      amp = min(amp, DRIFT / (v * half * DT) ** 2)
     return amp if k < half else -amp if k < 2 * half else 0.
   if maneuver == "sweep":
     amp = CURVATURE_SMALL if standstill else min(CURVATURE_SMALL, SWEEP_JERK / (2 * math.pi * SWEEP_F[1] * v ** 2))
-    n = maneuver_length("sweep", band)
+    n = SWEEP_LENGTH
     t, length = k * DT, n * DT
     # log chirp, tapered over the first and last 0.25 s
     rate = math.log(SWEEP_F[1] / SWEEP_F[0]) / length
@@ -129,8 +127,7 @@ class MebPowerTest:
     self.note = ""
     self.trace: list[tuple[float, float]] = []
     self.max_speed = float("inf")
-    self.pose = [0., 0., 0.]  # x, y, heading from the start of the pass
-    self.recenter = 0  # steering messages left to steer back to the line, 0 when on it
+    self.release = 0  # steering messages openpilot has steered before this maneuver
 
   def _write(self, line: str):
     if self.log is None:
@@ -170,6 +167,7 @@ class MebPowerTest:
   def _next_step(self, b: int):
     # past the steps a fault ruled out, done after the last one
     self.step_frame = 0
+    self.release = 0
     self.step_idx[b] += 1
     while self.step_idx[b] < len(self.steps) and self._skipped(b, *self.steps[self.step_idx[b]][:2]):
       self.step_idx[b] += 1
@@ -207,13 +205,6 @@ class MebPowerTest:
     except (OSError, ValueError):
       pass
 
-  def _recenter_curvature(self, v_ego: float) -> float:
-    # pure pursuit back onto the start line
-    x, y, heading = self.pose
-    lookahead = max(RECENTER_LOOKAHEAD * v_ego, 3.)
-    limit = RECENTER_LAT_ACCEL / max(v_ego, 1.) ** 2
-    return max(min(-2. * (y + lookahead * math.sin(heading)) / lookahead ** 2, limit), -limit)
-
   def _pause(self, reason: str):
     if self.band is not None:
       phase, _, _, maneuver = self.steps[self.step_idx[self.band]]
@@ -222,6 +213,7 @@ class MebPowerTest:
     self.band = None
     self.quiet = 0
     self.step_frame = 0
+    self.release = 0
 
   def _end_band(self, line: str):
     self._result(line)
@@ -261,7 +253,7 @@ class MebPowerTest:
       "steps": len(self.steps),
       "phase": step[0] if step is not None else None,
       "maneuver": DESCRIPTION[step[3]] if step is not None else None,
-      "recenter": self.recenter > 0,
+      "openpilot": self.band is not None and self.step_frame == 0,
       "max_speed": self.max_speed if math.isfinite(self.max_speed) else None,
       "maneuver_progress": min(self.step_frame / max(length, 1), 1.) if self.band is not None else 0.,
       "maneuver_s": length * DT,
@@ -295,8 +287,8 @@ class MebPowerTest:
 
   def update(self, lat_active: bool, v_ego: float, driver_torque: float, hca_status: str | None, steering_pressed: bool,
              curvature_meas: float, steering_angle: float, steering_rate: float, yaw_rate: float,
-             curvature_last: float, power_last: int) -> tuple[float, int] | None:
-    """Call once per steering message. Returns (curvature, power) while the test drives the EPS, else None."""
+             curvature_last: float, power_last: int) -> tuple[float | None, int] | None:
+    """Call once per steering message. Returns (curvature, power) while the test runs, curvature None while openpilot steers, else None."""
     if self.finished or not os.path.exists(ARM_FILE):
       return None
     if self.frame % 50 == 0:
@@ -304,13 +296,14 @@ class MebPowerTest:
     self.frame += 1
     out = self._update(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, steering_rate, yaw_rate,
                        curvature_last, power_last)
-    if out is None:
+    if out is None or out[0] is None:
       self.curvature = 0.
     self._status(lat_active, v_ego, driver_torque, hca_status, curvature_meas, steering_angle, power_last, curvature_last)
     return out
 
   def _update(self, lat_active: bool, v_ego: float, driver_torque: float, hca_status: str | None, curvature_meas: float,
-              steering_angle: float, steering_rate: float, yaw_rate: float, curvature_last: float, power_last: int) -> tuple[float, int] | None:
+              steering_angle: float, steering_rate: float, yaw_rate: float, curvature_last: float,
+              power_last: int) -> tuple[float | None, int] | None:
     fault = hca_status in FAULT_STATUSES
     hands_off = abs(driver_torque) < MAX_DRIVER_TORQUE
 
@@ -333,8 +326,7 @@ class MebPowerTest:
         return None
       self.band = band
       self.power = power_last
-      self.pose = [0., 0., 0.]
-      self.recenter = 0
+      self.release = 0
       self.step_frame = 0
       self.note = ""
       self._result(f"band {BANDS[band][0]:.1f} m/s started at step {self.step_idx[band]}")
@@ -359,33 +351,27 @@ class MebPowerTest:
       self._pause(reason)
       return None
 
-    x, y, heading = self.pose
-    self.pose = [x + v_ego * math.cos(heading) * DT, y + v_ego * math.sin(heading) * DT, heading + yaw_rate * DT]
-
-    # reach the target power and the start line first, then run the maneuver
-    if ramp is None:
-      self.power = target
-    elif self.power != target:
+    # openpilot steers while the power ramps to the target and for a moment after, a jump happens as the maneuver starts
+    if ramp is not None and self.power != target:
       self.power += max(min(target - self.power, ramp), -ramp)
-    if self.recenter > 0:
-      self.recenter -= 1
-      if abs(self.pose[1]) < RECENTER_DONE[0] and abs(self.pose[2]) < RECENTER_DONE[1]:
-        self.recenter = 0
-    self.curvature = self._recenter_curvature(v_ego) if b != 0 else 0.
-    if self.power == target and self.recenter == 0:
+    if self.step_frame == 0 and (self.release < RELEASE[b != 0] or (ramp is not None and self.power != target)):
+      self.release += 1
+      self.curvature = 0.
+    else:
+      self.power = target
       self.curvature = maneuver_curvature(maneuver, self.step_frame, b)
       self.step_frame += 1
 
-    label = "recenter" if self.recenter > 0 else maneuver if self.power == target else "ramp"
+    label = maneuver if self.step_frame > 0 else "openpilot"
     row = (f"{time.monotonic():.3f}", f"{center:.1f}", self.step_idx[b], phase, label, self.step_frame, target, self.power,
            f"{self.curvature:.5f}", f"{curvature_last:.5f}", power_last, f"{curvature_meas:.5f}", f"{steering_angle:.1f}",
            f"{steering_rate:.1f}", f"{yaw_rate:.4f}", hca_status, driver_torque, f"{v_ego:.2f}")
     self._write(",".join(str(x) for x in row))
 
+    out = (self.curvature if self.step_frame > 0 else None, self.power)
     if self.step_frame >= maneuver_length(maneuver, b):
       self._next_step(b)
-      self.recenter = RECENTER_MAX if b != 0 else 0
       if self.done[b]:
         self._end_band(f"band {center:.1f} m/s completed")
         return None
-    return self.curvature, int(self.power)
+    return out[0], int(out[1])
