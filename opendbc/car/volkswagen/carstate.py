@@ -319,9 +319,9 @@ class CarState(CarStateBase):
     self.ldw_stock_values = cam_cp.vl["LDW_02"] if self.CP.networkLocation == NetworkLocation.fwdCamera else {}
     self.gra_stock_values = pt_cp.vl["GRA_ACC_01"]
     self.klr_stock_values = pt_cp.vl["KLR_01"] if self.CP.flags & VolkswagenFlags.STOCK_KLR_PRESENT else {}
-    # the camera's Emergency Assist message, on the camera side of the relay with either harness
-    ea = cam_cp.vl["EA_02"]
-    self.ea_stock_values = ea if cam_cp.ts_nanos["EA_02"]["COUNTER"] > 0 else {}
+    if self.CP.networkLocation == NetworkLocation.fwdCamera:
+      ea = cam_cp.vl["EA_02"]
+      self.ea_stock_values = ea if cam_cp.ts_nanos["EA_02"]["COUNTER"] > 0 else {}
 
     ret.buttonEvents = self.create_button_events(pt_cp, self.CCP.BUTTONS)
     ret.lowSpeedAlert = self.update_low_speed_alert(ret.vEgo)
