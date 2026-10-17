@@ -35,14 +35,6 @@ def create_eps_update(packer, bus, eps_stock_values, ea_simulated_torque):
   return packer.make_can_msg("LH_EPS_03", bus, values)
 
 
-def create_ea_blinker(packer, bus, ea_stock_values, left_blinker, right_blinker):
-  # the camera's Emergency Assist message passed through, with openpilot's turn signal request when it isn't blinking itself
-  values = dict(ea_stock_values)
-  if not values["EA_Blinken"]:
-    values["EA_Blinken"] = 1 if left_blinker else 2 if right_blinker else 0
-  return packer.make_can_msg("EA_02", bus, values)
-
-
 def create_lka_hud_control(packer, bus, ldw_stock_values, lat_active, steering_pressed, hud_alert, hud_control, sound_alert=False):
   display_mode = 1 if lat_active else 0  # travel assist style showing yellow lanes when op is active
 
