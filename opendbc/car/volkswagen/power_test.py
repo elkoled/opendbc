@@ -186,7 +186,6 @@ class MebPowerTest:
     self.finished = False
     self.finished_t = 0.
     self.holding = False  # the test has the pedals, kept after the end to hold the car until disengaged
-    self.v_ego = 0.
     self.plan_curvature = 0.
     self.frame = 0
     self.note = ""
@@ -283,10 +282,6 @@ class MebPowerTest:
 
   def _base(self, b: int) -> float:
     return 0. if b == 0 else self.plan_curvature
-
-  def turn_signal_left(self) -> bool:
-    # signal left through the standstill band, which tests the turn signal on the car
-    return self.band == 0 and not self.finished
 
   def _read_arm_file(self):
     try:
@@ -387,7 +382,6 @@ class MebPowerTest:
              curvature_meas: float, steering_angle: float, steering_rate: float, yaw_rate: float,
              curvature_last: float, power_last: int, plan_curvature: float = 0.) -> tuple[float, int] | None:
     """Call once per steering message. Returns (curvature, power) while the test steers, else None."""
-    self.v_ego = v_ego
     self.plan_curvature = plan_curvature
     if self.finished and os.path.exists(ARM_FILE):
       # armed again, fresh run
