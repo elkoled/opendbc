@@ -23,14 +23,27 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     cnt = (msg->data[5] >> 4) & 0xFU;
   }
+  if (msg->addr == PSA_STEERING) {
+    cnt = msg->data[0] & 0xFU;
+  }
+  if (msg->addr == PSA_STEERING_ALT) {
+    cnt = msg->data[4] & 0xFU;
+  }
   return cnt;
 }
 
 static uint32_t psa_get_checksum(const CANPacket_t *msg) {
-  return msg->data[5] & 0xFU;
+  uint8_t chk = msg->data[5] & 0xFU;
+  if (msg->addr == PSA_STEERING) {
+    chk = (msg->data[0] >> 4) & 0xFU;
+  }
+  if (msg->addr == PSA_STEERING_ALT) {
+    chk = (msg->data[4] >> 4) & 0xFU;
+  }
+  return chk;
 }
 
-static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
+static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos, bool chk_high_nibble) {
   int len = GET_LEN(msg);
 
   uint8_t sum = 0;
@@ -38,8 +51,8 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
     uint8_t b = msg->data[i];
 
     if (i == chk_pos) {
-      // set checksum in low nibble to 0
-      b &= 0xF0U;
+      // set checksum nibble to 0
+      b &= chk_high_nibble ? 0x0FU : 0xF0U;
     }
     sum += (b >> 4) + (b & 0xFU);
   }
@@ -49,10 +62,18 @@ static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, in
 static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   uint8_t chk = 0;
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
-    chk = _psa_compute_checksum(msg, 0x4, 5);
+    chk = _psa_compute_checksum(msg, 0x4, 5, false);
   }
   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
-    chk = _psa_compute_checksum(msg, 0x7, 5);
+    chk = _psa_compute_checksum(msg, 0x7, 5, false);
+  }
+  if (msg->addr == PSA_STEERING) {
+    chk = _psa_compute_checksum(msg, 0xB, 0, true);
+  }
+  if (msg->addr == PSA_STEERING_ALT) {
+    // XOR of bytes 0-4 with the checksum nibble zeroed, folded to 4 bits
+    uint8_t x = msg->data[0] ^ msg->data[1] ^ msg->data[2] ^ msg->data[3] ^ (msg->data[4] & 0x0FU);
+    chk = (x ^ (x >> 4)) & 0xFU;
   }
   return chk;
 }
@@ -99,8 +120,10 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   int desired_angle = to_signed((msg->data[6] << 6) | ((msg->data[7] & 0xFCU) >> 2), 14);
   // TORQUE_FACTOR
   bool lka_active = ((msg->data[5] & 0xFEU) >> 1) == 100U;
+  // DMD_DELEST_DA: Stop&Start power cut request, removes EPS assist at low speed
+  bool power_cut_req = GET_BIT(msg, 2U);
 
-  return !steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS);
+  return !steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS) && !power_cut_req;
 }
 
 static safety_config psa_init(uint16_t param) {
@@ -112,8 +135,8 @@ static safety_config psa_init(uint16_t param) {
   static RxCheck psa_rx_checks[] = {
     {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
     {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
-    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  // steering angle
-    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
+    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  // steering angle
+    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
     {.msg = {{PSA_DYN_CMM, PSA_MAIN_BUS, 8, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},      // gas pedal
     {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
   };

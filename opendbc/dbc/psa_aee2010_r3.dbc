@@ -126,10 +126,13 @@ BO_ 728 NEW_MSG_2D8: 7 XXX
 BO_ 757 STEERING: 7 XXX
  SG_ COUNTER : 3|4@0+ (1,0) [0|255] "" XXX
  SG_ CHECKSUM : 7|4@0+ (1,0) [0|15] "" XXX
- SG_ DRIVER_TORQUE : 15|8@0- (1,0) [0|255] "" XXX
+ SG_ DRIVER_TORQUE : 15|8@0- (0.1,0) [-10|10] "Nm" XXX
  SG_ ANGLE : 31|16@0- (0.1,0) [-3276.8|3276.7] "degrees" XXX
  SG_ RATE : 47|12@0- (1,0) [0|4095] "" XXX
- SG_ NEW_SIGNAL_1 : 48|1@0+ (1,0) [0|1] "" XXX
+ SG_ ETAT_SECU_ANGLE_COL : 48|1@0+ (1,0) [0|1] "" XXX
+ SG_ ETAT_DAE_CAV3_VIRTUEL : 51|3@0+ (1,0) [0|7] "" XXX
+ SG_ ETAT_DAE_CPK : 22|2@0+ (1,0) [0|3] "" XXX
+ SG_ CAUSE_DESACTIV_CPK : 20|3@0+ (1,0) [0|7] "" XXX
 
 BO_ 758 HS2_DYN_MDD_ETAT_2F6: 8 ARTIV
  SG_ TARGET_DETECTED : 0|1@0+ (1,0) [0|0] "" BSI,CMM,UC_FREIN,CMF
@@ -160,11 +163,18 @@ BO_ 770 NEW_MSG_302: 7 XXX
 
 BO_ 773 STEERING_ALT: 7 XXX
  SG_ ANGLE : 7|16@0- (0.1,0) [-3276.8|3276.7] "degrees" XXX
- SG_ RATE : 23|8@0+ (1,0) [0|255] "" XXX
+ SG_ RATE : 23|8@0+ (4,0) [0|1020] "deg/s" XXX
  SG_ RATE_SIGN : 31|1@0+ (1,0) [0|1] "" XXX
- SG_ 0_COUNTER : 35|4@0+ (1,0) [0|255] "" XXX
- SG_ 0_CHECKSUM : 39|4@0+ (1,0) [0|15] "" XXX
- SG_ RATE_ALT : 47|8@0+ (1,0) [0|255] "" XXX
+ SG_ COUNTER : 35|4@0+ (1,0) [0|15] "" XXX
+ SG_ CHECKSUM : 39|4@0+ (1,0) [0|15] "" XXX
+ SG_ RATE_ALT : 47|8@0+ (4,0) [0|1020] "deg/s" XXX
+ SG_ ETAT_CAPT_VOL : 24|1@0+ (1,0) [0|1] "" XXX
+ SG_ CALIBRATION_VOL : 25|1@0+ (1,0) [0|1] "" XXX
+ SG_ TRIM_VOL : 26|1@0+ (1,0) [0|1] "" XXX
+ SG_ CODE_DEFAUT_VOL : 30|4@0+ (1,0) [0|15] "" XXX
+ SG_ ANGLE_VOLANT_ORIGINE : 53|2@0+ (1,0) [0|3] "" XXX
+ SG_ FLG_AVOL_ICN : 54|1@0+ (1,0) [0|1] "" XXX
+ SG_ FLG_INIT_AVOL : 55|1@0+ (1,0) [0|1] "" XXX
 
 BO_ 781 Dyn4_FRE: 8 CDS___Fahrdynamikregelung
  SG_ P263_VehV_VPsvValWhlFrtL : 7|16@0+ (0.01,0) [0|655.35] "km/h" Vector__XXX
@@ -296,6 +306,7 @@ BO_ 973 Dyn2_FRE: 8 ABS___Antiblockiersystem
 
 BO_ 1010 LANE_KEEP_ASSIST: 8 XXX
  SG_ DRIVE : 6|1@0+ (1,0) [0|1] "" XXX
+ SG_ DMD_DELEST_DA : 2|1@0+ (1,0) [0|1] "" XXX
  SG_ COUNTER : 11|4@0+ (1,0) [0|15] "" XXX
  SG_ CHECKSUM : 15|4@0+ (1,0) [0|15] "" XXX
  SG_ unknown2 : 23|8@0+ (1,0) [0|255] "" XXX
@@ -304,7 +315,7 @@ BO_ 1010 LANE_KEEP_ASSIST: 8 XXX
  SG_ STATUS : 36|3@0+ (1,0) [0|3] "" XXX
  SG_ LXA_ACTIVATION : 40|1@0+ (1,0) [0|1] "" XXX
  SG_ TORQUE_FACTOR : 47|7@0+ (1,0) [0|127] "" XXX
- SG_ SET_ANGLE : 55|14@0- (0.1,0) [-90|90] "" XXX
+ SG_ SET_ANGLE : 55|14@0- (0.1,0) [-780|780] "deg" XXX
  SG_ unknown4 : 57|1@0+ (1,0) [0|1] "" XXX
 
 BO_ 1042 Dat_BSI: 8 BSI___Kombiinstrument
@@ -406,7 +417,7 @@ BO_ 1161 Dat_V2_BV: 8 BVA___Automatikgetriebe
  SG_ P218_Com_stDrvIdx : 48|8@1+ (1,0) [0|255] "" Vector__XXX
 
 BO_ 1173 IS_DAT_DIRA: 4 PSCM
- SG_ EPS_TORQUE : 7|8@0- (0.25,0) [-32|31.5] "Nm" Tester
+ SG_ DRIVER_TORQUE : 7|8@0- (0.25,0) [-32|31.5] "Nm" Tester
  SG_ ETAT_DA_2004 : 9|2@0+ (1,0) [0|3] "" Tester
  SG_ ETAT_DA_DYN : 13|2@0+ (1,0) [0|3] "" Tester
  SG_ ETAT_DA_2010 : 15|2@0+ (1,0) [0|3] "" Tester
@@ -414,7 +425,7 @@ BO_ 1173 IS_DAT_DIRA: 4 PSCM
  SG_ STEERWHL_HOLD_BY_DRV : 17|1@0+ (1,0) [0|0] "" Vector__XXX
  SG_ EPS_STATE_LKA : 20|3@0+ (1,0) [0|0] "" Vector__XXX
  SG_ AUTOR_ARRET_MOT_DA : 21|1@0+ (1,0) [0|1] "" Tester
- SG_ STEERING_REBOOT_REQUEST : 23|1@0+ (1,0) [0|1] "" Tester
+ SG_ DDE_REDEM_DA : 23|1@0+ (1,0) [0|1] "" Tester
  SG_ Reserved : 31|8@0+ (1,0) [0|255] "" Tester
 
 BO_ 1224 Etat_Crash: 3 BSI___Kombiinstrument
@@ -664,6 +675,11 @@ BO_ 1928 Supv_CMM: 8 CMM___Motor_SG
  SG_ P284_T15CD_stPart : 43|12@0+ (1,0) [0|4095] "" Vector__XXX
  SG_ P242_T15CD_stElec : 44|4@1+ (1,0) [0|15] "" Vector__XXX
 
+BO_ 1941 IS_SUPV_DIRA: 6 PSCM
+ SG_ CODE_DEFAUT : 7|8@0+ (1,0) [0|255] "" XXX
+ SG_ ETAT_ASSIST_DA : 46|3@0+ (1,0) [0|7] "" XXX
+ SG_ ETAT_LIGNE_APC : 47|1@0+ (1,0) [0|1] "" XXX
+
 BO_ 1942 HS2_SUPV_ARTIV_796: 8 ARTIV
  SG_ FAULT_CODE : 7|8@0+ (1,0) [0|0] "" Vector__XXX
  SG_ STATUS_NO_CONFIG : 15|32@0+ (1,0) [0|0] "" Vector__XXX
@@ -833,7 +849,10 @@ CM_ SG_ 758 CHECKSUM_TRANSM_DYN_ACC2 "CHK_INI = 0x7";
 CM_ SG_ 758 PROCESS_COUNTER_4B_ACC2 "This counter increments from 0 to 15 at each activation of the calculation process.";
 CM_ SG_ 773 ANGLE "-565 to 560, seems like estimate and not init";
 CM_ SG_ 773 RATE_SIGN "1=moving clockwise, 0=moving anticlockwise";
-CM_ SG_ 773 0_CHECKSUM "TODO: find checksum";
+CM_ SG_ 773 CHECKSUM "XOR of bytes 0-4 (checksum nibble zeroed), folded to 4 bits; bytes 5-6 not covered";
+CM_ SG_ 773 RATE "steering wheel rate, 4 deg/s per bit";
+CM_ SG_ 773 FLG_INIT_AVOL "absolute angle initialisation flag";
+CM_ SG_ 773 ANGLE_VOLANT_ORIGINE "source of the absolute angle (physical sensor, EPS virtual sensor, ESC offset)";
 CM_ BO_ 840 "ID 348:  Engine Dynamic Frame 2 (Period time 20 ms)";
 CM_ SG_ 840 P165_FlFCD_stWtLvlSensDebVal "P165: Water in fuel indication (1 = water in fuel detected / 0 = no water in fuel)";
 CM_ SG_ 840 P152_Gearbx_stGear "P152: Gear detected by ratio vehicule speed to engine speed";
@@ -874,6 +893,12 @@ CM_ SG_ 1010 TORQUE "Set to ~2043 when active";
 CM_ SG_ 1010 LANE_DEPARTURE "UNUSED in HDA";
 CM_ SG_ 1010 STATUS "0=LKA OFF (button in console)";
 CM_ SG_ 1010 LXA_ACTIVATION "Set = 0, no activity seen in routes";
+CM_ SG_ 1173 DRIVER_TORQUE "driver steering wheel torque (CPLE_VOLANT), not EPS motor torque";
+CM_ SG_ 1173 DDE_REDEM_DA "Stop&Start engine restart request from EPS, not an EPS reboot";
+CM_ SG_ 1941 ETAT_ASSIST_DA "2 = degraded assist (e.g. thermal derating)";
+CM_ SG_ 1010 DMD_DELEST_DA "Stop&Start power cut request, removes EPS assist at low speed. Must be 0";
+CM_ SG_ 1010 TORQUE_FACTOR "0-100 percent authority, 126=unavailable (treated as 0), other values invalid";
+CM_ SG_ 1010 SET_ANGLE "EPS rejects |angle| > 780 deg and clips to 500 deg";
 CM_ BO_ 1042 "ID 412: Body Car Data Frame (Period time 50 ms)";
 CM_ SG_ 1042 P040_MainBrakeFault "P040  Main brake switch is defect.";
 CM_ SG_ 1042 P103_Com_bRevGear "P013 main brake signal";
@@ -1026,7 +1051,7 @@ VAL_ 1106 FRONT_WASH_STATUS 0 "Off" 1 "Wash";
 VAL_ 1106 FORCE_ACTIVATION_HAB_CMD 0 "Deactivation" 1 "Activation";
 VAL_ 1106 COCKPIT_GO_ACC_REQUEST 0 "VALUE_1" 1 "VALUE_2";
 VAL_ 1106 ACC_PROGRAM_MODE 0 "Comfort" 1 "Sport" 2 "Eco" 3 "Reserved";
-VAL_ 1173 EPS_TORQUE 127 "Invalid";
+VAL_ 1173 DRIVER_TORQUE 127 "Invalid";
 VAL_ 1173 ETAT_DA_2004 3 "Reserved" 2 "Orange LED" 1 "Red LED" 0 "No Demand";
 VAL_ 1173 ETAT_DA_DYN 3 "Invalid" 2 "Adjustable Mode" 1 "Dynamic Mode" 0 "Normal Mode";
 VAL_ 1173 ETAT_DA_2010 3 "Reserved" 2 "Orange LED" 1 "Red LED" 0 "No Demand";
@@ -1034,7 +1059,9 @@ VAL_ 1173 TRQ_LIMIT_STATE 1 "Saturation Effective" 0 "No Saturation";
 VAL_ 1173 STEERWHL_HOLD_BY_DRV 1 "Steer Activity From Drv Trq" 0 "No Steer Activity From Drv Trq";
 VAL_ 1173 EPS_STATE_LKA 4 "Defect" 3 "Active" 2 "Available" 1 "Authorised" 0 "Unauthorised";
 VAL_ 1173 AUTOR_ARRET_MOT_DA 1 "Permission to Stop" 0 "No Permission to Stop";
-VAL_ 1173 STEERING_REBOOT_REQUEST 1 "Request Reboot" 0 "No Reboot Required";
+VAL_ 1173 DDE_REDEM_DA 1 "Request Reboot" 0 "No Reboot Required";
+VAL_ 1941 ETAT_ASSIST_DA 7 "Disability Parameter" 4 "STTd Assist Active" 3 "STTa Assist Active" 2 "Dmg Assist Active" 1 "Nominal Assist Active" 0 "Assist Not Active";
+VAL_ 1941 ETAT_LIGNE_APC 1 "Ignition On" 0 "Ignition Off";
 VAL_ 1270 ARTIV_SENSOR_STATE 0 "Initialization" 1 "Inactive" 2 "Active" 3 "Reduced visibility" 4 "Simulation" 5 "Learning" 6 "Free" 7 "Fault";
 VAL_ 1270 TARGET_DETECTED 0 "initialization or no target detected" 1 "target detected";
 VAL_ 1270 ARTIV_TARGET_CHANGE_INFO 0 "VALUE_1" 1 "VALUE_2";
