@@ -50,9 +50,9 @@ class CarController(CarControllerBase):
 
     brake_accel = -0.5
 
-    # torque lookup
+    # torque lookup, fit from torque vs pitch compensated aEgo on 208 and Corsa F routes
     ACCEL_LOOKUP = [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]
-    TORQUE_LOOKUP = [-400, -300, 120, 350, 550, 800, 1000]
+    TORQUE_LOOKUP = [-400, -140, 170, 375, 615, 865, 1100]
 
     # calculate Torque
     torque_nm = interp(accel_cmd, ACCEL_LOOKUP, TORQUE_LOOKUP)

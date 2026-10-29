@@ -28,7 +28,10 @@ class CarInterface(CarInterfaceBase):
     ret.alphaLongitudinalAvailable = True
     ret.openpilotLongitudinalControl = alpha_long
 
-    # ret.longitudinalTuning.kiBP = [0., 35.]
-    # ret.longitudinalTuning.kiV = [0.5, 0.2]
+    # measured command to aEgo lag is 0.3 s driving and 0.4-0.7 s braking
+    ret.longitudinalActuatorDelay = 0.4
+    # integral covers drag the speed independent torque map misses at highway speed
+    ret.longitudinalTuning.kiBP = [4., 13., 15., 20.]
+    ret.longitudinalTuning.kiV = [0., 0.3, 0.5, 0.8]
 
     return ret
