@@ -5,7 +5,7 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering, create_resume_acc, create_disable_radar, create_HS2_DYN1_MDD_ETAT_2B6, create_HS2_DYN_MDD_ETAT_2F6
 from opendbc.car.psa.values import CarControllerParams
 from numpy import interp
-from cereal import messaging
+from openpilot.cereal import messaging
 import math
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
