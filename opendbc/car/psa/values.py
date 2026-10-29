@@ -36,11 +36,11 @@ class PSAPlatformConfig(PlatformConfig):
 class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
-    CarSpecs(mass=1530, wheelbase=2.54, steerRatio=17.6),
+    CarSpecs(wheelbase=2.54, steerRatio=17.6),
   )
   PSA_PEUGEOT_508 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 508 2019-23")],
-    CarSpecs(mass=1720, wheelbase=2.79, steerRatio=17.6),
+    CarSpecs(wheelbase=2.79, steerRatio=17.6),
   )
 
 
@@ -53,6 +53,7 @@ PSA_SERIAL_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF1, 
 PSA_RX_OFFSET = -0x20
 
 FW_QUERY_CONFIG = FwQueryConfig(
+  fw_version_regex=br"\d{18}[0-9A-Z]?",
   requests=[
     Request(
       [PSA_DIAG_REQ, PSA_SERIAL_REQ],
