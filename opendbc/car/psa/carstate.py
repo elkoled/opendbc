@@ -23,8 +23,8 @@ class CarState(CarStateBase):
     ret.yawRate = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VITESSE_LACET_BRUTE'] * CV.DEG_TO_RAD
     ret.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
 
-    # gas
-    ret.gasPressed = cp.vl['Dyn_CMM']['P002_Com_rAPP'] > 0
+    # gas, the pedal in Dyn_CMM also shows the ACC torque request
+    ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
 
     # brake
     ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
