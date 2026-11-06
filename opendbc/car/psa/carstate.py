@@ -38,8 +38,8 @@ class CarState(CarStateBase):
     # gas, the pedal in Dyn_CMM also shows the ACC torque request
     ret.gasPressed = cp_cam.vl['DRIVER']['GAS_PEDAL'] > 0
 
-    # brake
-    ret.brakePressed = bool(cp_cam.vl['Dat_BSI']['P013_MainBrake'])
+    # brake, the ESP also sees light presses that the BSI brake switch misses
+    ret.brakePressed = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['APPUI_FREIN_RECONSTRUIT'] == 2
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
     # steering wheel
