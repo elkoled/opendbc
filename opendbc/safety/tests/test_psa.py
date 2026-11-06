@@ -68,8 +68,8 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     return self.packer.make_can_msg_safety("HS2_DYN_ABR_38D", self.MAIN_BUS, values)
 
   def _user_brake_msg(self, brake):
-    values = {"P013_MainBrake": brake}
-    return self.packer.make_can_msg_safety("Dat_BSI", self.CAM_BUS, values)
+    values = {"APPUI_FREIN_RECONSTRUIT": 2 if brake else 1}
+    return self.packer.make_can_msg_safety("HS2_DYN_UCF_MDD_32D", self.ADAS_BUS, values)
 
   def _user_gas_msg(self, gas):
     values = {"GAS_PEDAL": int(gas * 100)}
@@ -140,6 +140,14 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     self.assertLessEqual(car.MAX_LATERAL_JERK, SafetyLimits.ANGLE_LIMITS.MAX_LATERAL_JERK)
 
   def test_rx_hook(self):
+    # brake
+    for _ in range(10):
+      self.assertTrue(self._rx(self._user_brake_msg(False)))
+    msg = self._user_brake_msg(False)
+    # invalidate checksum
+    msg[0].data[7] ^= 0x01
+    self.assertFalse(self._rx(msg))
+
     # speed
     for _ in range(10):
       self.assertTrue(self._rx(self._speed_msg(0)))

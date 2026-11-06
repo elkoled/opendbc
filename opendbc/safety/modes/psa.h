@@ -6,8 +6,8 @@
 #define PSA_STEERING_ALT          773U  // RX from EPS, steering angle
 #define PSA_DRIVER                1390U  // RX from XXX, gas pedal
 #define PSA_HS2_DYN_ABR_38D       909U  // RX from UC_FREIN, speed
+#define PSA_HS2_DYN_UCF_MDD_32D   813U  // RX from UC_FREIN, brake
 #define PSA_HS2_DAT_MDD_CMD_452   1106U  // RX from BSI, cruise state
-#define PSA_DAT_BSI               1042U  // RX from BSI, brake
 #define PSA_LANE_KEEP_ASSIST      1010U  // TX from OP,  EPS
 #define PSA_REQ_DIAG_ARTIV        1718U  // TX from OP,  radar diagnostics
 #define PSA_HS2_DYN1_MDD_ETAT_2B6 694U  // TX from OP,  radar emulation
@@ -25,11 +25,11 @@
 #define PSA_RX_CHECKS(eps_bus)                                                                                                                                         \
   {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* cruise state */                       \
   {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* speed */                                  \
+  {.msg = {{PSA_HS2_DYN_UCF_MDD_32D, PSA_ADAS_BUS, 8, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* brake */                              \
   {.msg = {{PSA_STEERING_ALT, (eps_bus), 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* steering angle */ \
   {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* driver torque */   \
   {.msg = {{PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},  /* gas pedal, 6 bytes on the 208 */       \
            {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }}},  /* 7 bytes on the 508 */         \
-  {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* brake */              \
 
 static uint32_t psa_eps_bus = PSA_MAIN_BUS;
 
@@ -41,11 +41,15 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     cnt = (msg->data[5] >> 4) & 0xFU;
   }
+  if (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) {
+    cnt = (msg->data[7] >> 4) & 0xFU;
+  }
   return cnt;
 }
 
 static uint32_t psa_get_checksum(const CANPacket_t *msg) {
-  return msg->data[5] & 0xFU;
+  int chk_pos = (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) ? 7 : 5;
+  return msg->data[chk_pos] & 0xFU;
 }
 
 static uint8_t _psa_compute_checksum(const CANPacket_t *msg, uint8_t chk_ini, int chk_pos) {
@@ -72,6 +76,9 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     chk = _psa_compute_checksum(msg, 0x7, 5);
   }
+  if (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) {
+    chk = _psa_compute_checksum(msg, 0xD, 7);
+  }
   return chk;
 }
 
@@ -93,8 +100,8 @@ static void psa_rx_hook(const CANPacket_t *msg) {
   if (msg_matches(msg, PSA_DRIVER, PSA_CAM_BUS)) {
     gas_pressed = msg->data[3] > 0U;  // GAS_PEDAL
   }
-  if (msg_matches(msg, PSA_DAT_BSI, PSA_CAM_BUS)) {
-    brake_pressed = (msg->data[0U] >> 5U) & 1U;  // P013_MainBrake
+  if (msg_matches(msg, PSA_HS2_DYN_UCF_MDD_32D, PSA_ADAS_BUS)) {
+    brake_pressed = (msg->data[2U] & 0x3U) == 2U;  // APPUI_FREIN_RECONSTRUIT
   }
 }
 
