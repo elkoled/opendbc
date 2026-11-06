@@ -23,7 +23,7 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & PSAFlags.EPS_CAM_BUS:
       ret.safetyConfigs[0].safetyParam |= PSASafetyFlags.EPS_CAM_BUS.value
 
-    ret.dashcamOnly = True
+    ret.dashcamOnly = False
 
     # lagd learns 0.25-0.3 s on the 508 and 0.35-0.45 s on the 208
     ret.steerActuatorDelay = 0.1 if candidate == CAR.PSA_PEUGEOT_508 else 0.3
