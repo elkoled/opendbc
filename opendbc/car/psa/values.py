@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from enum import IntEnum, IntFlag
 
 from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
@@ -11,6 +12,7 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   STEER_STEP = 1
+  STATUS_STEP = 5  # frames per step of the EPS activation sequence
 
   ANGLE_LIMITS: AngleSteeringLimitsVM = AngleSteeringLimitsVM(
     390,  # deg
@@ -20,6 +22,23 @@ class CarControllerParams:
     MAX_ANGLE_RATE=0.75,  # deg/frame
   )
   STEER_DRIVER_ALLOWANCE = 0.5  # Driver intervention threshold, Nm
+
+
+class EpsState(IntEnum):
+  UNAUTHORIZED = 0
+  AUTHORIZED = 1
+  AVAILABLE = 2
+  ACTIVE = 3
+  DEFECT = 4
+
+
+class PSASafetyFlags(IntFlag):
+  EPS_CAM_BUS = 2
+
+
+class PSAFlags(IntFlag):
+  # the EPS is on the camera side of the harness
+  EPS_CAM_BUS = 1
 
 
 @dataclass
@@ -39,6 +58,11 @@ class CAR(Platforms):
   PSA_PEUGEOT_208 = PSAPlatformConfig(
     [PSACarDocs("Peugeot 208 2019-25")],
     CarSpecs(wheelbase=2.54, steerRatio=17.6),
+  )
+  PSA_PEUGEOT_508 = PSAPlatformConfig(
+    [PSACarDocs("Peugeot 508 2019-23")],
+    CarSpecs(wheelbase=2.79, steerRatio=17.6),
+    flags=PSAFlags.EPS_CAM_BUS,
   )
 
 

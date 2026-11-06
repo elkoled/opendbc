@@ -1,7 +1,7 @@
 from opendbc.car import structs, Bus
 from opendbc.can.parser import CANParser
 from opendbc.car.common.conversions import Conversions as CV
-from opendbc.car.psa.values import DBC, CarControllerParams
+from opendbc.car.psa.values import DBC, CarControllerParams, EpsState, PSAFlags
 from opendbc.car.interfaces import CarStateBase
 
 GearShifter = structs.CarState.GearShifter
@@ -31,12 +31,14 @@ class CarState(CarStateBase):
     ret.parkingBrake = cp.vl['Dyn_EasyMove']['P337_Com_stPrkBrk'] == 1 # 0: disengaged, 1: engaged, 3: brake actuator moving
 
     # steering wheel
-    ret.steeringAngleDeg = cp.vl['STEERING_ALT']['ANGLE'] # EPS
-    ret.steeringRateDeg = cp.vl['STEERING_ALT']['RATE'] * (1 - 2 * cp.vl['STEERING_ALT']['RATE_SIGN']) # convert [0,1] to [1,-1] EPS: rot. speed * rot. sign
+    cp_eps = cp_cam if self.CP.flags & PSAFlags.EPS_CAM_BUS else cp
+    ret.steeringAngleDeg = cp_eps.vl['STEERING_ALT']['ANGLE']  # EPS
+    ret.steeringRateDeg = cp_eps.vl['STEERING_ALT']['RATE'] * (1 - 2 * cp_eps.vl['STEERING_ALT']['RATE_SIGN']) # RATE_SIGN [0,1] to [1,-1]
     ret.steeringTorque = cp.vl['STEERING']['DRIVER_TORQUE']
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > CarControllerParams.STEER_DRIVER_ALLOWANCE, 5)
-    self.eps_active = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 3 # 0: Unauthorized, 1: Authorized, 2: Available, 3: Active, 4: Defect
-    ret.steerFaultTemporary = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA'] == 4
+    self.eps_state = cp.vl['IS_DAT_DIRA']['EPS_STATE_LKA']
+    self.eps_active = self.eps_state == EpsState.ACTIVE
+    ret.steerFaultTemporary = self.eps_state == EpsState.DEFECT
 
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed

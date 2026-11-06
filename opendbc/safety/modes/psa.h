@@ -15,6 +15,20 @@
 #define PSA_ADAS_BUS 1U
 #define PSA_CAM_BUS  2U
 
+#define PSA_PARAM_EPS_CAM_BUS 2U
+
+// the 508 has the EPS on the camera bus
+#define PSA_RX_CHECKS(eps_bus)                                                                                                                                         \
+  {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* cruise state */                       \
+  {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* speed */                                  \
+  {.msg = {{PSA_STEERING_ALT, (eps_bus), 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* steering angle */ \
+  {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* driver torque */   \
+  {.msg = {{PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},  /* gas pedal, 6 bytes on the 208 */       \
+           {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }}},  /* 7 bytes on the 508 */         \
+  {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* brake */              \
+
+static uint32_t psa_eps_bus = PSA_MAIN_BUS;
+
 static uint8_t psa_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
   if (msg->addr == PSA_HS2_DAT_MDD_CMD_452) {
@@ -58,7 +72,7 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
 }
 
 static void psa_rx_hook(const CANPacket_t *msg) {
-  if (msg_matches(msg, PSA_STEERING_ALT, PSA_MAIN_BUS)) {
+  if (msg_matches(msg, PSA_STEERING_ALT, psa_eps_bus)) {
     int angle_meas_new = to_signed((msg->data[0] << 8) | msg->data[1], 16);  // ANGLE
     update_sample(&angle_meas, angle_meas_new);
   }
@@ -104,21 +118,25 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
 }
 
 static safety_config psa_init(uint16_t param) {
-  SAFETY_UNUSED(param);
   static const CanMsg PSA_TX_MSGS[] = {
     {PSA_LANE_KEEP_ASSIST, PSA_MAIN_BUS, 8, .check_relay = true},  // EPS steering
   };
 
   static const RxCheck psa_rx_checks[] = {
-    {.msg = {{PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS, 6, 20U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                        // cruise state
-    {.msg = {{PSA_HS2_DYN_ABR_38D, PSA_MAIN_BUS, 8, 25U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},                            // speed
-    {.msg = {{PSA_STEERING_ALT, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},  // steering angle
-    {.msg = {{PSA_STEERING, PSA_MAIN_BUS, 7, 100U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},     // driver torque
-    {.msg = {{PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},         // gas pedal
-    {.msg = {{PSA_DAT_BSI, PSA_CAM_BUS, 8, 20U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},        // brake
+    PSA_RX_CHECKS(PSA_MAIN_BUS)
   };
 
-  return BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
+  static const RxCheck psa_eps_cam_rx_checks[] = {
+    PSA_RX_CHECKS(PSA_CAM_BUS)
+  };
+
+  psa_eps_bus = GET_FLAG(param, PSA_PARAM_EPS_CAM_BUS) ? PSA_CAM_BUS : PSA_MAIN_BUS;
+
+  safety_config ret = BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
+  if (psa_eps_bus == PSA_CAM_BUS) {
+    SET_RX_CHECKS(psa_eps_cam_rx_checks, ret);
+  }
+  return ret;
 }
 
 const safety_hooks psa_hooks = {
