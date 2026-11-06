@@ -6,7 +6,19 @@ from opendbc.car.interfaces import CarStateBase
 
 GearShifter = structs.CarState.GearShifter
 
+# the radar sends at 50 Hz with up to 35 ms of jitter
+RADAR_TIMEOUT_FRAMES = 6
+# the CMM briefly drops the ACC torque when switching to the brakes
+ACC_TORQUE_LOST_FRAMES = 100
+
 class CarState(CarStateBase):
+  def __init__(self, CP):
+    super().__init__(CP)
+    self.radar_alive = False
+    self.radar_ts_last = 0
+    self.radar_stale_frames = 0
+    self.acc_torque_lost_frames = 0
+
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.main]
     cp_adas = can_parsers[Bus.adas]
@@ -43,10 +55,27 @@ class CarState(CarStateBase):
     # cruise
     ret.cruiseState.speed = cp_adas.vl['HS2_DAT_MDD_CMD_452']['SPEED_SETPOINT'] * CV.KPH_TO_MS # set to 255 when ACC is off, -2 kph offset from dash speed
     ret.cruiseState.enabled = cp_adas.vl['HS2_DAT_MDD_CMD_452']['RVV_ACC_ACTIVATION_REQ'] == 1
-    ret.cruiseState.available = cp_adas.vl['HS2_DYN1_MDD_ETAT_2B6']['ACC_STATUS'] > 2
     ret.cruiseState.nonAdaptive = cp_adas.vl['HS2_DAT_MDD_CMD_452']['LONGITUDINAL_REGULATION_TYPE'] != 3 # 0: None, 1: CC, 2: Limiter, 3: ACC
-    ret.cruiseState.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
+    if self.CP.openpilotLongitudinalControl:
+      # the radar is silent with openpilot long, so its ACC state is not available
+      ret.cruiseState.available = True
+    else:
+      ret.cruiseState.available = cp_adas.vl['HS2_DYN1_MDD_ETAT_2B6']['ACC_STATUS'] > 2
+      ret.cruiseState.standstill = bool(cp_adas.vl['HS2_DYN_UCF_MDD_32D']['VEHICLE_STANDSTILL'])
     ret.accFaulted = cp_adas.vl['HS2_DYN_UCF_MDD_32D']['ACC_ETAT_DECEL_OR_ESP_STATUS'] == 3 # 0: Inhibited, 1: Waiting, 2: Active, 3: Fault
+
+    # our radar messages only come back as TX, a new one is from the stock radar
+    radar_ts = cp_adas.ts_nanos['HS2_DYN1_MDD_ETAT_2B6']['COUNTER']
+    self.radar_stale_frames = 0 if radar_ts != self.radar_ts_last else self.radar_stale_frames + 1
+    self.radar_ts_last = radar_ts
+    self.radar_alive = radar_ts != 0 and self.radar_stale_frames < RADAR_TIMEOUT_FRAMES
+
+    # the CMM can stop taking our torque for the rest of the drive, it drops this before the driver's gas press shows up
+    gas_cmm = cp.vl['Dyn_CMM']['P002_Com_rAPP'] > 0
+    acc_torque_lost = (self.CP.openpilotLongitudinalControl and not self.radar_alive and ret.cruiseState.enabled and not (ret.gasPressed or gas_cmm) and
+                       cp_adas.vl['NEW_MSG_318']['ACC_GO_RELATED'] == 0)
+    self.acc_torque_lost_frames = self.acc_torque_lost_frames + 1 if acc_torque_lost else 0
+    ret.accFaulted = ret.accFaulted or self.acc_torque_lost_frames > ACC_TORQUE_LOST_FRAMES
 
     # gear
     if bool(cp_cam.vl['Dat_BSI']['P103_Com_bRevGear']):
@@ -68,6 +97,7 @@ class CarState(CarStateBase):
   def get_can_parsers(CP):
     return {
       Bus.main: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
-      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 1),
+      # the radar is silent with openpilot long
+      Bus.adas: CANParser(DBC[CP.carFingerprint][Bus.pt], [('HS2_DYN1_MDD_ETAT_2B6', float('nan')), ('NEW_MSG_318', float('nan'))], 1),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2),
     }
