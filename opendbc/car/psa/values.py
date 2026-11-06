@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
-from opendbc.car.lateral import AngleSteeringLimits
+from opendbc.car.lateral import AngleSteeringLimitsVM
 from opendbc.car.docs_definitions import CarDocs, CarHarness, CarParts
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
 
@@ -12,10 +12,12 @@ Ecu = CarParams.Ecu
 class CarControllerParams:
   STEER_STEP = 1
 
-  ANGLE_LIMITS: AngleSteeringLimits = AngleSteeringLimits(
-    390, # deg
-    ([0., 5., 25.], [2.5, 1.5, .2]),
-    ([0., 5., 25.], [5., 2., .3]),
+  ANGLE_LIMITS: AngleSteeringLimitsVM = AngleSteeringLimitsVM(
+    390,  # deg
+    # the EPS drops out from ~3.1 m/s^2
+    MAX_LATERAL_ACCEL=3.0,  # m/s^2
+    # 75 deg/s, the EPS faults from ~90 deg/s at low speed
+    MAX_ANGLE_RATE=0.75,  # deg/frame
   )
   STEER_DRIVER_ALLOWANCE = 0.5  # Driver intervention threshold, Nm
 
