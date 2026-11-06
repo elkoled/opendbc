@@ -5,7 +5,7 @@ import numpy as np
 from opendbc.car.lateral import AngleSteeringLimitsVM, get_max_angle_delta_vm, get_max_angle_vm
 from opendbc.car.structs import CarParams
 from opendbc.car.psa.carcontroller import get_safety_CP
-from opendbc.car.psa.values import CarControllerParams
+from opendbc.car.psa.values import CarControllerParams, PSASafetyFlags
 from opendbc.car.vehicle_model import VehicleModel
 import opendbc.safety.tests.common as common
 
@@ -29,6 +29,7 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
   MAIN_BUS = 0
   ADAS_BUS = 1
   CAM_BUS = 2
+  EPS_BUS = MAIN_BUS
 
   STEER_ANGLE_MAX = 390
   DEG_TO_CAN = 10
@@ -52,7 +53,7 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
   def _angle_meas_msg(self, angle: float):
     values = {"ANGLE": angle}
-    return self.packer.make_can_msg_safety("STEERING_ALT", self.MAIN_BUS, values)
+    return self.packer.make_can_msg_safety("STEERING_ALT", self.EPS_BUS, values)
 
   def _pcm_status_msg(self, enable):
     values = {"RVV_ACC_ACTIVATION_REQ": enable}
@@ -178,6 +179,18 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
 class TestPsaStockSafety(TestPsaSafetyBase):
   pass
+
+
+class TestPsaEpsCamBusSafety(TestPsaSafetyBase):
+  SAFETY_PARAM = PSASafetyFlags.EPS_CAM_BUS.value
+  EPS_BUS = TestPsaSafetyBase.CAM_BUS
+
+  def test_eps_bus(self):
+    # the angle is only read from the EPS bus, the relay shows it on both while open
+    for bus, should_update in ((self.CAM_BUS, True), (self.MAIN_BUS, False)):
+      self._reset_angle_measurement(0)
+      self._rx(self.packer.make_can_msg_safety("STEERING_ALT", bus, {"ANGLE": 100}))
+      self.assertEqual(should_update, self.safety.get_angle_meas_max() == 1000)
 
 
 if __name__ == "__main__":

@@ -349,6 +349,8 @@ typedef struct {
   bool volkswagen_resume_button_prev;
   bool volkswagen_brake_pedal_switch;
   bool volkswagen_brake_pressure_detected;
+
+  uint32_t psa_eps_bus;
 } SafetyState;
 
 typedef struct {

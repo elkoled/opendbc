@@ -3,7 +3,7 @@ from opendbc.car import Bus
 from opendbc.car.lateral import apply_steer_angle_limits_vm, get_max_angle_vm
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.psa.psacan import create_lka_steering
-from opendbc.car.psa.values import CarControllerParams
+from opendbc.car.psa.values import CarControllerParams, EpsState
 from opendbc.car.vehicle_model import VehicleModel
 
 
@@ -32,17 +32,20 @@ class CarController(CarControllerBase):
       max_angle = get_max_angle_vm(max(CS.out.vEgoRaw, 1), self.VM, CarControllerParams)
       self.lat_active = CC.latActive and (self.lat_active or abs(CS.out.steeringAngleDeg) < max_angle)
 
-      apply_angle = apply_steer_angle_limits_vm(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, CS.out.steeringAngleDeg,
+      # aim at the wheel until the EPS takes over, so it starts from where the wheel is
+      target = actuators.steeringAngleDeg if CS.eps_active else CS.out.steeringAngleDeg
+      apply_angle = apply_steer_angle_limits_vm(target, self.apply_angle_last, CS.out.vEgoRaw, CS.out.steeringAngleDeg,
                                                 self.lat_active, CarControllerParams, self.VM)
 
-      # EPS disengages on steering override, activation sequence 2->3->4 to re-engage
+      # the EPS disengages on driver override, re-engage with READY -> AUTHORIZED -> ACTIVE
+      # the 508 EPS needs each step held, and ACTIVE held while it reports authorized
       # STATUS  -  0: UNAVAILABLE, 1: UNSELECTED, 2: READY, 3: AUTHORIZED, 4: ACTIVE
       if not self.lat_active:
         self.status = 2
-      elif not CS.eps_active and not CS.out.steeringPressed:
-        self.status = 2 if self.status == 4 else self.status + 1
-      else:
+      elif CS.eps_state in (EpsState.AUTHORIZED, EpsState.ACTIVE):
         self.status = 4
+      elif self.frame % CarControllerParams.STATUS_STEP == 0:
+        self.status = 2 if self.status == 4 else self.status + 1
 
       can_sends.append(create_lka_steering(self.packer, self.lat_active, apply_angle, self.status))
 
