@@ -84,14 +84,14 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   static const AngleSteeringLimits PSA_STEERING_LIMITS = {
     .max_angle = 3900,
     .angle_deg_to_can = 10,
-    .angle_rate_up_lookup = {
-      {0., 5., 25.},
-      {2.5, 1.5, .2},
-    },
-    .angle_rate_down_lookup = {
-      {0., 5., 25.},
-      {5., 2., .3},
-    },
+    .frequency = 100U,
+  };
+
+  // NOTE: based off PSA_PEUGEOT_208 to match openpilot
+  static const AngleSteeringParams PSA_STEERING_PARAMS = {
+    .slip_factor = -0.0006603473577153204,  // calc_slip_factor(VM)
+    .steer_ratio = 17.6,
+    .wheelbase = 2.54,
   };
 
   // The TX list dispatches only PSA_LANE_KEEP_ASSIST on PSA_MAIN_BUS to this hook.
@@ -100,7 +100,7 @@ static bool psa_tx_hook(const CANPacket_t *msg) {
   // TORQUE_FACTOR
   bool lka_active = ((msg->data[5] & 0xFEU) >> 1) == 100U;
 
-  return !steer_angle_cmd_checks(desired_angle, lka_active, PSA_STEERING_LIMITS);
+  return !steer_angle_cmd_checks_vm(desired_angle, lka_active, PSA_STEERING_LIMITS, PSA_STEERING_PARAMS);
 }
 
 static safety_config psa_init(uint16_t param) {
