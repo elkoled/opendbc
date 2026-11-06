@@ -67,8 +67,8 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     return self.packer.make_can_msg_safety("Dat_BSI", self.CAM_BUS, values)
 
   def _user_gas_msg(self, gas):
-    values = {"P002_Com_rAPP": int(gas * 100)}
-    return self.packer.make_can_msg_safety("Dyn_CMM", self.MAIN_BUS, values)
+    values = {"GAS_PEDAL": int(gas * 100)}
+    return self.packer.make_can_msg_safety("DRIVER", self.CAM_BUS, values)
 
   # PSA uses get_max_angle_delta_vm and get_max_angle_vm for real lateral accel and jerk limits
   def test_angle_cmd_when_enabled(self):
