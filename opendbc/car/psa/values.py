@@ -4,7 +4,7 @@ from opendbc.car.structs import CarParams
 from opendbc.car import Bus, CarSpecs, DbcDict, PlatformConfig, Platforms
 from opendbc.car.lateral import AngleSteeringLimitsVM
 from opendbc.car.docs_definitions import CarDocs, CarHarness, CarParts
-from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
+from opendbc.car.fw_query_definitions import FwQueryConfig, Request, uds
 
 Ecu = CarParams.Ecu
 
@@ -42,14 +42,21 @@ class CAR(Platforms):
   )
 
 
-# Placeholder, FW Query will be added in separate PR
+# ABS serial number
+PSA_DIAG_REQ = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL, 0x01])
+PSA_DIAG_RESP = bytes([uds.SERVICE_TYPE.DIAGNOSTIC_SESSION_CONTROL + 0x40, 0x01])
+PSA_SERIAL_REQ = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER, 0xF1, 0x8C])
+PSA_SERIAL_RESP = bytes([uds.SERVICE_TYPE.READ_DATA_BY_IDENTIFIER + 0x40, 0xF1, 0x8C])
+
 FW_QUERY_CONFIG = FwQueryConfig(
-  fw_version_regex=br"\d{9}",
+  fw_version_regex=br"\d{18}[0-9A-Z]?",
   requests=[
     Request(
-      [StdQueries.TESTER_PRESENT_REQUEST, StdQueries.UDS_VERSION_REQUEST],
-      [StdQueries.TESTER_PRESENT_RESPONSE, StdQueries.UDS_VERSION_RESPONSE],
+      [PSA_DIAG_REQ, PSA_SERIAL_REQ],
+      [PSA_DIAG_RESP, PSA_SERIAL_RESP],
+      rx_offset=-0x20,
       bus=0,
+      obd_multiplexing=False,
     ),
   ],
 )
