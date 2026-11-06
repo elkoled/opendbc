@@ -7,9 +7,13 @@ from opendbc.car.structs import CarParams
 from opendbc.car.psa.carcontroller import get_safety_CP
 from opendbc.car.psa.values import CarControllerParams, PSASafetyFlags
 from opendbc.car.vehicle_model import VehicleModel
+from opendbc.safety.tests.libsafety import libsafety_py
 import opendbc.safety.tests.common as common
 
 LANE_KEEP_ASSIST = 0x3F2
+REQ_DIAG_ARTIV = 0x6B6
+HS2_DYN1_MDD_ETAT_2B6 = 0x2B6
+HS2_DYN_MDD_ETAT_2F6 = 0x2F6
 
 
 class SafetyLimits:
@@ -191,6 +195,64 @@ class TestPsaEpsCamBusSafety(TestPsaSafetyBase):
       self._reset_angle_measurement(0)
       self._rx(self.packer.make_can_msg_safety("STEERING_ALT", bus, {"ANGLE": 100}))
       self.assertEqual(should_update, self.safety.get_angle_meas_max() == 1000)
+
+
+class TestPsaLongitudinalSafety(TestPsaSafetyBase, common.LongitudinalAccelSafetyTest):
+  SAFETY_PARAM = PSASafetyFlags.LONG_CONTROL.value
+  TX_MSGS = [[LANE_KEEP_ASSIST, 0], [REQ_DIAG_ARTIV, 1], [HS2_DYN1_MDD_ETAT_2B6, 1], [HS2_DYN_MDD_ETAT_2F6, 1]]
+
+  INACTIVE_ACCEL = 2.05
+  MAX_TORQUE = 1500
+  MIN_TORQUE = -400
+  INACTIVE_TORQUE = -4000
+
+  def _acc_msg(self, decel=INACTIVE_ACCEL, torque=INACTIVE_TORQUE, potential_torque=INACTIVE_TORQUE, decel_req=False):
+    values = {
+      "MDD_DESIRED_DECELERATION": decel,
+      "GMP_WHEEL_TORQUE": torque,
+      "GMP_POTENTIAL_WHEEL_TORQUE": potential_torque,
+      "MDD_DECEL_CONTROL_REQ": decel_req,
+    }
+    return self.packer.make_can_msg_safety("HS2_DYN1_MDD_ETAT_2B6", self.ADAS_BUS, values)
+
+  def _accel_msg(self, accel: float):
+    return self._acc_msg(decel=accel)
+
+  def test_torque_limits(self):
+    for torque in [*range(-1000, 2000, 50), self.INACTIVE_TORQUE]:
+      for controls_allowed in (True, False):
+        self.safety.set_controls_allowed(controls_allowed)
+        should_tx = (controls_allowed and self.MIN_TORQUE <= torque <= self.MAX_TORQUE) or torque == self.INACTIVE_TORQUE
+        self.assertEqual(should_tx, self._tx(self._acc_msg(torque=torque)))
+        self.assertEqual(should_tx, self._tx(self._acc_msg(potential_torque=torque)))
+
+  def test_decel_request(self):
+    for controls_allowed in (True, False):
+      self.safety.set_controls_allowed(controls_allowed)
+      self.assertEqual(controls_allowed, self._tx(self._acc_msg(decel=-1.0, decel_req=True)))
+
+  def test_standstill_hold(self):
+    for speed in (0.0, 0.3, 0.9, 1.1, 10.0):
+      for _ in range(6):
+        self._rx(self._speed_msg(speed))
+      for controls_allowed in (True, False):
+        self.safety.set_controls_allowed(controls_allowed)
+        should_tx = controls_allowed and speed < 1.0
+        self.assertEqual(should_tx, self._tx(self._acc_msg(decel=-10.65, decel_req=True)))
+
+  def test_radar_diagnostics(self):
+    for should_tx, dat in ((True, b"\x02\x10\x02\x80\x00\x00\x00\x00"),
+                           (True, b"\x02\x3E\x00\x00\x00\x00\x00\x00"),
+                           (False, b"\x02\x10\x03\x00\x00\x00\x00\x00"),
+                           (False, b"\x02\x11\x01\x00\x00\x00\x00\x00")):
+      self.assertEqual(should_tx, self._tx(libsafety_py.make_CANPacket(REQ_DIAG_ARTIV, self.ADAS_BUS, dat)))
+
+  def test_no_actuation_on_gas(self):
+    self.safety.set_controls_allowed(True)
+    self._rx(self._user_gas_msg(1))
+    self.assertFalse(self._tx(self._acc_msg(torque=500)))
+    self.assertFalse(self._tx(self._acc_msg(decel=-1.0, decel_req=True)))
+    self.assertTrue(self._tx(self._acc_msg()))
 
 
 if __name__ == "__main__":
