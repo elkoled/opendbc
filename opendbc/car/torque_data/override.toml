@@ -9,6 +9,7 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 
 # PSA angle based controllers
 "PSA_PEUGEOT_208" = [nan, 2.0, nan]
+"PSA_PEUGEOT_508" = [nan, 2.0, nan]
 
 # BYD angle based controllers
 "BYD_ATTO_3" = [nan, 2.0, nan]

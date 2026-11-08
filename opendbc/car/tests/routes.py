@@ -372,6 +372,7 @@ routes = [
   CarTestRoute("a4af1602d8e668ac/2022-02-03--12-17-07", MAZDA.MAZDA_CX5_2022),
 
   CarTestRoute("6a7075a4fdd765ee/0000004e--1f612006dd", PSA.PSA_PEUGEOT_208),
+  CarTestRoute("4cef1f7eba322b25/00000000--dee7de3f20", PSA.PSA_PEUGEOT_508),
 
   CarTestRoute("148fa33c79475c93/00000002--bb5e1aa449", BYD.BYD_ATTO_3),
 

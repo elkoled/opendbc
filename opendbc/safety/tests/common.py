@@ -991,6 +991,8 @@ class SafetyTest(SafetyTestBase):
               continue
             if attr.startswith('TestChryslerRamHD') and current_test.startswith('TestChryslerRamHD'):
               continue
+            if attr.startswith('TestPsa') and current_test.startswith('TestPsa'):
+              continue
             if attr.startswith('TestHyundaiCanfd') and current_test.startswith('TestHyundaiCanfd'):
               continue
             if {attr, current_test}.issubset({'TestHyundaiLongitudinalSafety', 'TestHyundaiLongitudinalSafetyCameraSCC', 'TestHyundaiSafetyFCEVLong'}):
