@@ -31,7 +31,12 @@
   {.msg = {{PSA_DRIVER, PSA_CAM_BUS, 6, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true},  /* gas pedal, 6 bytes on the 208 */       \
            {PSA_DRIVER, PSA_CAM_BUS, 7, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }}},  /* 7 bytes on the 508 */         \
 
+// the radar is silent with openpilot long
+#define PSA_RADAR_RX_CHECK                                                                                                                              \
+  {.msg = {{PSA_HS2_DYN1_MDD_ETAT_2B6, PSA_ADAS_BUS, 8, 50U, .max_counter = 15U, .ignore_quality_flag = true}, { 0 }, { 0 }}},  /* stock ACC state */ \
+
 static uint32_t psa_eps_bus = PSA_MAIN_BUS;
+static bool psa_longitudinal = false;
 
 static uint8_t psa_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
@@ -41,14 +46,14 @@ static uint8_t psa_get_counter(const CANPacket_t *msg) {
   if (msg->addr == PSA_HS2_DYN_ABR_38D) {
     cnt = (msg->data[5] >> 4) & 0xFU;
   }
-  if (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) {
+  if ((msg->addr == PSA_HS2_DYN_UCF_MDD_32D) || (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6)) {
     cnt = (msg->data[7] >> 4) & 0xFU;
   }
   return cnt;
 }
 
 static uint32_t psa_get_checksum(const CANPacket_t *msg) {
-  int chk_pos = (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) ? 7 : 5;
+  int chk_pos = ((msg->addr == PSA_HS2_DYN_UCF_MDD_32D) || (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6)) ? 7 : 5;
   return msg->data[chk_pos] & 0xFU;
 }
 
@@ -79,6 +84,9 @@ static uint32_t psa_compute_checksum(const CANPacket_t *msg) {
   if (msg->addr == PSA_HS2_DYN_UCF_MDD_32D) {
     chk = _psa_compute_checksum(msg, 0xD, 7);
   }
+  if (msg->addr == PSA_HS2_DYN1_MDD_ETAT_2B6) {
+    chk = _psa_compute_checksum(msg, 0xC, 7);
+  }
   return chk;
 }
 
@@ -95,6 +103,13 @@ static void psa_rx_hook(const CANPacket_t *msg) {
 
   if (msg_matches(msg, PSA_HS2_DAT_MDD_CMD_452, PSA_ADAS_BUS)) {
     pcm_cruise_check((msg->data[2U] >> 7U) & 1U);  // RVV_ACC_ACTIVATION_REQ
+    // the radar is silent with openpilot long, so its ACC state is not available
+    if (psa_longitudinal) {
+      acc_main_on = true;
+    }
+  }
+  if (msg_matches(msg, PSA_HS2_DYN1_MDD_ETAT_2B6, PSA_ADAS_BUS)) {
+    acc_main_on = (msg->data[3U] & 0xFU) > 2U;  // ACC_STATUS above inhibited
   }
 
   if (msg_matches(msg, PSA_DRIVER, PSA_CAM_BUS)) {
@@ -178,20 +193,36 @@ static safety_config psa_init(uint16_t param) {
 
   static RxCheck psa_rx_checks[] = {
     PSA_RX_CHECKS(PSA_MAIN_BUS)
+    PSA_RADAR_RX_CHECK
   };
 
   static RxCheck psa_eps_cam_rx_checks[] = {
     PSA_RX_CHECKS(PSA_CAM_BUS)
+    PSA_RADAR_RX_CHECK
+  };
+
+  static RxCheck psa_long_rx_checks[] = {
+    PSA_RX_CHECKS(PSA_MAIN_BUS)
+  };
+
+  static RxCheck psa_long_eps_cam_rx_checks[] = {
+    PSA_RX_CHECKS(PSA_CAM_BUS)
   };
 
   psa_eps_bus = GET_FLAG(param, PSA_PARAM_EPS_CAM_BUS) ? PSA_CAM_BUS : PSA_MAIN_BUS;
+  psa_longitudinal = GET_FLAG(param, PSA_PARAM_LONGITUDINAL);
 
   safety_config ret = BUILD_SAFETY_CFG(psa_rx_checks, PSA_TX_MSGS);
-  if (psa_eps_bus == PSA_CAM_BUS) {
-    SET_RX_CHECKS(psa_eps_cam_rx_checks, ret);
-  }
-  if (GET_FLAG(param, PSA_PARAM_LONGITUDINAL)) {
+  if (psa_longitudinal) {
     SET_TX_MSGS(PSA_LONG_TX_MSGS, ret);
+    if (psa_eps_bus == PSA_CAM_BUS) {
+      SET_RX_CHECKS(psa_long_eps_cam_rx_checks, ret);
+    } else {
+      SET_RX_CHECKS(psa_long_rx_checks, ret);
+    }
+  } else if (psa_eps_bus == PSA_CAM_BUS) {
+    SET_RX_CHECKS(psa_eps_cam_rx_checks, ret);
+  } else {
   }
   return ret;
 }

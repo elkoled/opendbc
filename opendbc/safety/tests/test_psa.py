@@ -67,6 +67,10 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
     values = {"VITESSE_VEHICULE_ROUES": speed * 3.6}
     return self.packer.make_can_msg_safety("HS2_DYN_ABR_38D", self.MAIN_BUS, values)
 
+  def _acc_state_msg(self, enabled):
+    values = {"ACC_STATUS": 3 if enabled else 1}
+    return self.packer.make_can_msg_safety("HS2_DYN1_MDD_ETAT_2B6", self.ADAS_BUS, values)
+
   def _user_brake_msg(self, brake):
     values = {"APPUI_FREIN_RECONSTRUIT": 2 if brake else 1}
     return self.packer.make_can_msg_safety("HS2_DYN_UCF_MDD_32D", self.ADAS_BUS, values)
@@ -190,7 +194,12 @@ class TestPsaSafetyBase(common.CarSafetyTest, common.AngleSteeringSafetyTest):
 
 
 class TestPsaStockSafety(TestPsaSafetyBase):
-  pass
+  def test_acc_main_on(self):
+    # ACC main is on from standby (3) up, inhibited (2) and below is off
+    for status in range(16):
+      msg = self.packer.make_can_msg_safety("HS2_DYN1_MDD_ETAT_2B6", self.ADAS_BUS, {"ACC_STATUS": status})
+      self.assertTrue(self._rx(msg))
+      self.assertEqual(status > 2, self.safety.get_acc_main_on())
 
 
 class TestPsaEpsCamBusSafety(TestPsaSafetyBase):
@@ -225,6 +234,15 @@ class TestPsaLongitudinalSafety(TestPsaSafetyBase, common.LongitudinalAccelSafet
 
   def _accel_msg(self, accel: float):
     return self._acc_msg(decel=accel)
+
+  def _acc_state_msg(self, enabled):
+    # the radar is silent, ACC main is always on
+    raise NotImplementedError
+
+  def test_acc_main_on(self):
+    self.safety.set_acc_main_on(False)
+    self.assertTrue(self._rx(self._pcm_status_msg(False)))
+    self.assertTrue(self.safety.get_acc_main_on())
 
   def test_torque_limits(self):
     for torque in [*range(-1000, 2000, 50), self.INACTIVE_TORQUE]:
